@@ -1069,15 +1069,6 @@ static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv, u32 stream_i
 	if (hfi_priv->active_streams)
 		goto end;
 
-	/*
-	 * Reset the counter to 0 on full teardown. During a compliance test
-	 * session prepare() is called once per video enable, so the counter
-	 * can reach 2 for a single SST connection. Without this reset the
-	 * counter stays non-zero after a single cleanup call, keeping
-	 * configured=true and causing the next plug to skip re-configuration.
-	 */
-	hfi_priv->active_streams = 0;
-
 	dp_mgr_hfi_clk_enable(hfi_priv, false);
 
 	_hfi_power_deinit(hfi_priv);
@@ -1103,7 +1094,7 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 		return -EINVAL;
 	}
 
-	/* Ignore attention calls while a synthetic replug is in progress */
+	/* Ignore attention calls during soft replug */
 	if (hfi_priv->soft_unplug)
 		return 0;
 
@@ -1685,7 +1676,7 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	info = payload;
 	edid_buf = &info->edid_modes_buf;
 
-	DP_INFO("EDID Info: stream_id=%d size=%u, link_rate=%u, lane_count=%u, bpp=%u, flags=%u\n",
+	DP_INFO("EDID Info: stream_id=%d size=%u, link_rate=%u, lane_count=%u, bpp=%u, flags=%x\n",
 			info->stream_id, edid_buf->size, info->link_rate,
 			info->lane_count, info->bits_per_pixel, info->flags);
 
@@ -1695,8 +1686,11 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 		return;
 	}
 
-	hfi->connected = (edid_buf->size > 0);
-	if (!hfi->connected) {
+	/* Connection status is not in the payload - set connected=1 based on receiving EDID info */
+	if (edid_buf->size > 0) {
+		hfi->connected = true;
+	} else {
+		hfi->connected = false;
 		DP_INFO("Setting connected=0 due to empty EDID buffer\n");
 		goto end;
 	}
@@ -1778,32 +1772,15 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 		_hfi_notify_hpd_user(hfi, false);
 		break;
 	case HFI_DP_EVENT_HPD_PLUGGED:
+		DP_DEBUG("HPD_PLUGGED conn:%d\n", (hfi->connector ? hfi->connector->base.id : -1));
+
 		_hfi_update_config(hfi_priv, &config);
+
+		hfi_priv->connected = true;
 		config.hpd_state = 1;
 		config.hpd_irq = 0;
 
-		if (hfi->disable_in_progress) {
-			/*
-			 * A plug arrived while the display framework is actively
-			 * tearing down the previous session. Sending the plug
-			 * immediately causes resource allocation errors. Store
-			 * the config and defer until unprepare, which is the
-			 * last step of the disable sequence and guarantees all
-			 * resources have been released.
-			 *
-			 * Set soft_unplug to suppress physical HPD attention
-			 * callbacks until the deferred plug is sent, preventing
-			 * a race with the synthetic replug.
-			 */
-			DP_INFO("HPD_PLUGGED: disable in progress, deferring to unprepare\n");
-			hfi->pending_plug_config   = config;
-			hfi->pending_synthetic_plug = true;
-			hfi_priv->soft_unplug       = true;
-		} else {
-			DP_INFO("HPD_PLUGGED: sending immediately\n");
-			_hfi_send_hot_plug(hfi_priv, &config);
-		}
-		hfi_priv->connected = true;
+		_hfi_send_hot_plug(hfi_priv, &config);
 		break;
 	default:
 		break;
@@ -2659,15 +2636,10 @@ static int dp_mgr_hfi_prepare(struct dp_client *client, int panel_id)
 
 	DP_DEBUG("HFI prepare for stream_id: %d\n", stream_id);
 
-	/*
-	 * Cap active_streams at max_streams. During a compliance test session
-	 * prepare() is called once per video enable (initial + test-pattern),
-	 * which would push the counter above max_streams for a single SST
-	 * connection. Capping it ensures a single cleanup call brings it back
-	 * to zero and sets configured=false correctly.
-	 */
-	if (hfi_priv->active_streams < hfi_priv->max_streams)
-		hfi_priv->active_streams++;
+	/* Mode setting will be handled by the set_mode callback when needed */
+	/* For now, just return success as preparation is complete */
+
+	hfi_priv->active_streams++;
 
 	SDE_EVT32_EXTERNAL(stream_id, hfi_priv->connected, hfi_priv->active_streams);
 end:
@@ -2707,7 +2679,7 @@ static int dp_mgr_hfi_enable(struct dp_client *client, int panel_id)
 
 	rc = dp_hfi_send_batch_cmd(hfi, hfi_client, true);
 	if (rc) {
-		DP_ERR("failed to send enable, rc=%d\n", rc);
+		DP_ERR("failed to send enable, stream_id=%d rc=%d\n", stream_id, rc);
 		goto error;
 	}
 
@@ -2766,8 +2738,6 @@ static int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 	hfi = hfi_priv->hfi[stream_id];
 	hfi_client = hfi->hfi_client;
 
-	hfi->disable_in_progress = true;
-
 	/* turn off audio if still enabled */
 	if (hfi_priv->audio)
 		hfi_priv->audio->off(hfi_priv->audio, false);
@@ -2778,7 +2748,7 @@ static int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0,
 			(HFI_HOST_FLAGS_NON_DISCARDABLE));
 	if (rc) {
-		DP_ERR("failed to send disable, rc=%d\n", rc);
+		DP_ERR("failed to send disable, stream_id=%d rc=%d\n", stream_id, rc);
 	} else {
 		DP_DEBUG("disable successful for panel_id=%d\n",
 				panel_id);
@@ -2896,26 +2866,6 @@ static int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
 	}
 
 	stream_id = panel_to_stream(hfi_priv, panel_id);
-
-	/*
-	 * Deferred synthetic-replug dispatch.
-	 *
-	 * If a synthetic plug arrived while the display framework was still
-	 * tearing down the previous session, the plug was stored and deferred.
-	 * We are now at the very end of the disable sequence — all resources
-	 * have been released. Send the deferred plug now and clear the
-	 * soft_unplug flag so physical HPD attention callbacks are no longer
-	 * suppressed.
-	 */
-	hfi_priv->hfi[stream_id]->disable_in_progress = false;
-
-	if (hfi_priv->hfi[stream_id]->pending_synthetic_plug) {
-		DP_INFO("sending deferred synthetic plug\n");
-		hfi_priv->hfi[stream_id]->pending_synthetic_plug = false;
-		hfi_priv->soft_unplug = false;
-		_hfi_send_hot_plug(hfi_priv, &hfi_priv->hfi[stream_id]->pending_plug_config);
-		goto end;
-	}
 
 	/* unprepare only when NOT connected */
 	if (!hfi_priv->connected) {
