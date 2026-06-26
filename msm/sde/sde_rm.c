@@ -2085,11 +2085,42 @@ static int _sde_rm_reserve_cdm(
 	return 0;
 }
 
+static int _reassign_dp_intf(struct sde_rm *rm, uint32_t id)
+{
+	struct sde_kms *sde_kms = container_of(rm, struct sde_kms, rm);
+	struct sde_mdss_cfg *cat = sde_kms->catalog;
+	int curr_intf_ind, next_intf_ind;
+	struct sde_intf_cfg curr_intf, next_intf;
+
+	for (curr_intf_ind = 0; curr_intf_ind < cat->intf_count; curr_intf_ind++) {
+		curr_intf = cat->intf[curr_intf_ind];
+
+		if (curr_intf.type != INTF_DP || curr_intf.id != id)
+			continue;
+
+		SDE_DEBUG("intf %d id %d already assigned to DP\n", curr_intf_ind, curr_intf.id);
+
+		for (next_intf_ind = 0; next_intf_ind < cat->intf_count; next_intf_ind++) {
+			next_intf = cat->intf[next_intf_ind];
+			if (next_intf.type == INTF_DP && next_intf.id != id) {
+				id = next_intf.id;
+				SDE_DEBUG("reassign to intf %d id %d\n", next_intf_ind,
+						next_intf.id);
+				break;
+			}
+		}
+		break;
+	}
+
+	return id;
+}
+
 static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm, struct sde_rm_rsvp *rsvp,
 		uint32_t id, enum sde_hw_blk_type type, struct sde_rm_requirements *reqs)
 {
 	struct sde_encoder_hw_resources *hw_res = &reqs->hw_res;
 	struct sde_rm_hw_iter iter;
+	uint32_t new_id;
 	int ret = 0;
 
 	/* Find the block entry in the rm, and note the reservation */
@@ -2099,8 +2130,9 @@ static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm, struct sde_rm_rsvp *rsv
 			continue;
 
 		if (RESERVED_BY_OTHER(iter.blk, rsvp)) {
-			if (id == 1) {
-				id = 3;
+			new_id = _reassign_dp_intf(rm, id);
+			if (new_id != id) {
+				id = new_id;
 				continue;
 			}
 			SDE_EVT32(iter.blk->type, rsvp->enc_id, iter.blk->id, 0xebad);
