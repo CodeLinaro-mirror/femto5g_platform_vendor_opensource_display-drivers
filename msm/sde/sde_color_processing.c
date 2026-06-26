@@ -3414,6 +3414,9 @@ void sde_cp_crtc_clear(struct drm_crtc *crtc)
 	sde_crtc_cp_unmap_rgb_hist_buffers(sde_crtc);
 	_sde_cp_crtc_unmap_qrtc_buffer(sde_crtc);
 
+	_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_RC_PU, false);
+	_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_SPR_PU, false);
+
 	sde_crtc->do_clear_buf = true;
 	sde_crtc->ltm_buffer_cnt = 0;
 	sde_crtc->ltm_hist_en = false;
