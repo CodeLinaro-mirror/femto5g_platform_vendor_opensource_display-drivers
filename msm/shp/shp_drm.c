@@ -712,6 +712,7 @@ static int shp_parse(struct shp_device *shp)
 
 		/* create plane */
 		plane->possible_crtcs = 0;
+		kfree(plane->name);
 		plane->name = kasprintf(GFP_KERNEL, "%s", name);
 		BUG_ON(plane->index != shp->num_planes);
 		shp_plane = &shp->planes[shp->num_planes++];
@@ -752,6 +753,7 @@ static int shp_parse(struct shp_device *shp)
 		}
 
 		plane->possible_crtcs = 0;
+		kfree(plane->name);
 		plane->name = kasprintf(GFP_KERNEL, "%s", name);
 		BUG_ON(plane->index != shp->num_planes);
 		p = shp_plane;
