@@ -698,6 +698,7 @@ end:
 
 		smmu_state->state = smmu_state->prev_state;
 		smmu_state->secure_level = smmu_state->prev_secure_level;
+		smmu_state->crtc_id = 0;
 
 		if (smmu_state->sui_misr_state == SUI_MISR_ENABLE_REQ)
 			_sde_kms_sui_misr_ctrl(sde_kms, crtc, false);
@@ -7227,6 +7228,7 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 
 	msm_kms_init(&sde_kms->base, &kms_funcs);
 	sde_kms->dev = dev;
+	sde_kms->smmu_state.crtc_id = 0;
 
 	return &sde_kms->base;
 }
