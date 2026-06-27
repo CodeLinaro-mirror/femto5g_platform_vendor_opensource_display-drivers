@@ -46,6 +46,9 @@
  * @max_display_count	Max display count
  * @wb_count		Number of writeback blocks
  * @wb_indices		Writeback block indices
+ * @wb_dnsc_indices	Writeback DNSC support indices
+ * @wb_dnsc_range	Valid range of scale ratio for WB DNSC
+ * @wb_dnsc_integer_only	Whether WB DNSC supports only integer scaling
  * @csc_wb_count	Number of CSC writeback blocks
  * @csc_wb_indices	CSC writeback block indices
  * @repro_wb_count	Number of Repro writeback blocks
@@ -83,6 +86,9 @@ struct hfi_catalog_base {
 	u32 max_display_count;
 	u32 wb_count;
 	u32 wb_indices[MAX_BLOCKS];
+	u32 wb_dnsc_indices[MAX_BLOCKS];
+	u32 wb_dnsc_range;
+	u32 wb_dnsc_integer_only;
 	u32 csc_wb_count;
 	u32 csc_wb_indices[MAX_BLOCKS];
 	u32 repro_wb_count;

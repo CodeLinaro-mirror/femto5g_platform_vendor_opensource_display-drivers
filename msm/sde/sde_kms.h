@@ -1061,4 +1061,16 @@ int sde_kms_wait_for_display_off(struct sde_kms *kms);
  */
 int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev);
 
+/**
+ * sde_kms_populate_wb_dnsc_caps - populate WB DNSC capability fields in wb_dev
+ * @sde_kms: Pointer to sde kms object
+ * @wb_dev:  Pointer to writeback device to populate
+ *
+ * Reads WB DNSC support indices, ratio range, and integer-only flag from the
+ * HFI catalog and stores them in the wb_dev capability fields.
+ */
+struct sde_wb_device;
+void sde_kms_populate_wb_dnsc_caps(struct sde_kms *sde_kms,
+		struct sde_wb_device *wb_dev);
+
 #endif /* __sde_kms_H__ */

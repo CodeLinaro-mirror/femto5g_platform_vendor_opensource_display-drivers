@@ -7194,6 +7194,32 @@ end:
 	return rc;
 }
 
+void sde_kms_populate_wb_dnsc_caps(struct sde_kms *sde_kms,
+		struct sde_wb_device *wb_dev)
+{
+	struct hfi_catalog_base *hfi_catalog;
+
+	if (!sde_kms || !wb_dev)
+		return;
+
+	if (!sde_kms->hfi_kms || !sde_kms->hfi_kms->catalog)
+		return;
+
+	hfi_catalog = sde_kms->hfi_kms->catalog;
+
+	if (!hfi_catalog->wb_dnsc_range)
+		return;
+
+	if (wb_dev->index >= MAX_BLOCKS ||
+			!hfi_catalog->wb_dnsc_indices[wb_dev->index])
+		return;
+
+	wb_dev->wb_dnsc_supported = true;
+	wb_dev->wb_dnsc_min_ratio = (hfi_catalog->wb_dnsc_range >> 16) & 0xFFFF;
+	wb_dev->wb_dnsc_max_ratio = hfi_catalog->wb_dnsc_range & 0xFFFF;
+	wb_dev->wb_dnsc_integer_only = !!hfi_catalog->wb_dnsc_integer_only;
+}
+
 struct msm_kms *sde_kms_init(struct drm_device *dev)
 {
 	struct msm_drm_private *priv;
