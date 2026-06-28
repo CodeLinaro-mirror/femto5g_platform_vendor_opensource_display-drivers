@@ -2013,6 +2013,7 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 	bool repeater_flag = false;
 	uint32_t timeout_ms = 0;
 	int rc;
+	struct dp_mgr_hfi_priv *hfi_priv;
 
 	DP_DEBUG("HDCP2X_PROCESS_MSG event received from DCP\n");
 
@@ -2020,6 +2021,8 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 		DP_ERR("Invalid parameters\n");
 		return;
 	}
+
+	hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
 
 	/* Check if shared buffers are allocated */
 	if (!hfi->hdcp2x_req_map || !hfi->hdcp2x_resp_map) {
@@ -2116,6 +2119,9 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 			dp_mgr_update_hdcp_info(hfi, false);
 			return;
 		}
+
+		if (hfi_priv->debug && hfi_priv->debug->force_encryption)
+			dp_hdcp2x_force_encryption(hfi->hdcp2x_ctx, true);
 
 		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATED;
 		dp_mgr_update_hdcp_info(hfi, false);
@@ -2785,6 +2791,9 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 
 	/* Deinitialize HDCP 2.x*/
 	if (hfi->hdcp2x_ctx) {
+		/* If force_encryption is set, disable encryption before tearing down */
+		if (hfi_priv->debug->force_encryption)
+			dp_hdcp2x_force_encryption(hfi->hdcp2x_ctx, false);
 		dp_hdcp2x_deinit(hfi->hdcp2x_ctx);
 		hfi->hdcp2x_ctx = NULL;
 		DP_DEBUG("HDCP 2.x deinitialized\n");
