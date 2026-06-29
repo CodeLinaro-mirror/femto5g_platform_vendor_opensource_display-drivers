@@ -652,6 +652,18 @@ enum hfi_fence_type {
 };
 
 /*
+ * enum hfi_dp_sink_capability_flags - Bitmask flags describing DP link capabilities.
+ * @HFI_DP_SINK_CAP_MST: Multi-Stream Transport (MST) is supported.
+ * @HFI_DP_SINK_CAP_DSC: Display Stream Compression (DSC) is supported.
+ * @HFI_DP_SINK_CAP_FEC: Forward Error Correction (FEC) is supported.
+ */
+enum hfi_dp_sink_capability_flags {
+	HFI_DP_SINK_CAP_MST,
+	HFI_DP_SINK_CAP_DSC,
+	HFI_DP_SINK_CAP_FEC,
+};
+
+/*
  * DP Event data after HPD.
  *
  * @controller_id:
@@ -664,8 +676,8 @@ enum hfi_fence_type {
  *     Number of lanes from DPCD
  * @bits_per_pixel:
  *     Uncompressed bits per pixel supported for this
- * @fec_enabled:
- *     Forward Error Correction enabled flag
+ * @flags:
+ *     Bitmask of DP link capability flags (see hfi_dp_sink_capability_flags).
  * @edid_modes_buf:
  *     EDID & modes buffer: This buffer is populated by DCP with the raw EDID data and display
  *     modes parsed from the EDID.
@@ -693,7 +705,7 @@ struct hfi_display_event_edid_info {
 	u32 link_rate;
 	u32 lane_count;
 	u32 bits_per_pixel;
-	u32 fec_enabled;
+	u32 flags;
 	struct hfi_buff edid_modes_buf;
 };
 
@@ -970,9 +982,10 @@ struct hfi_hdcp2_message {
  *     Compressed bits per pixel.
  * @cmpr_slice_count:
  *     Number of compressed slices per line.
- * @reserved1:
- *     Reserved for future use.
- * @reserved2:
+ * @test_pattern:
+ *     DP compliance test pattern ID (DPCD 0x221). Set to the pattern requested
+ *     by the sink during a TEST_PATTERN compliance test; 0 in all other scenarios.
+ * @reserved:
  *     Reserved for future use.
  */
 struct hfi_display_mode_extended_info {
@@ -983,8 +996,8 @@ struct hfi_display_mode_extended_info {
 	u32 cmpr_enabled;
 	u32 cmpr_bpp;
 	u32 cmpr_slice_count;
-	u32 reserved1;
-	u32 reserved2;
+	u8  test_pattern;
+	u8  reserved[7];
 };
 
 /*
@@ -1073,6 +1086,29 @@ struct hfi_batch_mode_info {
 	enum hfi_batch_mode mode;
 	enum hfi_batch_usecase_id usecase_id;
 	u32 reserved[2];
+};
+
+/**
+ * @def HFI_WB_DNSC_CFG_DISABLE
+ * @brief Set to disable WB downscaling for the output layer.
+ */
+#define HFI_WB_DNSC_CFG_DISABLE	(1 << 0)
+
+/*!
+ * @struct hfi_dnsc_cfg
+ * @brief Downscale configuration parameters for output layer.
+ *
+ * @var flags
+ *  Configuration flags for downscaling.
+ * @var dst_width
+ *  Destination width for downscaling operation.
+ * @var dst_height
+ *  Destination height for downscaling operation.
+ */
+struct hfi_dnsc_cfg {
+	u32 flags;
+	u32 dst_width;
+	u32 dst_height;
 };
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

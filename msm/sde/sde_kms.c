@@ -91,7 +91,7 @@
 #define MEM_PROTECT_SD_CTRL_SWITCH 0x18
 #define MDP_DEVICE_ID            0x1A
 #define MDP_MASTER_CORE          0
-#define REGION_NAME_MAX          32
+#define DEMURA_REGION_NAME_MAX      32
 
 EXPORT_TRACEPOINT_SYMBOL(tracing_mark_write);
 
@@ -963,14 +963,6 @@ static int _sde_kms_map_all_splash_regions(struct sde_kms *sde_kms)
 			if (ret)
 				return ret;
 		}
-
-		/* Lut dma */
-		region = sde_kms->splash_data.splash_display[i].lut_dma;
-		if (region) {
-			ret = _sde_kms_splash_mem_get(sde_kms, region);
-			if (ret)
-				return ret;
-		}
 	}
 
 	return ret;
@@ -1511,9 +1503,6 @@ static void _sde_kms_free_splash_display_data(struct sde_kms *sde_kms,
 		if (splash_display->demura)
 			_sde_kms_splash_mem_put(sde_kms,
 					splash_display->demura);
-		if (splash_display->lut_dma)
-			_sde_kms_splash_mem_put(sde_kms,
-					splash_display->lut_dma);
 	}
 	sde_kms->splash_data.num_splash_displays--;
 	SDE_DEBUG("cont_splash handoff done, remaining:%d\n",
@@ -1556,7 +1545,7 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 	for (i = 0; i < MAX_SPLASH_DISPLAYS; i++) {
 		splash_display = &sde_kms->splash_data.splash_display[i];
 		if (IS_DISP_OP_HFI(priv->disp_op) && splash_display->cont_splash_enabled) {
-			if (splash_display->splash_encoder == best_encoder) {
+			if (splash_display->encoder == best_encoder) {
 				_sde_kms_free_splash_display_data(sde_kms, splash_display);
 				break;
 			}
@@ -1891,6 +1880,8 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 	struct drm_device *dev;
 	int ret;
 	bool cwb_disabling;
+	enum msm_disp_op disp_op;
+	struct sde_encoder_virt *sde_enc;
 
 	if (!kms || !crtc || !crtc->state) {
 		SDE_ERROR("invalid params\n");
@@ -1917,6 +1908,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 
 	SDE_ATRACE_BEGIN("sde_kms_wait_for_commit_done");
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+		disp_op = sde_encoder_get_disp_op(encoder);
 		cwb_disabling = false;
 		if (encoder->crtc != crtc) {
 			cwb_disabling = sde_encoder_is_cwb_disabling(encoder, crtc);
@@ -1941,6 +1933,21 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 					ret, SDE_EVTLOG_ERROR);
 			sde_crtc_request_frame_reset(crtc, encoder);
 			break;
+		}
+
+		/*
+		 * For HFI CWB disable: the FRAME_CAPTURE_COMPLETE wait just
+		 * completed above.  Now it is safe to deregister the event.
+		 */
+		if (cwb_disabling && IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms))) {
+			sde_enc = to_sde_encoder_virt(encoder);
+
+			if (sde_enc->hal_ops.deregister_cwb_events[disp_op]) {
+				ret = sde_enc->hal_ops.deregister_cwb_events[disp_op](sde_enc);
+				if (ret)
+					SDE_ERROR("crtc:%d enc:%d deregister failed ret:%d\n",
+							DRMID(crtc), DRMID(encoder), ret);
+			}
 		}
 
 		sde_encoder_hw_fence_error_handle(encoder);
@@ -2943,8 +2950,8 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 	int primary_planes_idx = 0, i, ret;
 	int max_crtc_count;
 
-	u32 sspp_id[MAX_PLANES];
-	u32 master_plane_id[MAX_PLANES];
+	u32 sspp_id[MAX_PLANES] = {0};
+	u32 master_plane_id[MAX_PLANES] = {0};
 	u32 dummy_mixer_count = 0;
 
 	if (!sde_kms || !sde_kms->dev || !sde_kms->dev->dev) {
@@ -2984,9 +2991,9 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 
 		plane = sde_plane_init(dev, catalog->sspp[i].id, primary,
 				(1UL << max_crtc_count) - 1, 0);
-		if (IS_ERR(plane)) {
+		if (IS_ERR_OR_NULL(plane)) {
 			SDE_ERROR("sde_plane_init failed\n");
-			ret = PTR_ERR(plane);
+			ret = IS_ERR(plane) ? PTR_ERR(plane) : -EINVAL;
 			goto fail;
 		}
 		priv->planes[priv->num_planes++] = plane;
@@ -3917,7 +3924,7 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 		enum sde_crtc_vm_req vm_req, bool vm_owns_hw)
 {
 	struct drm_crtc *crtc, *active_crtc = NULL, *global_active_crtc = NULL;
-	struct drm_crtc_state *new_cstate, *old_cstate, *active_cstate;
+	struct drm_crtc_state *new_cstate, *old_cstate, *active_cstate = NULL;
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
 	struct drm_connector_state *new_connstate;
@@ -3927,7 +3934,7 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 	struct dsi_display *dsi_display;
 	uint32_t i, commit_crtc_cnt = 0, global_crtc_cnt = 0;
 	uint32_t crtc_encoder_cnt = 0;
-	enum sde_crtc_idle_pc_state idle_pc_state;
+	enum sde_crtc_idle_pc_state idle_pc_state = IDLE_PC_NONE;
 	int rc = 0;
 
 	for_each_oldnew_crtc_in_state(state, crtc, old_cstate, new_cstate, i) {
@@ -3957,7 +3964,7 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 	}
 
 	for_each_new_connector_in_state(state, connector, new_connstate, i) {
-		int conn_mask = active_cstate->connector_mask;
+		int conn_mask = active_cstate ? active_cstate->connector_mask : 0;
 
 		if (drm_connector_mask(connector) & conn_mask) {
 			sde_conn = to_sde_connector(connector);
@@ -3994,6 +4001,10 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 	}
 
 	if ((vm_req == VM_REQ_ACQUIRE) && !vm_owns_hw) {
+		if (!vm_ops) {
+			SDE_ERROR("invalid vm_ops for VM_REQ_ACQUIRE\n");
+			return -EINVAL;
+		}
 		rc = vm_ops->vm_acquire(sde_kms);
 		if (rc) {
 			SDE_ERROR("VM acquire failed; hw_owner:%d, rc:%d\n", vm_owns_hw, rc);
@@ -4524,6 +4535,7 @@ static int _sde_kms_update_planes_for_cont_splash(struct sde_kms *sde_kms,
 	enum sde_sspp pipe_id;
 	bool is_virtual;
 	int i;
+	enum msm_disp_op disp_op;
 
 	if (!sde_kms || !splash_display || !crtc) {
 		SDE_ERROR("invalid input args\n");
@@ -4534,6 +4546,7 @@ static int _sde_kms_update_planes_for_cont_splash(struct sde_kms *sde_kms,
 	pipe_info = &splash_display->pipe_info;
 	splash = splash_display->splash;
 	demura = splash_display->demura;
+	disp_op = sde_kms_get_disp_op(sde_kms);
 
 	for (i = 0; i < priv->num_planes; i++) {
 		plane = priv->planes[i];
@@ -4543,7 +4556,8 @@ static int _sde_kms_update_planes_for_cont_splash(struct sde_kms *sde_kms,
 		if ((is_virtual && test_bit(pipe_id, pipe_info->virt_pipes)) ||
 				(!is_virtual && test_bit(pipe_id, pipe_info->pipes))) {
 
-			if (splash && sde_plane_validate_src_addr(plane,
+			if (IS_DISP_OP_HWIO(disp_op) && splash &&
+					sde_plane_validate_src_addr(plane,
 						splash->splash_buf_base,
 						splash->splash_buf_size)) {
 				if (!demura || sde_plane_validate_src_addr(
@@ -4719,6 +4733,52 @@ static struct drm_display_mode *_sde_kms_get_splash_mode(
 	return cur_mode;
 }
 
+static void _sde_kms_hfi_populate_splash_config(struct sde_kms *sde_kms,
+	struct sde_splash_display *splash_display,
+	struct drm_connector *conn, int display_id)
+{
+	struct sde_connector *sde_conn;
+	struct sde_sspp_index_info *pipe_info;
+	u32 lm_mask, active_pipes_mask;
+	int i, lm_idx = 0;
+
+	if (!sde_kms|| !splash_display || !conn)
+		return;
+
+	splash_display->ctl_cnt = 1;
+	splash_display->ctl_ids[0] = (display_id + 1);
+
+	sde_conn = to_sde_connector(conn);
+	lm_mask = sde_conn->lm_mask;
+
+	// Count bits set in lm_mask
+	splash_display->lm_cnt = __builtin_popcount(lm_mask);
+	splash_display->dsc_cnt = splash_display->lm_cnt;
+
+	// Extract LM IDs from the mask
+	for (int bit = 0; bit < 32; bit++) {
+		if (lm_mask & (1 << bit)) {
+			splash_display->lm_ids[lm_idx] = (bit + 1);
+			splash_display->dsc_ids[lm_idx] = (bit + 1);
+			lm_idx++;
+		}
+	}
+
+	active_pipes_mask =
+		sde_kms->hfi_kms->catalog->active_pipes_mask[display_id];
+	pipe_info = &splash_display->pipe_info;
+	for (i = SSPP_VIG0; i < SSPP_MAX; i++) {
+		if (!(active_pipes_mask & BIT(i)))
+			continue;
+
+		if (test_bit(i, pipe_info->pipes) || test_bit(i, pipe_info->virt_pipes))
+			continue;
+
+		set_bit(i, pipe_info->pipes);
+		set_bit(i, pipe_info->virt_pipes);
+	}
+}
+
 static int sde_kms_cont_splash_config(struct msm_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -4738,6 +4798,7 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 	struct sde_splash_display *splash_display;
 	const char *display_name = NULL;
 	int intf_type;
+	enum msm_disp_op disp_op;
 
 	if (!kms) {
 		SDE_ERROR("invalid kms\n");
@@ -4757,6 +4818,7 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 		return -EINVAL;
 	}
 
+	disp_op = sde_kms_get_disp_op(sde_kms);
 	intf_type = edp_drv_get_num_of_displays(sde_kms->dev) ? INTF_EDP : INTF_DSI;
 
 	if (((sde_kms->splash_data.type == SDE_SPLASH_HANDOFF)
@@ -4783,22 +4845,6 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			dsi_display = (struct dsi_display *)display;
 			display_name = dsi_display->name;
 			encoder = ((struct dsi_display *)display)->bridge->base.encoder;
-
-			if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms))) {
-				memset(&info, 0x0, sizeof(info));
-				rc = dsi_display_get_info(NULL, &info, display);
-				if (rc) {
-					SDE_ERROR("get_info %d failed\n", i);
-					continue;
-				}
-
-				if (info.is_connected)
-					splash_display->splash_encoder = encoder;
-
-				/* Skip DSI op splash config */
-				continue;
-			}
-
 		} else if (intf_type == INTF_EDP) {
 			display = sde_kms->edp_displays[i];
 			encoder = ((struct dp_drv *)display)->client->bridge->base.encoder;
@@ -4842,7 +4888,7 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 		priv = sde_kms->dev->dev_private;
 		encoder->crtc = priv->crtcs[i];
 		crtc = encoder->crtc;
-		splash_display->encoder =  encoder;
+		splash_display->encoder = encoder;
 		SDE_DEBUG("for display:%d crtc id[%d]:%d enc id[%d]:%d\n",
 				i, crtc->index, crtc->base.id, encoder->index,
 				encoder->base.id);
@@ -4901,6 +4947,10 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			mutex_unlock(&dev->mode_config.mutex);
 			sde_irq_update(&sde_kms->base, false);
 		}
+
+		if (intf_type == INTF_DSI && IS_DISP_OP_HFI(disp_op))
+			_sde_kms_hfi_populate_splash_config(sde_kms, splash_display,
+				connector, i);
 
 		crtc->state->encoder_mask = drm_encoder_mask(encoder);
 		crtc->state->connector_mask = drm_connector_mask(connector);
@@ -6149,7 +6199,8 @@ static void sde_kms_init_hw_fences(struct sde_kms *sde_kms)
 	if (!sde_kms || !sde_kms->hw_mdp)
 		return;
 
-	if (sde_kms->hw_mdp->ops.setup_hw_fences[sde_kms->hw_mdp->hw.disp_op])
+	if (sde_kms->hw_mdp->hw.disp_op < MSM_DISP_OP_MAX &&
+			sde_kms->hw_mdp->ops.setup_hw_fences[sde_kms->hw_mdp->hw.disp_op])
 		sde_kms->hw_mdp->ops.setup_hw_fences[sde_kms->hw_mdp->hw.disp_op](
 			sde_kms->hw_mdp, sde_kms->catalog->ipcc_protocol_id,
 			sde_kms->dpu_ipcc_addr);
@@ -6170,7 +6221,8 @@ static void sde_kms_init_shared_hw(struct sde_kms *sde_kms)
 	if (!sde_kms || !sde_kms->hw_mdp || !sde_kms->catalog)
 		return;
 
-	if (sde_kms->hw_mdp->ops.reset_ubwc[sde_kms->hw_mdp->hw.disp_op])
+	if (sde_kms->hw_mdp->hw.disp_op < MSM_DISP_OP_MAX &&
+			sde_kms->hw_mdp->ops.reset_ubwc[sde_kms->hw_mdp->hw.disp_op])
 		sde_kms->hw_mdp->ops.reset_ubwc[sde_kms->hw_mdp->hw.disp_op](
 			sde_kms->hw_mdp, sde_kms->catalog);
 }
@@ -6351,7 +6403,7 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 	int count = 0;
 	struct device_node *parent, *node;
 	struct resource r;
-	char node_name[REGION_NAME_MAX];
+	char node_name[DEMURA_REGION_NAME_MAX];
 	struct sde_splash_mem *mem;
 	struct sde_splash_display *splash_display;
 
@@ -6366,9 +6418,9 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 	 */
 	parent = of_find_node_by_path("/reserved-memory");
 
-	for (i = 0; i < data->num_splash_displays; i++) {
+	for (i = 0; i < data->num_splash_displays && i < MAX_DSI_DISPLAYS; i++) {
 		splash_display = &data->splash_display[i];
-		snprintf(&node_name[0], REGION_NAME_MAX,
+		snprintf(&node_name[0], DEMURA_REGION_NAME_MAX,
 				"demura_region_%d", i);
 
 		splash_display->demura = NULL;
@@ -6379,7 +6431,6 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 			continue;
 		} else if (of_address_to_resource(node, 0, &r)) {
 			SDE_ERROR("invalid data for:%s\n", node_name);
-			of_node_put(node);
 			ret = -EINVAL;
 			break;
 		}
@@ -6397,14 +6448,12 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 		if (!mem->splash_buf_base && !mem->splash_buf_size) {
 			SDE_DEBUG("dummy splash mem for disp %d. Skipping\n",
 					(i+1));
-			of_node_put(node);
 			continue;
 
 		} else if (!mem->splash_buf_base || !mem->splash_buf_size) {
 			SDE_ERROR("mem for disp %d invalid: add:%lx size:%u\n",
 					(i+1), mem->splash_buf_base,
 					mem->splash_buf_size);
-			of_node_put(node);
 			continue;
 		}
 
@@ -6415,89 +6464,11 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 		SDE_DEBUG("demura mem for disp:%d add:%lx size:%u\n", (i + 1),
 				mem->splash_buf_base,
 				mem->splash_buf_size);
-		of_node_put(node);
 	}
 
 	if (!ret && !count)
 		SDE_DEBUG("no demura regions for cont. splash found!\n");
 
-	of_node_put(parent);
-	return ret;
-}
-
-static int _sde_kms_get_lut_dma_data(struct sde_splash_data *data)
-{
-	int i = 0;
-	int ret = 0;
-	int count = 0;
-	struct device_node *parent, *node;
-	struct resource r;
-	char node_name[REGION_NAME_MAX];
-	struct sde_splash_mem *mem;
-	struct sde_splash_display *splash_display;
-
-	if (!data->num_splash_displays) {
-		SDE_DEBUG("no splash displays. skipping\n");
-		return 0;
-	}
-
-	parent = of_find_node_by_path("/reserved-memory");
-
-	for (i = 0; i < data->num_splash_displays; i++) {
-		splash_display = &data->splash_display[i];
-		snprintf(&node_name[0], REGION_NAME_MAX,
-				"lut_dma_region_%d", i);
-
-		splash_display->lut_dma = NULL;
-		node = of_find_node_by_name(parent, node_name);
-		if (!node) {
-			SDE_DEBUG("no LUT DMA node %s! disp count: %d\n",
-					node_name, data->num_splash_displays);
-			continue;
-		} else if (of_address_to_resource(node, 0, &r)) {
-			SDE_ERROR("invalid data for:%s\n", node_name);
-			of_node_put(node);
-			ret = -EINVAL;
-			break;
-		}
-
-		mem = &data->lut_dma_mem[i];
-		mem->splash_buf_base = (unsigned long)r.start;
-
-		// Start and end are both 0, size is expected to be 0, dummy splash mem.
-		if (!r.start && !r.end)
-			mem->splash_buf_size = 0;
-		else
-			mem->splash_buf_size = (r.end - r.start) + 1;
-
-		if (!mem->splash_buf_base && !mem->splash_buf_size) {
-			SDE_DEBUG("dummy splash mem for disp %d. Skipping\n",
-					(i+1));
-			of_node_put(node);
-			continue;
-
-		} else if (!mem->splash_buf_base || !mem->splash_buf_size) {
-			SDE_ERROR("mem for disp %d invalid: add:%lx size:%u\n",
-					(i+1), mem->splash_buf_base,
-					mem->splash_buf_size);
-			of_node_put(node);
-			continue;
-		}
-
-		mem->ref_cnt = 0;
-		splash_display->lut_dma = mem;
-		count++;
-
-		SDE_DEBUG("lut_dma mem for disp:%d add:%lx size:%u\n", (i + 1),
-				mem->splash_buf_base,
-				mem->splash_buf_size);
-		of_node_put(node);
-	}
-
-	if (!ret && !count)
-		SDE_DEBUG("no lut_dma regions for cont. splash found!\n");
-
-	of_node_put(parent);
 	return ret;
 }
 
@@ -6553,7 +6524,7 @@ static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_da
 		pr_info(":%d displays share same splash buf\n", num_displays);
 	}
 
-	for (i = 0; i < num_displays; i++) {
+	for (i = 0; i < num_displays && i < MAX_DSI_DISPLAYS; i++) {
 		splash_display = &data->splash_display[i];
 		if (!i || !share_splash_mem) {
 			if (of_address_to_resource(node, i, &r)) {
@@ -6593,15 +6564,6 @@ static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_da
 
 	data->type = SDE_SPLASH_HANDOFF;
 	ret = _sde_kms_get_demura_plane_data(data);
-	if (ret) {
-		SDE_ERROR("failed to get demura regions for cont.splash %d\n", ret);
-		return ret;
-	}
-
-	ret = _sde_kms_get_lut_dma_data(data);
-	if (ret)
-		SDE_ERROR("failed to get lut dma regions for cont.splash %d\n", ret);
-
 	return ret;
 }
 
@@ -7131,6 +7093,32 @@ error:
 	_sde_kms_hw_destroy(sde_kms, platformdev);
 end:
 	return rc;
+}
+
+void sde_kms_populate_wb_dnsc_caps(struct sde_kms *sde_kms,
+		struct sde_wb_device *wb_dev)
+{
+	struct hfi_catalog_base *hfi_catalog;
+
+	if (!sde_kms || !wb_dev)
+		return;
+
+	if (!sde_kms->hfi_kms || !sde_kms->hfi_kms->catalog)
+		return;
+
+	hfi_catalog = sde_kms->hfi_kms->catalog;
+
+	if (!hfi_catalog->wb_dnsc_range)
+		return;
+
+	if (wb_dev->index >= MAX_BLOCKS ||
+			!hfi_catalog->wb_dnsc_indices[wb_dev->index])
+		return;
+
+	wb_dev->wb_dnsc_supported = true;
+	wb_dev->wb_dnsc_min_ratio = (hfi_catalog->wb_dnsc_range >> 16) & 0xFFFF;
+	wb_dev->wb_dnsc_max_ratio = hfi_catalog->wb_dnsc_range & 0xFFFF;
+	wb_dev->wb_dnsc_integer_only = !!hfi_catalog->wb_dnsc_integer_only;
 }
 
 struct msm_kms *sde_kms_init(struct drm_device *dev)

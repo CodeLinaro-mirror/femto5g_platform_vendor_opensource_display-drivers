@@ -862,7 +862,7 @@ static int write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 
 	memset(&hw, 0, sizeof(hw));
 	msm_gem_sync(cfg->dma_buf->buf);
-	cmd1 = (cfg->op == REG_DMA_READ) ?
+	cmd1 = (cfg->op == REG_DMA_READ && cfg->block_select < DSPP_HIST_MAX) ?
 		(dspp_read_sel[cfg->block_select] << 30) : 0;
 	cmd1 |= (cfg->last_command) ? BIT(24) : 0;
 	cmd1 |= (cfg->op == REG_DMA_READ) ? (2 << 22) : 0;

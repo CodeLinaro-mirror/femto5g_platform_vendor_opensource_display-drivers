@@ -1930,6 +1930,11 @@ static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc, struct sde_h
 		return;
 	}
 
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
+		return;
+	}
+
 	irq_idx = sde_core_irq_idx_lookup(kms, SDE_IRQ_TYPE_HIST_DSPP_DONE,
 					hw_dspp->idx);
 	if (irq_idx < 0) {
@@ -2285,7 +2290,8 @@ static void _sde_cp_dspp_flush_helper(struct sde_crtc *sde_crtc, u32 feature)
 	for (i = 0; i < num_mixers; i++) {
 		ctl = sde_crtc->mixers[i].hw_ctl;
 		dspp = sde_crtc->mixers[i].hw_dspp;
-		if (ctl && dspp && ctl->ops.update_bitmask_dspp_subblk[disp_op]) {
+		if (ctl && dspp && disp_op < MSM_DISP_OP_MAX &&
+		    ctl->ops.update_bitmask_dspp_subblk[disp_op]) {
 			if (feature == SDE_CP_CRTC_DSPP_SB) {
 				if (!dspp->sb_dma_in_use)
 					continue;
@@ -3414,6 +3420,9 @@ void sde_cp_crtc_clear(struct drm_crtc *crtc)
 	sde_crtc_cp_unmap_rgb_hist_buffers(sde_crtc);
 	_sde_cp_crtc_unmap_qrtc_buffer(sde_crtc);
 
+	_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_RC_PU, false);
+	_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_SPR_PU, false);
+
 	sde_crtc->do_clear_buf = true;
 	sde_crtc->ltm_buffer_cnt = 0;
 	sde_crtc->ltm_hist_en = false;
@@ -4138,7 +4147,7 @@ static int _sde_cp_ad_validate_prop(struct sde_cp_node *prop_node,
 	enum msm_disp_op disp_op;
 
 	disp_op = sde_crtc_get_disp_op(&crtc->base);
-	for (i = 0; i < crtc->num_mixers && !ret; i++) {
+	for (i = 0; i < crtc->num_mixers && i < ARRAY_SIZE(crtc->mixers) && !ret; i++) {
 		if (!crtc->mixers[i].hw_dspp) {
 			ret = -EINVAL;
 			continue;
@@ -4292,6 +4301,12 @@ int sde_cp_ad_interrupt(struct drm_crtc *crtc_drm, bool en,
 
 	if (!hw_dspp) {
 		DRM_ERROR("invalid dspp\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
 		ret = -EINVAL;
 		goto exit;
 	}
@@ -4611,6 +4626,12 @@ void sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg)
 	}
 
 	irq_idx = *(int *)arg;
+
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
+		return;
+	}
+
 	spin_lock_irqsave(&node->state_lock, state_flags);
 	if (node->state == IRQ_ENABLED) {
 		ret = sde_core_irq_disable_nolock(kms, irq_idx);
@@ -4726,6 +4747,11 @@ int sde_cp_hist_interrupt(struct drm_crtc *crtc_drm, bool en,
 			DRM_ERROR("failed to enable/disable pa hist event %d\n", ret);
 
 		return ret;
+	}
+
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
+		return -EINVAL;
 	}
 
 	irq_idx = sde_core_irq_idx_lookup(kms, SDE_IRQ_TYPE_HIST_DSPP_DONE,
@@ -5519,7 +5545,7 @@ int sde_cp_ltm_hist_interrupt(struct drm_crtc *crtc, bool en,
 		return -ENODEV;
 	}
 
-	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op)) {
+	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op) && hw_dspp->hw.disp_op < MSM_DISP_OP_MAX) {
 		if (en) {
 			ret = _sde_cp_ltm_register_irq(kms, sde_crtc, hw_dspp,
 					ltm_irq, SDE_IRQ_TYPE_LTM_STATS_DONE);
@@ -5572,7 +5598,7 @@ int sde_cp_ltm_wb_pb_interrupt(struct drm_crtc *crtc, bool en,
 		return -ENODEV;
 	}
 
-	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op)) {
+	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op) && hw_dspp->hw.disp_op < MSM_DISP_OP_MAX) {
 		if (en) {
 			ret = _sde_cp_ltm_register_irq(kms, sde_crtc, hw_dspp,
 					ltm_irq, SDE_IRQ_TYPE_LTM_STATS_WB_PB);

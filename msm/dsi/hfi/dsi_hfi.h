@@ -476,4 +476,21 @@ int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
  */
 int dsi_hfi_send_dcs_cmd_set_replace_cmd(struct dsi_display *display, bool resp_req);
 
+/**
+ * dsi_hfi_exec_dcs_cmd_type() - instruct DCP to immediately execute a DCS command set
+ * @display:   handle to dsi display structure
+ * @cmd_type:  DCS command type to execute; either a standard command type
+ *             value (range [0, DSI_CMD_SET_MAX)), or a custom command type index within
+ *             the range [DSI_CUSTOM_CMD_SET_START_IDX, DSI_CUSTOM_CMD_SET_MAX)
+ * @resp_req:  if true, HFI_HOST_FLAGS_RESPONSE_REQUIRED is appended to the flags,
+ *             causing the call to block until DCP acknowledges execution
+ *
+ * Sends HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE to DCP, instructing it to immediately
+ * execute the pre-configured DCS command set identified by cmd_type.
+ *
+ * Return: 0 on success, negative error code on failure
+ *         -EINVAL  if params are invalid or cmd_type is out of range
+ */
+int dsi_hfi_exec_dcs_cmd_type(struct dsi_display *display, u32 cmd_type, bool resp_req);
+
 #endif

@@ -239,6 +239,7 @@ enum sde_prop {
 	DIM_LAYER,
 	SMART_DMA_REV,
 	IDLE_PC,
+	DDR_TYPE,
 	WAKEUP_WITH_TOUCH,
 	DEST_SCALER,
 	SMART_PANEL_ALIGN_MODE,
@@ -698,6 +699,7 @@ static struct sde_prop_type sde_prop[] = {
 	{DIM_LAYER, "qcom,sde-has-dim-layer", false, PROP_TYPE_BOOL},
 	{SMART_DMA_REV, "qcom,sde-smart-dma-rev", false, PROP_TYPE_STRING},
 	{IDLE_PC, "qcom,sde-has-idle-pc", false, PROP_TYPE_BOOL},
+	{DDR_TYPE, "qcom,sde-ddr-type", false, PROP_TYPE_U32_ARRAY},
 	{WAKEUP_WITH_TOUCH, "qcom,sde-wakeup-with-touch", false,
 			PROP_TYPE_BOOL},
 	{DEST_SCALER, "qcom,sde-has-dest-scaler", false, PROP_TYPE_BOOL},
@@ -2750,6 +2752,12 @@ static int sde_intf_parse_dt(struct device_node *np,
 
 	sde_cfg->intf_count = off_count;
 
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid intf count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
+
 	rc = _read_dt_entry(np, intf_prop, ARRAY_SIZE(intf_prop), prop_count,
 		prop_exists, prop_value);
 	if (rc)
@@ -2887,6 +2895,12 @@ static int sde_wb_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 		goto end;
 
 	sde_cfg->wb_count = off_count;
+
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid wb count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
 
 	rc = _read_dt_entry(np, wb_prop, ARRAY_SIZE(wb_prop), prop_count,
 		prop_exists, prop_value);
@@ -3149,7 +3163,7 @@ static int _sde_ltm_parse_dt(struct device_node *np,
 		sde_cfg->ltm_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 		struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3196,7 +3210,7 @@ static int _sde_dspp_demura_parse_dt(struct device_node *np,
 		sde_cfg->demura_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		dspp = &sde_cfg->dspp[i];
 		sblk = sde_cfg->dspp[i].sblk;
 
@@ -3236,7 +3250,7 @@ static int _sde_dspp_qrtc_parse_dt(struct device_node *np,
 		sde_cfg->qrtc_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		dspp = &sde_cfg->dspp[i];
 		sblk = sde_cfg->dspp[i].sblk;
 
@@ -3275,7 +3289,7 @@ static int _sde_dspp_spr_parse_dt(struct device_node *np,
 		sde_cfg->spr_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		dspp = &sde_cfg->dspp[i];
 		sblk = sde_cfg->dspp[i].sblk;
 
@@ -3325,7 +3339,7 @@ static int _sde_rc_parse_dt(struct device_node *np,
 		sde_cfg->rc_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 		struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3414,7 +3428,7 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 	}
 
 	if (props->exists[AIQE_OFF]) {
-		for (i = 0; i < sde_cfg->dspp_count; i++) {
+		for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 			struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 			struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3453,7 +3467,7 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 	}
 
 	if (props->exists[AIQE_DITHER_OFF]) {
-		for (i = 0; i < sde_cfg->dspp_count; i++) {
+		for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 			struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 			struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3476,7 +3490,7 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 	}
 
 	if (props->exists[AIQE_WRAPPER_OFF]) {
-		for (i = 0; i < sde_cfg->dspp_count; i++) {
+		for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 			struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 			struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3525,7 +3539,7 @@ static int _sde_ai_scaler_parse_dt(struct device_node *np,
 				off_count, sde_cfg->dspp_count);
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 		struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3845,6 +3859,12 @@ static int sde_ds_parse_dt(struct device_node *np,
 
 	sde_cfg->ds_count = off_count;
 
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid ds count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
+
 	rc = _read_dt_entry(np, ds_prop, ARRAY_SIZE(ds_prop), prop_count,
 		prop_exists, prop_value);
 	if (rc)
@@ -3932,6 +3952,12 @@ static int sde_dsc_parse_dt(struct device_node *np,
 		goto end;
 
 	sde_cfg->dsc_count = off_count;
+
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid dsc count %d\n", off_count);
+		rc = -ENOMEM;
+		goto end;
+	}
 
 	rc = of_property_read_string(np, dsc_prop[DSC_REV].prop_name, &rev);
 	if (!rc && !strcmp(rev, "dsc_1_2"))
@@ -4039,6 +4065,12 @@ static int sde_vdc_parse_dt(struct device_node *np,
 
 	sde_cfg->vdc_count = off_count;
 
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid vdc count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
+
 	rc = of_property_read_string(np, vdc_prop[VDC_REV].prop_name, &rev);
 	if ((rc == -EINVAL) || (rc == -ENODATA)) {
 		vdc_rev = SDE_VDC_HW_REV_1_2;
@@ -4118,6 +4150,12 @@ static int sde_cdm_parse_dt(struct device_node *np,
 		goto end;
 
 	sde_cfg->cdm_count = off_count;
+
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid cdm count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
 
 	rc = _read_dt_entry(np, cdm_prop, ARRAY_SIZE(cdm_prop), prop_count,
 		prop_exists, prop_value);
@@ -4430,9 +4468,15 @@ static int _sde_vbif_populate_qos_parsing(struct sde_mdss_cfg *sde_cfg,
 	int i, j, prop_index = VBIF_QOS_RT_REMAP;
 	u32 entries;
 
-	for (i = VBIF_RT_CLIENT; ((i < VBIF_MAX_CLIENT) && (prop_index < VBIF_PROP_MAX));
-						i++, prop_index++) {
-		vbif->qos_tbl[i].count = prop_count[prop_index];
+	if (WARN_ON(!sde_cfg->ddr_count))
+		return -EINVAL;
+
+
+	for (i = VBIF_RT_CLIENT;
+			((i < VBIF_MAX_CLIENT) && (prop_index < VBIF_PROP_MAX));
+				i++, prop_index++) {
+		vbif->qos_tbl[i].count =
+				(prop_count[prop_index] / sde_cfg->ddr_count);
 		SDE_DEBUG("qos_tbl[%d].count=%u\n", i, vbif->qos_tbl[i].count);
 
 		entries = 2 * sde_cfg->vbif_qos_nlvl;
@@ -4451,7 +4495,9 @@ static int _sde_vbif_populate_qos_parsing(struct sde_mdss_cfg *sde_cfg,
 
 		for (j = 0; j < vbif->qos_tbl[i].count; j++) {
 			vbif->qos_tbl[i].priority_lvl[j] =
-					PROP_VALUE_ACCESS(prop_value, prop_index, j);
+				PROP_VALUE_ACCESS(prop_value, prop_index,
+				vbif->qos_tbl[i].count
+				* sde_cfg->ddr_list_index + j);
 			SDE_DEBUG("client:%d, prop:%d, lvl[%d]=%u\n", i, prop_index, j,
 					vbif->qos_tbl[i].priority_lvl[j]);
 		}
@@ -4591,6 +4637,12 @@ static int sde_vbif_parse_dt(struct device_node *np,
 
 	sde_cfg->vbif_count = off_count;
 
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid vbif count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
+
 	rc = _read_dt_entry(np, vbif_prop, ARRAY_SIZE(vbif_prop), prop_count,
 		prop_exists, prop_value);
 	if (rc)
@@ -4640,6 +4692,12 @@ static int sde_pp_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 		goto end;
 
 	sde_cfg->pingpong_count = off_count;
+
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid pingpong count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
 
 	rc = _read_dt_entry(np, pp_prop, ARRAY_SIZE(pp_prop), prop_count,
 		prop_exists, prop_value);
@@ -4777,6 +4835,19 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 	cfg->max_mixer_blendstages = props->exists[MIXER_BLEND] ?
 			PROP_VALUE_ACCESS(props->values, MIXER_BLEND, 0) :
 			DEFAULT_SDE_MIXER_BLENDSTAGES;
+
+	/* set default value of ddr_count as one */
+	cfg->ddr_count = 1;
+	if (props->exists[DDR_TYPE]) {
+		cfg->ddr_count = props->counts[DDR_TYPE];
+		for (i = 0; i < cfg->ddr_count; i++) {
+			ddr_type = PROP_VALUE_ACCESS(props->values, DDR_TYPE, i);
+			if (ddr_type == of_fdt_get_ddrtype()) {
+				cfg->ddr_list_index = i;
+				break;
+			}
+		}
+	}
 
 	cfg->mdp[0].highest_bank_bit = DEFAULT_SDE_HIGHEST_BANK_BIT;
 
@@ -5519,6 +5590,12 @@ static int sde_parse_merge_3d_dt(struct device_node *np,
 
 	sde_cfg->merge_3d_count = off_count;
 
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid merge_3d count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
+
 	rc = _read_dt_entry(np, merge_3d_prop, ARRAY_SIZE(merge_3d_prop),
 			prop_count,
 			prop_exists, prop_value);
@@ -5572,6 +5649,12 @@ static int sde_qdss_parse_dt(struct device_node *np,
 	}
 
 	sde_cfg->qdss_count = off_count;
+
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid qdss count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
 
 	rc = _read_dt_entry(np, qdss_prop, ARRAY_SIZE(qdss_prop), prop_count,
 			prop_exists, prop_value);
@@ -6150,6 +6233,7 @@ static void _sde_get_hw_caps_for_scuba(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 {
 	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
 	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
+	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 24;
 	sde_cfg->vbif_qos_nlvl = 8;
 	sde_cfg->ts_prefill_rev = 2;

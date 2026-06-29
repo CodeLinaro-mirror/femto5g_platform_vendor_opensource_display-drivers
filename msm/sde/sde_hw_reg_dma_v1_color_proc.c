@@ -837,7 +837,7 @@ void reg_dmav1_setup_dspp_vlutv18(struct sde_hw_dspp *ctx, void *cfg)
 		REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[VLUT][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, VLUT);
 		LOG_FEATURE_OFF;
-		if (dma_ops->kick_off[ctx->hw.disp_op]) {
+		if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 			rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 			if (rc)
 				DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -895,7 +895,7 @@ void reg_dmav1_setup_dspp_vlutv18(struct sde_hw_dspp *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[VLUT][ctx->idx][ctx->dpu_idx],
 	    REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, VLUT);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -906,7 +906,8 @@ void reg_dmav1_setup_dspp_vlutv18(struct sde_hw_dspp *ctx, void *cfg)
 exit:
 	kvfree(data);
 	/* update flush bit */
-	if (!rc && ctl && ctl->ops.update_bitmask_dspp_pavlut[ctl->hw.disp_op]) {
+	if (!rc && ctl && ctl->hw.disp_op < MSM_DISP_OP_MAX &&
+			ctl->ops.update_bitmask_dspp_pavlut[ctl->hw.disp_op]) {
 		int dspp_idx;
 
 		for (index = 0; index < num_of_mixers; index++) {
@@ -1021,7 +1022,7 @@ static void dspp_3d_gamutv4_off(struct sde_hw_dspp *ctx, void *cfg)
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[GAMUT][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, GAMUT);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -1146,7 +1147,7 @@ static void reg_dmav1_setup_dspp_3d_gamutv4_common(struct sde_hw_dspp *ctx,
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[GAMUT][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, GAMUT);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -1249,7 +1250,7 @@ static void _reg_dma_dspp_gcv2_off(struct sde_hw_dspp *ctx, void *cfg)
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[GC][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, GC);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -1383,7 +1384,7 @@ void reg_dmav1_setup_dspp_gcv18(struct sde_hw_dspp *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[GC][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, GC);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -1477,7 +1478,7 @@ void reg_dmav1_setup_dspp_gcv2(struct sde_hw_dspp *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[GC][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, GC);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -1532,7 +1533,7 @@ static void _dspp_igcv31_off(struct sde_hw_dspp *ctx, void *cfg)
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[IGC][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, IGC);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -1605,7 +1606,7 @@ void reg_dmav1_setup_dspp_igcv31(struct sde_hw_dspp *ctx, void *cfg)
 		return;
 	}
 
-	dspp_sel = -1;
+	dspp_sel = 0xFFFFFFFF;
 	for (index = 0; index < num_of_mixers; index++)
 		dspp_sel &= IGC_DSPP_SEL_MASK(dspp_list[index]->idx - 1);
 
@@ -1666,7 +1667,7 @@ void reg_dmav1_setup_dspp_igcv31(struct sde_hw_dspp *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[IGC][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, IGC);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -1780,7 +1781,7 @@ int reg_dmav1_setup_rc_pu_configv1(struct sde_hw_dspp *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 		dspp_buf[RC_PU_CFG][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 		DMA_CTL_QUEUE0, WRITE_TRIGGER, RC_PU_CFG);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			SDE_ERROR("failed to kick off ret %d\n", rc);
@@ -1856,7 +1857,7 @@ int reg_dmav1_setup_rc_mask_configv1(struct sde_hw_dspp *ctx, void *cfg)
 		REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			dspp_buf[RC_MASK_CFG][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_TRIGGER, RC_MASK_CFG);
-		if (dma_ops->kick_off[ctx->hw.disp_op]) {
+		if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 			rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 			if (rc) {
 				SDE_ERROR("failed to kick off ret %d\n", rc);
@@ -1890,7 +1891,7 @@ int reg_dmav1_setup_rc_mask_configv1(struct sde_hw_dspp *ctx, void *cfg)
 		REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			dspp_buf[RC_MASK_CFG][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_TRIGGER, RC_MASK_CFG);
-		if (dma_ops->kick_off[ctx->hw.disp_op]) {
+		if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 			rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 			if (rc) {
 				SDE_ERROR("failed to kick off ret %d\n", rc);
@@ -1980,7 +1981,7 @@ int reg_dmav1_setup_rc_mask_configv1(struct sde_hw_dspp *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 		dspp_buf[RC_MASK_CFG][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 		DMA_CTL_QUEUE0, WRITE_TRIGGER, RC_MASK_CFG);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			SDE_ERROR("failed to kick off ret %d\n", rc);
@@ -2044,7 +2045,7 @@ static void _dspp_pcc_common_off(struct sde_hw_dspp *ctx, void *cfg)
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[PCC][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, PCC);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -2178,7 +2179,7 @@ static void reg_dmav1_setup_dspp_pcc_common(struct sde_hw_dspp *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[PCC][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, PCC);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -2289,7 +2290,7 @@ static void _reg_dma_dspp_pa_hsicv17_off(struct sde_hw_dspp *ctx, void *cfg)
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[HSIC][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, HSIC);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -2455,7 +2456,7 @@ void reg_dmav1_setup_dspp_pa_hsicv17(struct sde_hw_dspp *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[HSIC][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, HSIC);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -2524,7 +2525,7 @@ static void _reg_dma_dspp_pa_sixzone_common_off(struct sde_hw_dspp *ctx, void *c
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[SIX_ZONE][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, SIX_ZONE);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -2703,7 +2704,7 @@ void reg_dmav1_setup_dspp_sixzonev17(struct sde_hw_dspp *ctx, void *cfg)
 		dspp_buf[SIX_ZONE][ctx->idx][ctx->dpu_idx],
 		REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, SIX_ZONE);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -3083,7 +3084,7 @@ static void __setup_dspp_memcol(struct sde_hw_dspp *ctx,
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 		dspp_buf[type][ctx->idx][ctx->dpu_idx],
 		REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, type);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -3177,7 +3178,7 @@ static void _reg_dma_dspp_memcol_off(struct sde_hw_dspp *ctx, void *cfg,
 #endif
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[type][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, type);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -3379,7 +3380,7 @@ void reg_dmav1_setup_dspp_memcol_protv17(struct sde_hw_dspp *ctx, void *cfg)
 			dspp_buf[MEMC_PROT][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_IMMEDIATE, MEMC_PROT);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -3502,7 +3503,7 @@ static void vig_gamutv5_off(struct sde_hw_pipe *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			sspp_buf[idx][GAMUT][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_IMMEDIATE, GAMUT);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -3621,7 +3622,7 @@ void reg_dmav1_setup_vig_gamutv5(struct sde_hw_pipe *ctx, void *cfg)
 			sspp_buf[idx][GAMUT][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_IMMEDIATE, GAMUT);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -3672,7 +3673,7 @@ static void vig_igcv5_off(struct sde_hw_pipe *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			sspp_buf[idx][IGC][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_IMMEDIATE, IGC);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -3813,7 +3814,7 @@ void reg_dmav1_setup_vig_igcv5(struct sde_hw_pipe *ctx, void *cfg)
 			sspp_buf[idx][IGC][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_IMMEDIATE, IGC);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -3883,7 +3884,7 @@ void reg_dmav1_setup_vig_igcv6(struct sde_hw_pipe *ctx, void *cfg)
 			sspp_buf[idx][IGC][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_IMMEDIATE, IGC);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -3935,7 +3936,7 @@ static void dma_igcv5_off(struct sde_hw_pipe *ctx, void *cfg,
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			sspp_buf[idx][IGC][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_IMMEDIATE, IGC);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -4048,7 +4049,7 @@ void reg_dmav1_setup_dma_igcv5(struct sde_hw_pipe *ctx, void *cfg,
 			sspp_buf[idx][IGC][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_IMMEDIATE, IGC);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -4102,7 +4103,7 @@ static void dma_gcv5_off(struct sde_hw_pipe *ctx, void *cfg,
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			sspp_buf[idx][GC][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_IMMEDIATE, GC);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -4191,7 +4192,7 @@ void reg_dmav1_setup_dma_gcv5(struct sde_hw_pipe *ctx, void *cfg,
 			sspp_buf[idx][GC][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_IMMEDIATE, GC);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -4793,7 +4794,7 @@ static int _reg_dmav1_setup_pe_pre_downscale(struct sde_hw_pipe *ctx,
 
 	// make cfg block as MDSS for pre down scaler and pixel extension reg dma writes
 	dma_write_cfg->blk = MDSS;
-	if (ctx->ops.reg_dma_setup_pre_downscale[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && ctx->ops.reg_dma_setup_pre_downscale[ctx->hw.disp_op]) {
 		rc = ctx->ops.reg_dma_setup_pre_downscale[ctx->hw.disp_op](dma_write_cfg,
 						ctx, pre_down);
 		if (rc) {
@@ -4802,7 +4803,7 @@ static int _reg_dmav1_setup_pe_pre_downscale(struct sde_hw_pipe *ctx,
 		}
 	}
 
-	if (ctx->ops.reg_dma_setup_pe[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && ctx->ops.reg_dma_setup_pe[ctx->hw.disp_op]) {
 		rc = ctx->ops.reg_dma_setup_pe[ctx->hw.disp_op](dma_write_cfg, ctx, pe);
 		if (rc) {
 			DRM_ERROR("setting pre downscale params failed ret %d\n", rc);
@@ -5022,7 +5023,7 @@ end:
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg.ctl,
 			sspp_buf[idx][QSEED][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_IMMEDIATE, QSEED);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -5176,7 +5177,7 @@ end:
 	 REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg.ctl,
 		buf, REG_DMA_WRITE,
 		DMA_CTL_QUEUE0, WRITE_IMMEDIATE, DESTINATION_SCALER);
-	if (dma_ops->kick_off[hw_ds->hw.disp_op]) {
+	if (hw_ds->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[hw_ds->hw.disp_op]) {
 		rc = dma_ops->kick_off[hw_ds->hw.disp_op](&kick_off, hw_ds->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -5442,7 +5443,7 @@ static void ltm_initv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, ltm_buf[LTM_INIT][idx][ctx->dpu_idx],
 				REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 				LTM_INIT);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -5582,7 +5583,7 @@ static void reg_dmav1_setup_ltm_initv1_common(struct sde_hw_dspp *ctx, void *cfg
 				REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 				LTM_INIT);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -5651,7 +5652,7 @@ static void ltm_roiv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, ltm_buf[LTM_ROI][idx][ctx->dpu_idx],
 				REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 				LTM_ROI);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -5713,7 +5714,7 @@ static void reg_dmav1_setup_ltm_roi_v1_common(
 				REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 				LTM_ROI);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -5936,7 +5937,7 @@ static void ltm_vlutv1_2_disable(struct sde_hw_dspp *ctx, void *cfg, u32 dither_
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, ltm_buf[LTM_VLUT][idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, LTM_VLUT);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -6121,7 +6122,7 @@ void reg_dmav1_setup_ltm_vlutv1(struct sde_hw_dspp *ctx, void *cfg)
 				REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 				LTM_VLUT);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -6212,7 +6213,7 @@ static void reg_dmav1_setup_ltm_vlutv1_2_v1_4_common(struct sde_hw_dspp *ctx, vo
 				REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 				LTM_VLUT);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -6295,11 +6296,11 @@ static void _perform_sbdma_kickoff(struct sde_hw_dspp *ctx,
 			REG_DMA_WRITE, dma_ops->select_queue_sb(), WRITE_IMMEDIATE,
 			feature);
 	kick_off.dma_type = REG_DMA_TYPE_SB;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (!rc) {
 			for (i = 0; i < hw_cfg->num_of_mixers; i++) {
-				if (blk & dspp_mapping[hw_cfg->dspp[i]->idx])
+				if (hw_cfg->dspp[i] && (blk & dspp_mapping[hw_cfg->dspp[i]->idx]))
 					hw_cfg->dspp[i]->sb_dma_in_use = true;
 			}
 		} else if (rc == -EOPNOTSUPP) {
@@ -6943,7 +6944,7 @@ void reg_dmav2_setup_vig_gamutv61(struct sde_hw_pipe *ctx, void *cfg)
 			sspp_buf[idx][GAMUT][ctx->idx][ctx->dpu_idx], REG_DMA_WRITE,
 			DMA_CTL_QUEUE0, WRITE_IMMEDIATE, GAMUT);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -7169,7 +7170,7 @@ static void reg_dmav1_disable_spr(struct sde_hw_dspp *ctx, void *cfg)
 			dspp_buf[SPR_INIT][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 			SPR_INIT);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -7337,7 +7338,7 @@ static int reg_dmav1_setup_spr_init_kickoff(uint32_t dpu_idx,
 			dma_write_cfg->dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 			SPR_INIT);
-	if (dma_ops->kick_off[hw_ctl->hw.disp_op]) {
+	if (hw_ctl->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[hw_ctl->hw.disp_op]) {
 		rc = dma_ops->kick_off[hw_ctl->hw.disp_op](&kick_off, dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -7594,7 +7595,7 @@ void reg_dmav1_setup_spr_udc_cfgv2(struct sde_hw_dspp *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			dma_write_cfg.dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, SPR_UDC);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -7747,7 +7748,7 @@ void reg_dmav1_setup_spr_pu_cfgv1(struct sde_hw_dspp *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			buffer,	REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, SPR_PU_CFG);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -7812,7 +7813,7 @@ void reg_dmav1_setup_spr_pu_cfgv2(struct sde_hw_dspp *ctx, void *cfg)
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			buffer,	REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, SPR_PU_CFG);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -7862,7 +7863,7 @@ static void reg_dma_demura_off(struct sde_hw_dspp *ctx,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 			DEMURA_CFG);
 
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -8681,7 +8682,7 @@ void reg_dmav1_setup_demurav1(struct sde_hw_dspp *ctx, void *cfx)
 	DRM_DEBUG_DRIVER("enable demura v1 buffer size %d\n",
 				dspp_buf[DEMURA_CFG][ctx->idx][ctx->dpu_idx]->index);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off demurav1 ret %d\n", rc);
@@ -8757,7 +8758,7 @@ void reg_dmav1_setup_demurav2(struct sde_hw_dspp *ctx, void *cfx)
 	DRM_DEBUG_DRIVER("enable demura buffer size %d\n",
 				dspp_buf[DEMURA_CFG][ctx->idx][ctx->dpu_idx]->index);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off demurav2 ret %d\n", rc);
@@ -8806,10 +8807,14 @@ void reg_dmav1_setup_demura_cfg0_param2(struct sde_hw_dspp *ctx, void *cfg)
 		DRM_ERROR("write decode select failed ret %d\n", rc);
 		return;
 	}
+	len = dcfg->cfg0_param2_len;
+	if (!len || len > CFG0_PARAM2_LEN) {
+		DRM_ERROR("invalid cfg0_param2_len %d, max %d\n", len, CFG0_PARAM2_LEN);
+		return;
+	}
 	temp = kvzalloc(sizeof(struct drm_msm_dem_cfg0_param2), GFP_KERNEL);
 	if (!temp)
 		return;
-	len = dcfg->cfg0_param2_len;
 	for (i = 0; i < 3; i++) {
 		if (!i)
 			p = dcfg->cfg0_param2_c0;
@@ -8825,7 +8830,7 @@ void reg_dmav1_setup_demura_cfg0_param2(struct sde_hw_dspp *ctx, void *cfg)
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 			DEMURA_CFG0_PARAM2);
 
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -8899,6 +8904,10 @@ void reg_dmav1_setup_demura_cfg0_param2_v4(struct sde_hw_dspp *ctx, void *cfg)
 	if (!temp)
 		return;
 	len = dcfg->cfg0_param2_len;
+	if (!len || len > CFG0_PARAM2_LEN) {
+		DRM_ERROR("invalid cfg0_param2_len %d, max %d\n", len, CFG0_PARAM2_LEN);
+		goto exit;
+	}
 	for (i = 0; i < 3; i++) {
 		if (!i)
 			p = dcfg->cfg0_param2_c0;
@@ -8925,7 +8934,7 @@ void reg_dmav1_setup_demura_cfg0_param2_v4(struct sde_hw_dspp *ctx, void *cfg)
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 			DEMURA_CFG0_PARAM2);
 
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -9157,7 +9166,7 @@ void reg_dmav1_setup_demurav3(struct sde_hw_dspp *ctx, void *cfx)
 	DRM_DEBUG_DRIVER("enable demura buffer size %d\n",
 				dspp_buf[DEMURA_CFG][ctx->idx][ctx->dpu_idx]->index);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off demurav3 ret %d\n", rc);
@@ -9240,7 +9249,7 @@ void reg_dmav1_setup_demurav4(struct sde_hw_dspp *ctx, void *cfx)
 	DRM_DEBUG_DRIVER("enable demura buffer size %d\n",
 				dspp_buf[DEMURA_CFG][ctx->idx][ctx->dpu_idx]->index);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off demurav3 ret %d\n", rc);
@@ -9281,7 +9290,7 @@ void reg_dmav1_setup_demura_pu_cfgv4(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	demura_base = ctx->cap->sblk->demura.base + ctx->hw.blk_off;
-	if (!cfg || !hw_cfg->payload) {
+	if (!cfg || !hw_cfg || !hw_cfg->payload) {
 		temp = 0;
 	} else {
 		roi_list = hw_cfg->payload;
@@ -9326,7 +9335,7 @@ void reg_dmav1_setup_demura_pu_cfgv4(struct sde_hw_dspp *ctx, void *cfg)
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, buffer,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, DEMURA_PU_CFG);
 	LOG_FEATURE_ON;
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -9384,7 +9393,7 @@ static void reg_dma_qrtc_off(struct sde_hw_dspp *ctx,
 	kick_off.extended_data = &hfi_cfg;
 	kick_off.extended_data_size = sizeof(hfi_cfg);
 
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -9565,7 +9574,7 @@ void reg_dmav1_setup_qrtc_config_v1(struct sde_hw_dspp *ctx, void *cfg, void *bu
 	kick_off.valid_extended_data = true;
 	kick_off.extended_data = &hfi_cfg;
 	kick_off.extended_data_size = sizeof(hfi_cfg);
-	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+	if (ctx->hw.disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[ctx->hw.disp_op]) {
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off qrtcv1 ret %d\n", rc);
