@@ -136,6 +136,12 @@ void sde_vbif_init_memtypes(struct sde_kms *sde_kms);
 void sde_vbif_axi_halt_request(struct sde_kms *sde_kms);
 
 /**
+ * sde_vbif_clear_axi_halt - release stale AXI halt after POST_ENABLE
+ * @sde_kms:	SDE handler
+ */
+void sde_vbif_clear_axi_halt(struct sde_kms *sde_kms);
+
+/**
  * sde_vbif_halt_plane_xin - halts the xin client for the unused plane
  * On unused plane, check if the vbif for this plane is idle or not.
  * If not then first force_on the planes clock and then send the

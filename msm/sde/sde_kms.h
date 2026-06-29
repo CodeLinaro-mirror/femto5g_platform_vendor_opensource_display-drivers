@@ -314,6 +314,7 @@ struct sde_kms {
 	struct mutex secure_transition_lock;
 
 	bool first_kickoff;
+	bool post_init_done;
 	bool qdss_enabled;
 	bool pm_suspend_clk_dump;
 
