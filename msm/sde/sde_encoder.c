@@ -9455,6 +9455,7 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 
 	sub_mode.dsc_mode = splash_display->dsc_cnt ? MSM_DISPLAY_DSC_MODE_ENABLED :
 			MSM_DISPLAY_DSC_MODE_DISABLED;
+	sub_mode.spr_mode = MSM_DISPLAY_SPR_MAX;
 	drm_mode = &encoder->crtc->state->adjusted_mode;
 	ret = sde_connector_get_mode_info(&sde_conn->base,
 		drm_mode, &sub_mode, &sde_conn_state->mode_info);
