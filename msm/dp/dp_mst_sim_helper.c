@@ -709,6 +709,8 @@ static int dp_mst_sim_clear_esi(struct dp_mst_sim_context *ctx,
 	mutex_unlock(&ctx->session_lock);
 
 	msg->reply = DP_AUX_NATIVE_REPLY_ACK;
+	DP_MST_DEBUG("clear_esi: addr=0x%x size=%zu old_esi=0x%x new_esi=0x%x\n",
+			msg->address, msg->size, old_esi, ctx->esi[1]);
 	return 0;
 }
 
@@ -745,9 +747,15 @@ static int dp_mst_sim_down_req_internal(struct dp_mst_sim_context *ctx,
 
 	seqno = msg->initial_hdr.seqno;
 
+	DP_MST_DEBUG("down_req_internal: req_type=0x%x curlen=%d seqno=%d port_num=%u have_somt=%d have_eomt=%d\n",
+			msg->msg[0], msg->curlen, seqno, ctx->port_num,
+			msg->have_somt, msg->have_eomt);
+
 	switch (msg->msg[0]) {
 	case DP_LINK_ADDRESS:
 		size = dp_sideband_build_link_address_rep(ctx);
+		DP_MST_DEBUG("down_req_internal: built LINK_ADDRESS reply size=%d port_num=%u\n",
+				size, ctx->port_num);
 		break;
 	case DP_REMOTE_I2C_READ:
 		size = dp_sideband_build_remote_i2c_read_rep(ctx);
@@ -770,10 +778,15 @@ static int dp_mst_sim_down_req_internal(struct dp_mst_sim_context *ctx,
 		break;
 	}
 
-	if (ctx->host_req)
+	if (ctx->host_req) {
+		DP_MST_DEBUG("down_req_internal: before host_req req_len=%d rep_len=%d\n",
+				ctx->down_req.curlen, size);
 		ctx->host_req(ctx->host_dev,
 			ctx->down_req.msg, ctx->down_req.curlen,
 			ctx->down_rep.msg, &size);
+		DP_MST_DEBUG("down_req_internal: after host_req rep_len=%d first_byte=0x%x\n",
+				size, size > 0 ? ctx->down_rep.msg[0] : 0);
+	}
 
 	memset(msg, 0, sizeof(*msg));
 	msg = &ctx->down_rep;
@@ -807,20 +820,30 @@ static int dp_mst_sim_down_req_internal(struct dp_mst_sim_context *ctx,
 
 		/* update esi */
 		dp_sideband_update_esi(ctx, DP_DOWN_REP_MSG_RDY);
+		DP_MST_DEBUG("down_req_internal: set DOWN_REP_MSG_RDY esi1=0x%x chunk_len=%d curlen=%d/%d\n",
+				ctx->esi[1], len, msg->curlen, size);
 
 		/* notify host */
 		mutex_unlock(&ctx->session_lock);
+		DP_MST_DEBUG("down_req_internal: invoke host_hpd_irq host_dev=%pK\n",
+				ctx->host_dev);
 		ctx->host_hpd_irq(ctx->host_dev);
+		DP_MST_DEBUG("down_req_internal: host_hpd_irq returned\n");
 		mutex_lock(&ctx->session_lock);
 
 		/* wait until esi is cleared */
 		while (dp_sideband_pending_esi(ctx, DP_DOWN_REP_MSG_RDY)) {
 			if (ctx->reset_cnt)
 				break;
+			DP_MST_DEBUG("down_req_internal: waiting for ESI clear esi1=0x%x reset_cnt=%d\n",
+					ctx->esi[1], ctx->reset_cnt);
 			mutex_unlock(&ctx->session_lock);
 			wait_for_completion(&ctx->session_comp);
 			mutex_lock(&ctx->session_lock);
 		}
+
+		DP_MST_DEBUG("down_req_internal: ESI cleared esi1=0x%x reset_cnt=%d\n",
+				ctx->esi[1], ctx->reset_cnt);
 	}
 
 	mutex_unlock(&ctx->session_lock);

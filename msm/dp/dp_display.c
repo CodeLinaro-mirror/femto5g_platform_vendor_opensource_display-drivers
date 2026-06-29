@@ -1849,10 +1849,21 @@ static int dp_display_stream_enable(struct dp_display_private *dp,
 
 static void dp_display_mst_attention(struct dp_display_private *dp)
 {
-	if (dp->mst.mst_active && dp->mst.cbs.hpd_irq)
-		dp->mst.cbs.hpd_irq(&dp->dp_display);
+	DP_MST_DEBUG("mst_attention_work: mst_active=%d hpd_irq_cb=%pK state=0x%x ready=%d connected=%d aborted=%d\n",
+			dp->mst.mst_active, dp->mst.cbs.hpd_irq, dp->state,
+			!!dp_display_state_is(DP_STATE_READY),
+			!!dp_display_state_is(DP_STATE_CONNECTED),
+			!!dp_display_state_is(DP_STATE_ABORTED));
 
-	DP_MST_DEBUG("mst_attention_work. mst_active:%d\n", dp->mst.mst_active);
+	if (dp->mst.mst_active && dp->mst.cbs.hpd_irq) {
+		DP_MST_DEBUG("mst_attention_work: invoking mst hpd_irq callback\n");
+		dp->mst.cbs.hpd_irq(&dp->dp_display);
+	} else {
+		DP_MST_DEBUG("mst_attention_work: skip mst hpd_irq callback mst_active=%d cb=%pK\n",
+				dp->mst.mst_active, dp->mst.cbs.hpd_irq);
+	}
+
+	DP_MST_DEBUG("mst_attention_work done. mst_active:%d\n", dp->mst.mst_active);
 }
 
 static int dp_display_disable_hdcp(struct dp_display_private *dp, struct dp_panel *dp_panel)
@@ -3512,14 +3523,31 @@ static int dp_display_bridge_internal_hpd(void *dev, bool hpd, bool hpd_irq)
 {
 	struct dp_display_private *dp = dev;
 	struct drm_device *drm_dev = dp->dp_display.drm_dev;
+	bool poll_enabled = drm_dev ? drm_dev->mode_config.poll_enabled : false;
+	u32 sim_mode = 0;
+	bool allow_sim_hpd_irq = false;
 
-	if (!drm_dev || !drm_dev->mode_config.poll_enabled)
+	dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
+	allow_sim_hpd_irq = !!sim_mode && hpd_irq;
+
+	DP_MST_DEBUG("bridge_internal_hpd: hpd=%d hpd_irq=%d drm_dev=%pK poll_enabled=%d sim_mode=0x%x allow_sim_hpd_irq=%d mst_active=%d state=0x%x\n",
+			hpd, hpd_irq, drm_dev, poll_enabled, sim_mode,
+			allow_sim_hpd_irq, dp->mst.mst_active, dp->state);
+
+	if (!drm_dev || (!poll_enabled && !allow_sim_hpd_irq)) {
+		DP_MST_DEBUG("bridge_internal_hpd: drop internal hpd event hpd=%d hpd_irq=%d drm_dev=%pK poll_enabled=%d sim_mode=0x%x\n",
+				hpd, hpd_irq, drm_dev, poll_enabled, sim_mode);
 		return -EBUSY;
+	}
 
-	if (hpd_irq)
+	if (hpd_irq) {
+		DP_MST_DEBUG("bridge_internal_hpd: forwarding internal HPD IRQ to MST attention\n");
 		dp_display_mst_attention(dp);
-	else
+	} else {
+		DP_MST_DEBUG("bridge_internal_hpd: forwarding internal HPD connect=%d to simulate_connect\n",
+				hpd);
 		dp->hpd->simulate_connect(dp->hpd, hpd);
+	}
 
 	return 0;
 }

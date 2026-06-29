@@ -2059,6 +2059,10 @@ static void dp_mst_display_hpd_irq(void *dp_display)
 	unsigned int esi_res = DP_SINK_COUNT_ESI + 1;
 	bool handled;
 
+	DP_MST_DEBUG("mst_display_hpd_irq: enter session_state=%d mst_initialized=%d aux=%pK\n",
+			mst->mst_session_state, mst->mst_initialized,
+			mst->caps.drm_aux);
+
 	if (!mst->mst_session_state) {
 		DP_ERR("mst_hpd_irq received before mst session start\n");
 		return;
@@ -2071,23 +2075,29 @@ static void dp_mst_display_hpd_irq(void *dp_display)
 		return;
 	}
 
-	DP_MST_DEBUG("mst irq: esi1[0x%x] esi2[0x%x] esi3[%x]\n",
-			esi[1], esi[2], esi[3]);
+	DP_MST_DEBUG("mst_display_hpd_irq: esi0[0x%x] esi1[0x%x] esi2[0x%x] esi3[0x%x]\n",
+			esi[0], esi[1], esi[2], esi[3]);
 
 	if (esi[1] & DP_UP_REQ_MSG_RDY)
 		dp_mst_get_active_connectors(mst, active_conn);
 
 	rc = drm_dp_mst_hpd_irq(&mst->mst_mgr, esi, &handled);
+	DP_MST_DEBUG("mst_display_hpd_irq: handled=%d rc=%d\n",
+			handled, rc);
 
 	/* ack the request */
 	if (handled) {
 		rc = drm_dp_dpcd_write(mst->caps.drm_aux, esi_res, &esi[1], 3);
+		DP_MST_DEBUG("mst_display_hpd_irq: ack write rc=%d esi_res=0x%x\n",
+				rc, esi_res);
 
 		if (esi[1] & DP_UP_REQ_MSG_RDY)
 			dp_mst_clear_edid_cache(dp);
 
 		if (rc != 3)
 			DP_ERR("dpcd esi_res failed. rlen=%d\n", rc);
+	} else {
+		DP_MST_DEBUG("mst_display_hpd_irq: event not handled\n");
 	}
 
 	if (esi[1] & DP_UP_REQ_MSG_RDY)
