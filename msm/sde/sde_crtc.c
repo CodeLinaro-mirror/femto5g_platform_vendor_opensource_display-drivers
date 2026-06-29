@@ -2600,6 +2600,12 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 					cac_mode == SDE_CAC_LOOPBACK_UNPACK)
 				layout_idx = pstate->layout;
 
+			if (layout_idx >= MAX_LAYOUTS_PER_CRTC) {
+				SDE_ERROR("layout_idx: %d is more than max layouts per crtc",
+					layout_idx);
+				goto end;
+			}
+
 			stage_cfg = &sde_crtc->stage_cfg[layout_idx];
 			stage_idx = zpos_cnt[layout_idx][pstate->stage]++;
 			stage_cfg->stage[pstate->stage][stage_idx] =
@@ -2817,6 +2823,11 @@ static void _sde_crtc_blend_setup(struct drm_crtc *crtc,
 		 */
 		if (sde_crtc_state->is_loopback_mode)
 			lm_layout = (lm->idx - LM_0) / MAX_MIXERS_PER_LAYOUT;
+
+		if (lm_layout >= MAX_LAYOUTS_PER_CRTC) {
+			SDE_ERROR("lm_layout: %d is more than max layouts per crtc", lm_layout);
+			continue;
+		}
 
 		if (sde_kms_rect_is_null(lm_roi))
 			sde_crtc->mixers[i].mixer_op_mode = 0;
@@ -5299,8 +5310,8 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 		ipcc_input_signal_wait, num_hw_fences, hw_ctl ? hw_ctl->idx - CTL_0 : -1);
 
 	/* if hw is waiting for ipcc signal and no hw-fences, override signal */
-	trigger_sw_override |= (ipcc_input_signal_wait && !num_hw_fences &&
-			hw_ctl && hw_ctl->ops.hw_fence_trigger_sw_override[disp_op] &&
+	trigger_sw_override |= (hw_ctl && ipcc_input_signal_wait && !num_hw_fences &&
+			hw_ctl->ops.hw_fence_trigger_sw_override[disp_op] &&
 			!test_bit(HW_FENCE_IN_FENCES_NO_OVERRIDE, sde_crtc->hwfence_features_mask));
 
 	if (trigger_sw_override && hw_ctl)
