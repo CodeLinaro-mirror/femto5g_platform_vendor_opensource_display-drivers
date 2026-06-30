@@ -529,6 +529,13 @@ static int msm_drm_uninit(struct device *dev)
 
 	drm_mode_config_cleanup(ddev);
 
+	/* drm_mode_config_cleanup() freed these; clear the caches so
+	 * re-probe creates them fresh.
+	 */
+	memset(priv->crtc_property, 0, sizeof(priv->crtc_property));
+	memset(priv->plane_property, 0, sizeof(priv->plane_property));
+	memset(priv->conn_property, 0, sizeof(priv->conn_property));
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 	msm_irq_uninstall(ddev);
 #else
