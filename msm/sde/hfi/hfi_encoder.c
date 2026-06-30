@@ -898,7 +898,14 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 				hfi_enc->hw_events_state[event].state);
 			SDE_EVT32(DRMID(drm_enc), event, enable,
 				hfi_enc->hw_events_state[event].state, SDE_EVTLOG_ERROR);
-			return 0;
+			if (event != MSM_ENC_CAPTURE_COMPLETE || !enable)
+				return 0;
+
+			/* Deregister first so FW clears its packet_id before re-registration */
+			ret = _hfi_enc_register_hw_event(enc, event, false, false);
+			if (ret)
+				SDE_ERROR("enc:%d failed to deregister CAPTURE_COMPLETE: %d\n",
+					DRMID(drm_enc), ret);
 		}
 
 		ret = _hfi_enc_register_hw_event(enc, event, enable, false);
