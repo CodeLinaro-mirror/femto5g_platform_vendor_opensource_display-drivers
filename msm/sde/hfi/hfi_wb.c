@@ -321,6 +321,13 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 		return -EINVAL;
 	}
 
+	if (wb_enc->old_fb && wb_enc->old_aspace) {
+		msm_framebuffer_cleanup(wb_enc->old_fb, wb_enc->old_aspace);
+		drm_framebuffer_put(wb_enc->old_fb);
+		wb_enc->old_fb = NULL;
+		wb_enc->old_aspace = NULL;
+	}
+
 	fmt.fourcc_format = fb->format->format;
 	fmt.modifier = fb->modifier;
 
@@ -356,6 +363,11 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 		SDE_ERROR("failed to get scan out info\n");
 		return ret;
 	}
+
+	wb_enc->old_fb = fb;
+	wb_enc->old_aspace = (wb_cfg.is_secure)
+		? wb_enc->aspace[SDE_IOMMU_DOMAIN_SECURE]
+		: wb_enc->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR;
 	memset(addr_payload, 0, sizeof(addr_payload));
