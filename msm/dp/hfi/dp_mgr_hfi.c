@@ -1495,8 +1495,15 @@ static int _add_drm_mode(struct drm_connector *connector, struct hfi_display_mod
 	mode->vsync_end   = m->v_active + m->v_front_porch + m->v_sync_width;
 	mode->vtotal      = vtotal;
 
-	/* Calculate pixel clock in kHz from timing parameters */
-	mode->clock = (u32)div_u64((u64)htotal * vtotal * m->refresh_rate, 1000);
+	/*
+	 * Prefer the pixel clock reported by firmware over one derived from
+	 * timing parameters, so all downstream link calculations agree on
+	 * the same clock value. Fall back to deriving it when unavailable.
+	 */
+	if (m->clk_rate_hz_lo)
+		mode->clock = m->clk_rate_hz_lo / 1000;  /* Hz → kHz */
+	else
+		mode->clock = (u32)div_u64((u64)htotal * vtotal * m->refresh_rate, 1000);
 
 	if (m->h_sync_polarity == 0)
 		mode->flags |= DRM_MODE_FLAG_NHSYNC;
