@@ -1804,6 +1804,8 @@ void *dsi_display_clk_mngr_register(struct dsi_clk_info *info, enum msm_disp_op 
 	mngr->dsi_ctrl_count = info->dsi_ctrl_count;
 	mngr->master_ndx = info->master_ndx;
 
+	INIT_LIST_HEAD(&mngr->client_list);
+
 	if (disp_op == MSM_DISP_OP_HFI) {
 		mngr->disp_op = disp_op;
 		return mngr;
@@ -1830,7 +1832,6 @@ void *dsi_display_clk_mngr_register(struct dsi_clk_info *info, enum msm_disp_op 
 	memcpy(&mngr->osc_clk.clks, &info->o_clk,
 		sizeof(struct dsi_osc_clk_info));
 
-	INIT_LIST_HEAD(&mngr->client_list);
 	mngr->pre_clkon_cb = info->pre_clkon_cb;
 	mngr->post_clkon_cb = info->post_clkon_cb;
 	mngr->pre_clkoff_cb = info->pre_clkoff_cb;
