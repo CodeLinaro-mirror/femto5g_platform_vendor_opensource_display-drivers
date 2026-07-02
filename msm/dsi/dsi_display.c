@@ -916,9 +916,9 @@ static int dsi_display_status_check_te(struct dsi_display *display,
 		reinit_completion(&display->esd_te_gate);
 		if (!wait_for_completion_timeout(&display->esd_te_gate,
 					esd_te_timeout)) {
-			DSI_ERR("TE check failed\n");
-			dsi_display_change_te_irq_status(display, false);
-			return -EINVAL;
+			DSI_ERR("TE check failed, release te_irq\n");
+			rc = -EINVAL;
+			break;
 		}
 	}
 

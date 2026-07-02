@@ -426,6 +426,7 @@ struct sde_encoder_phys_cmd {
 	struct sde_encoder_phys base;
 	int stream_sel;
 	int frame_tx_timeout_report_cnt;
+	int wr_ptr_wd_timeout_cnt;
 	struct sde_encoder_phys_cmd_autorefresh autorefresh;
 	atomic_t pending_vblank_cnt;
 	wait_queue_head_t pending_vblank_wq;

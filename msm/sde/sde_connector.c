@@ -2822,6 +2822,64 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	return ret;
 }
 
+int sde_connector_esd_status_no_te_fallback(struct drm_connector *conn)
+{
+	struct sde_connector *sde_conn = NULL;
+	struct dsi_display *display;
+	int ret = 0;
+
+	if (!conn)
+		return ret;
+
+	sde_conn = to_sde_connector(conn);
+	if (!sde_conn || !sde_conn->ops.check_status)
+		return ret;
+
+	display = sde_conn->display;
+	if (!display)
+		return ret;
+
+	mutex_lock(&sde_conn->lock);
+	if (atomic_read(&(display->panel->esd_recovery_pending))) {
+		SDE_ERROR("no_te_fallback: esd_recovery_pending, skip\n");
+		mutex_unlock(&sde_conn->lock);
+		return -ETIMEDOUT;
+	}
+	ret = sde_conn->ops.check_status(&sde_conn->base,
+					 sde_conn->display, false);
+	mutex_unlock(&sde_conn->lock);
+
+	SDE_DEBUG("no_te_fallback: REG_READ-only check_status rc=%d\n", ret);
+
+	if (ret <= 0) {
+		sde_connector_report_panel_dead_force(conn);
+		ret = -ETIMEDOUT;
+	} else {
+		ret = 0;
+	}
+	SDE_EVT32(ret);
+
+	return ret;
+}
+
+void sde_connector_report_panel_dead_force(struct drm_connector *conn)
+{
+	struct sde_connector *sde_conn = NULL;
+
+	if (!conn)
+		return;
+
+	sde_conn = to_sde_connector(conn);
+	if (!sde_conn)
+		return;
+
+	SDE_DEBUG("force report PANEL_DEAD conn_id=%d panel_dead=%d\n",
+			conn->base.id, sde_conn->panel_dead);
+
+	sde_connector_schedule_status_work(conn, false);
+	_sde_connector_report_panel_dead(sde_conn, false);
+}
+
 static void sde_connector_check_status_work(struct work_struct *work)
 {
 	struct sde_connector *conn;
