@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -403,6 +403,7 @@ static int msm_irq_postinstall(struct drm_device *dev)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 static int msm_irq_install(struct drm_device *dev, unsigned int irq)
 {
+	struct msm_drm_private *priv = dev->dev_private;
 	int ret;
 
 	if (irq == IRQ_NOTCONNECTED)
@@ -413,10 +414,12 @@ static int msm_irq_install(struct drm_device *dev, unsigned int irq)
 	ret = request_irq(irq, msm_irq, 0, dev->driver->name, dev);
 	if (ret)
 		return ret;
+	priv->irq_requested = true;
 
 	ret = msm_irq_postinstall(dev);
 	if (ret) {
 		free_irq(irq, dev);
+		priv->irq_requested = false;
 		return ret;
 	}
 
@@ -429,7 +432,11 @@ static void msm_irq_uninstall(struct drm_device *dev)
 	struct msm_kms *kms = priv->kms;
 
 	kms->funcs->irq_uninstall(kms);
-	free_irq(kms->irq, dev);
+	if (priv->irq_requested) {
+		free_irq(kms->irq, dev);
+		priv->irq_requested = false;
+	}
+
 }
 #else
 static void msm_irq_uninstall(struct drm_device *dev)
