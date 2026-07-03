@@ -230,6 +230,57 @@ error:
 	dp_parser_clear_lane_tuning_params(parser);
 }
 
+int dp_parse_vendor_info(struct dp_parser *parser)
+{
+	int vendor_size = 0, product_size = 0, rc;
+	const u8 *vendor_name = NULL, *product_desc = NULL;
+	struct dp_spd_info *info;
+	struct device_node *of_node = parser->pdev->dev.of_node;
+	u32 sdp_spd_id = DP_SDP_SPD_DEFAULT_ID;
+
+	vendor_name = of_get_property(of_node, "qcom,vendor-name", &vendor_size);
+	if (!vendor_name) {
+		DP_DEBUG("qcom,vendor-name not found in device tree\n");
+		return -EINVAL;
+	}
+
+	product_desc = of_get_property(of_node, "qcom,product-desc", &product_size);
+	if (!product_desc) {
+		DP_DEBUG("qcom,product-desc not found in device tree\n");
+		return -EINVAL;
+	}
+
+	info = devm_kzalloc(&parser->pdev->dev, sizeof(*info), GFP_KERNEL);
+	if (!info)
+		return -ENOMEM;
+
+	memcpy(info->vendor_name, vendor_name,
+		min_t(int, vendor_size, sizeof(info->vendor_name)));
+	memcpy(info->product_desc, product_desc,
+		min_t(int, product_size, sizeof(info->product_desc)));
+
+	rc = of_property_read_u32(of_node, "qcom,source-product-desc-sdp-id", &sdp_spd_id);
+	if (rc)
+		sdp_spd_id = DP_SDP_SPD_DEFAULT_ID;
+
+	info->sdp_spd_id = (u8)sdp_spd_id;
+
+	parser->vendor_info = info;
+
+	DP_DEBUG("vendor_info parsed successfully, sdp_spd_id=%u\n", info->sdp_spd_id);
+
+	return 0;
+}
+
+void dp_parser_clear_vendor_info(struct dp_parser *parser)
+{
+	if (!parser || !parser->vendor_info)
+		return;
+
+	devm_kfree(&parser->pdev->dev, parser->vendor_info);
+	parser->vendor_info = NULL;
+}
+
 static int dp_parser_misc(struct dp_parser *parser)
 {
 	int rc = 0, len = 0, i = 0;
@@ -1195,6 +1246,7 @@ void dp_parser_put(struct dp_parser *parser)
 		dp_parser_put_gpio_data(&parser->pdev->dev, &power[i]);
 	}
 
+	dp_parser_clear_vendor_info(parser);
 	dp_parser_clear_link_training_params(parser);
 	dp_parser_clear_lane_tuning_params(parser);
 	dp_parser_clear_io_buf(parser);
