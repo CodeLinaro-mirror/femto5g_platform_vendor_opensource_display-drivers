@@ -1054,7 +1054,7 @@ static void dp_ctrl_process_phy_test_request(struct dp_ctrl *dp_ctrl)
 	 * link clocks and core clocks.
 	 */
 	ctrl->catalog->reset(ctrl->catalog);
-	ctrl->dp_ctrl.stream_pre_off(&ctrl->dp_ctrl, ctrl->panel);
+	ctrl->dp_ctrl.stream_pre_off(&ctrl->dp_ctrl, ctrl->panel, false);
 	ctrl->dp_ctrl.stream_off(&ctrl->dp_ctrl, ctrl->panel);
 	ctrl->dp_ctrl.off(&ctrl->dp_ctrl);
 
@@ -1354,7 +1354,7 @@ static void dp_ctrl_mst_stream_pre_off(struct dp_ctrl *dp_ctrl,
 }
 
 static void dp_ctrl_stream_pre_off(struct dp_ctrl *dp_ctrl,
-		struct dp_panel *panel)
+		struct dp_panel *panel, bool skip_push_idle)
 {
 	struct dp_ctrl_private *ctrl;
 
@@ -1365,7 +1365,8 @@ static void dp_ctrl_stream_pre_off(struct dp_ctrl *dp_ctrl,
 
 	ctrl = container_of(dp_ctrl, struct dp_ctrl_private, dp_ctrl);
 
-	dp_ctrl_push_idle(ctrl, panel->stream_id);
+	if (!skip_push_idle)
+		dp_ctrl_push_idle(ctrl, panel->stream_id);
 
 	dp_ctrl_mst_stream_pre_off(dp_ctrl, panel);
 }

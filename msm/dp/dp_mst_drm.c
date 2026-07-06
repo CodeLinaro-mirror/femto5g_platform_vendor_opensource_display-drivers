@@ -46,6 +46,7 @@
 #include "dp_debug.h"
 #include "sde_encoder.h"
 #include "dp_parser.h"
+#include "sde_trace.h"
 
 #define DP_MST_DEBUG(fmt, ...) DP_DEBUG(fmt, ##__VA_ARGS__)
 #define DP_MST_INFO(fmt, ...) DP_INFO(fmt, ##__VA_ARGS__)
@@ -2258,5 +2259,30 @@ void dp_mst_deinit(struct dp_display *dp_display)
 	mutex_destroy(&mst->edid_lock);
 
 	DP_MST_INFO("dp drm mst topology manager deinit completed\n");
+}
+
+void dp_mst_flush_work(struct dp_display *dp_display)
+{
+	struct dp_mst_private *mst;
+	struct drm_dp_mst_topology_mgr *mgr;
+
+	if (!dp_display)
+		return;
+
+	mst = dp_display->dp_mst_prv_info;
+	if (!mst || !mst->mst_initialized || !mst->wq)
+		return;
+
+	mgr = &mst->mst_mgr;
+
+	SDE_ATRACE_BEGIN("dp_mst_flush_work");
+	/* wait for link probe + add_connector, then stale port teardown */
+	flush_work(&mgr->work);
+	if (mgr->delayed_destroy_wq)
+		flush_workqueue(mgr->delayed_destroy_wq);
+	else
+		flush_work(&mgr->delayed_destroy_work);
+	flush_workqueue(mst->wq);
+	SDE_ATRACE_END("dp_mst_flush_work");
 }
 

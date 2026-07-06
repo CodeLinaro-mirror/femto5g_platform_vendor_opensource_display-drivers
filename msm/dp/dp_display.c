@@ -33,6 +33,7 @@
 #include "sde_hdcp.h"
 #include "dp_debug.h"
 #include "dp_mst_sim.h"
+#include "dp_mst_drm.h"
 #include "dp_pll.h"
 #include "sde_dbg.h"
 #include "sde_trace.h"
@@ -218,6 +219,7 @@ struct dp_display_private {
 	struct dev_pm_qos_request pm_qos_req[NR_CPUS];
 	bool pm_qos_requested;
 
+	u32 skip_sim_push_idle_mask;
 	struct notifier_block usb_nb;
 };
 
@@ -1594,6 +1596,7 @@ static void dp_display_clear_dsc_resources(struct dp_display_private *dp,
 }
 
 static int dp_display_stream_pre_disable(struct dp_display_private *dp,
+			bool skip_push_idle,
 			struct dp_panel *dp_panel)
 {
 	if (!dp->active_stream_cnt) {
@@ -1602,7 +1605,7 @@ static int dp_display_stream_pre_disable(struct dp_display_private *dp,
 		return 0;
 	}
 
-	dp->ctrl->stream_pre_off(dp->ctrl, dp_panel);
+	dp->ctrl->stream_pre_off(dp->ctrl, dp_panel, skip_push_idle);
 
 	return 0;
 }
@@ -1674,7 +1677,7 @@ static void dp_display_clean(struct dp_display_private *dp, bool skip_wait)
 			dp_panel->audio->off(dp_panel->audio, skip_wait);
 
 		if (!skip_wait)
-			dp_display_stream_pre_disable(dp, dp_panel);
+			dp_display_stream_pre_disable(dp, false, dp_panel);
 		dp_display_stream_disable(dp, dp_panel);
 		dp_display_clear_reservation(&dp->dp_display, dp_panel);
 		dp_panel->deinit(dp_panel, 0);
@@ -1702,6 +1705,7 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp, bool skip
 		 */
 		mutex_lock(&dp->session_lock);
 		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
+		dp->skip_sim_push_idle_mask = 0;
 		mutex_unlock(&dp->session_lock);
 
 		/*
@@ -2146,12 +2150,36 @@ static int dp_display_usbpd_attention_cb(struct device *dev)
 	return 0;
 }
 
+static void dp_display_prepare_skip_sim_push_idle(struct dp_display_private *dp)
+{
+	u32 mask = 0;
+	int i;
+
+	if (!dp->active_stream_cnt) {
+		dp->skip_sim_push_idle_mask = 0;
+		return;
+	}
+
+	if (!dp->mst.mst_active) {
+		dp->skip_sim_push_idle_mask = 0;
+		return;
+	}
+
+	for (i = DP_STREAM_0; i < DP_STREAM_MAX; i++) {
+		if (dp->active_panels[i])
+			mask |= BIT(i);
+	}
+
+	dp->skip_sim_push_idle_mask = mask;
+}
+
 static void dp_display_connect_work(struct work_struct *work)
 {
 	int rc = 0;
 	struct dp_display_private *dp = container_of(work,
 			struct dp_display_private, connect_work);
 	struct drm_connector *reset_connector = NULL;
+	u32 sim_mode = 0;
 
 	if (dp_display_state_is(DP_STATE_TUI_ACTIVE)) {
 		dp_display_state_log("[TUI is active]");
@@ -2200,6 +2228,10 @@ static void dp_display_connect_work(struct work_struct *work)
 			dp_display_host_deinit(dp);
 			dp_display_state_add(DP_STATE_SRC_PWRDN);
 		}
+		dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
+		if (sim_mode)
+			dp_display_prepare_skip_sim_push_idle(dp);
+
 		dp_display_process_mst_hpd_low(dp);
 		dp_sim_set_sim_mode(dp->aux_bridge, 0);
 		dp->aux->state = 0;
@@ -2209,6 +2241,11 @@ static void dp_display_connect_work(struct work_struct *work)
 	mutex_unlock(&dp->session_lock);
 
 	rc = dp_display_process_hpd_high(dp, dp->parser->force_connect_mode);
+	if (rc) {
+		mutex_lock(&dp->session_lock);
+		dp->skip_sim_push_idle_mask = 0;
+		mutex_unlock(&dp->session_lock);
+	}
 
 	if (!rc && dp->panel->video_test)
 		dp->link->send_test_response(dp->link);
@@ -2957,6 +2994,7 @@ static int dp_display_pre_disable(struct dp_display *dp_display, void *panel)
 	struct dp_display_private *dp;
 	struct dp_panel *dp_panel = panel;
 	int rc = 0;
+	bool skip_push_idle = false;
 
 	if (!dp_display || !panel) {
 		DP_ERR("invalid input\n");
@@ -2988,7 +3026,21 @@ clean:
 	if (dp_panel->audio_supported)
 		dp_panel->audio->off(dp_panel->audio, false);
 
-	rc = dp_display_stream_pre_disable(dp, dp_panel);
+	/* consume the mask bit whenever it matches; only apply the skip if
+	 * stream_pre_off will actually run (active_stream_cnt > 0).
+	 */
+	if (dp->parser && dp->parser->force_connect_mode &&
+			dp_panel->stream_id < DP_STREAM_MAX &&
+			(dp->skip_sim_push_idle_mask & BIT(dp_panel->stream_id))) {
+		dp->skip_sim_push_idle_mask &= ~BIT(dp_panel->stream_id);
+		if (dp->active_stream_cnt) {
+			skip_push_idle = true;
+			DP_INFO("skip_push_idle stream:%d mask:0x%x\n",
+				dp_panel->stream_id, dp->skip_sim_push_idle_mask);
+		}
+	}
+
+	rc = dp_display_stream_pre_disable(dp, skip_push_idle, dp_panel);
 
 end:
 	mutex_unlock(&dp->session_lock);
@@ -4211,6 +4263,7 @@ static int dp_pm_prepare(struct device *dev)
 		// Always assume we will resume with HPD low
 		dp->hpd->hpd_high = false;
 		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
+		dp->skip_sim_push_idle_mask = 0;
 		DP_INFO("DP Force HPD to be low and switch to sim mode when DP suspend.\n");
 		mutex_unlock(&dp->session_lock);
 	}
@@ -4222,6 +4275,7 @@ static void dp_pm_complete(struct device *dev)
 {
 	struct dp_display_private *dp = container_of(g_dp_display,
 			struct dp_display_private, dp_display);
+	bool flush_connect_work = false;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
 	SDE_ATRACE_BEGIN("dp_pm_complete");
@@ -4262,12 +4316,25 @@ static void dp_pm_complete(struct device *dev)
 			dp_display_disconnect_sync(dp);
 			mutex_lock(&dp->session_lock);
 			dp_display_host_init(dp);
+			flush_connect_work = true;
 			queue_work(dp->wq, &dp->connect_work);
 		}
 	}
 
 	dp_display_state_remove(DP_STATE_SUSPENDED);
 	mutex_unlock(&dp->session_lock);
+
+	if (flush_connect_work) {
+		SDE_ATRACE_BEGIN("dp_pm_complete_flush_work");
+		/*
+		 * Wait after dropping session_lock. The connect work takes the
+		 * same lock and can queue MST mode-change work on dp_mst's wq.
+		 */
+		flush_work(&dp->connect_work);
+		dp_mst_flush_work(&dp->dp_display);
+		SDE_ATRACE_END("dp_pm_complete_flush_work");
+	}
+
 	SDE_ATRACE_END("dp_pm_complete");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 }

@@ -34,7 +34,8 @@ struct dp_ctrl {
 	int (*link_maintenance)(struct dp_ctrl *dp_ctrl);
 	int (*stream_on)(struct dp_ctrl *dp_ctrl, struct dp_panel *panel);
 	void (*stream_off)(struct dp_ctrl *dp_ctrl, struct dp_panel *panel);
-	void (*stream_pre_off)(struct dp_ctrl *dp_ctrl, struct dp_panel *panel);
+	void (*stream_pre_off)(struct dp_ctrl *dp_ctrl, struct dp_panel *panel,
+			bool skip_push_idle);
 	void (*set_mst_channel_info)(struct dp_ctrl *dp_ctrl,
 			enum dp_stream_id strm,
 			u32 ch_start_slot, u32 ch_tot_slots);
