@@ -599,6 +599,8 @@ int dsi_panel_power_on(struct dsi_panel *panel, bool is_cont_splash);
 
 int dsi_panel_power_off(struct dsi_panel *panel);
 
+int dsi_panel_set_backlight_en_gpio(struct dsi_panel *panel, bool enable);
+
 int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel);
 
 int dsi_panel_tx_cmd_set(struct dsi_panel *panel,

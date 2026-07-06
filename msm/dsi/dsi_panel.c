@@ -317,7 +317,7 @@ static int dsi_panel_reset(struct dsi_panel *panel)
 	struct dsi_panel_reset_config *r_config = &panel->reset_config;
 	int i;
 
-	if (!gpio_is_valid(r_config->reset_gpio))
+	if (!gpio_is_valid(r_config->reset_gpio) || panel->skip_pwr)
 		goto skip_reset_gpio;
 
 	if (gpio_is_valid(panel->reset_config.disp_en_gpio)) {
@@ -348,11 +348,10 @@ static int dsi_panel_reset(struct dsi_panel *panel)
 	}
 
 skip_reset_gpio:
-	if (gpio_is_valid(panel->bl_config.en_gpio)) {
-		rc = gpio_direction_output(panel->bl_config.en_gpio, 1);
-		if (rc)
-			DSI_ERR("unable to set dir for bklt gpio rc=%d\n", rc);
-	}
+	rc = dsi_panel_set_backlight_en_gpio(panel, true);
+	if (rc)
+		DSI_ERR("[%s] failed to enable backlight, rc=%d\n",
+			 panel->name, rc);
 
 	if (gpio_is_valid(panel->reset_config.lcd_mode_sel_gpio)) {
 		bool out = true;
@@ -413,6 +412,23 @@ int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel)
 	pinctrl_select_state(panel->pinctrl.pinctrl, orig_state);
 	if (rc)
 		DSI_ERR("[%s] failed to toggle TE back, rc=%d", panel->name, rc);
+
+	return rc;
+}
+
+int dsi_panel_set_backlight_en_gpio(struct dsi_panel *panel, bool enable)
+{
+	int rc = 0;
+
+	if (!panel)
+		return -EINVAL;
+
+	if (!gpio_is_valid(panel->bl_config.en_gpio))
+		return 0;
+
+	rc = gpio_direction_output(panel->bl_config.en_gpio, enable ? 1 : 0);
+	if (rc)
+		DSI_ERR("failed to set backlight en_gpio %d, rc=%d\n", enable ? 1 : 0, rc);
 
 	return rc;
 }
@@ -487,17 +503,16 @@ int dsi_panel_power_on(struct dsi_panel *panel, bool is_cont_splash)
 		}
 	}
 
-	if (panel->skip_pwr)
-		panel->skip_pwr = false;
-
 	goto exit;
 
 error_disable_gpio:
 	if (gpio_is_valid(panel->reset_config.disp_en_gpio))
 		gpio_set_value(panel->reset_config.disp_en_gpio, 0);
 
-	if (gpio_is_valid(panel->bl_config.en_gpio))
-		gpio_set_value_cansleep(panel->bl_config.en_gpio, 0);
+	rc = dsi_panel_set_backlight_en_gpio(panel, false);
+	if (rc)
+		DSI_ERR("[%s] failed to disable backlight, rc=%d\n",
+			 panel->name, rc);
 
 	(void)dsi_panel_set_pinctrl_state(panel, false, is_cont_splash);
 
@@ -7271,8 +7286,10 @@ int dsi_panel_pre_disable(struct dsi_panel *panel)
 
 	mutex_lock(&panel->panel_lock);
 
-	if (gpio_is_valid(panel->bl_config.en_gpio))
-		gpio_set_value_cansleep(panel->bl_config.en_gpio, 0);
+	rc = dsi_panel_set_backlight_en_gpio(panel, false);
+	if (rc)
+		DSI_ERR("[%s] failed to disable backlight, rc=%d\n",
+			 panel->name, rc);
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_PRE_OFF, false);
 	if (rc) {
