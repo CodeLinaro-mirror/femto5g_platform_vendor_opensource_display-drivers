@@ -16,6 +16,8 @@
 #include "sde_vbif.h"
 #include "sde_rm.h"
 
+#define REG_WRITE_DBG	SDE_DEBUG_DRIVER	// SDE_INFO
+#define WORKLOAD_DBG	SDE_INFO		//SDE_DEBUG
 
 #define GUARD_BYTES (BIT(8) - 1)
 #define ALIGNED_OFFSET (U32_MAX & ~(GUARD_BYTES))
@@ -484,7 +486,7 @@ int _sde_reg_write_check_split(struct sde_reg_dma_buffer *dma_buf, u32 size)
 	if (dma_buf->index + size >= dma_buf->split_size + MAX_DWORDS_SZ - sizeof(u32) * 11) {
 		/* Reached the LUTDMA workload size limit, move to next split */
 		if (dma_buf->num_splits >= REG_DMA_BUFFER_MAX_SPLITS) {
-			DRM_ERROR("Buf split overflow index %d max size %d splits %d\n",
+			REG_WRITE_DBG("Buf split overflow index %d max size %d splits %d\n",
 				dma_buf->index, dma_buf->buffer_size,
 				dma_buf->num_splits);
 			return -EINVAL;
@@ -492,7 +494,7 @@ int _sde_reg_write_check_split(struct sde_reg_dma_buffer *dma_buf, u32 size)
 
 		/* Pad to even writes */
 		if ((dma_buf->abs_write_cnt % 2) != 0) {
-			DRM_DEBUG("Padding split %d idx=%d sz=%d bufsz=%d split=%d wr=%d\n",
+			REG_WRITE_DBG("Padding split %d idx=%d sz=%d bufsz=%d split=%d wr=%d\n",
 				dma_buf->num_splits, dma_buf->index, size, dma_buf->buffer_size,
 				dma_buf->split_size, dma_buf->abs_write_cnt);
 			/* Touch up buffer to avoid HW issues with odd number of abs writes */
@@ -505,7 +507,7 @@ int _sde_reg_write_check_split(struct sde_reg_dma_buffer *dma_buf, u32 size)
 			dma_write_cfg.ops = HW_BLK_SELECT;
 			if (validate_write_decode_sel(&dma_write_cfg) ||
 					write_decode_sel(&dma_write_cfg)) {
-				DRM_ERROR("MDSS decode select failed for LUTDMA touch up\n");
+				REG_WRITE_DBG("MDSS decode select failed for LUTDMA touch up\n");
 				return -EINVAL;
 			}
 
@@ -516,7 +518,7 @@ int _sde_reg_write_check_split(struct sde_reg_dma_buffer *dma_buf, u32 size)
 			dma_write_cfg.data_size = sizeof(uint32_t);
 			if (validate_write_reg(&dma_write_cfg) ||
 					write_single_reg(&dma_write_cfg)) {
-				DRM_ERROR("Add touch up write failed to LUTDMA buffer\n");
+				REG_WRITE_DBG("Add touch up write failed to LUTDMA buffer\n");
 				return -EINVAL;
 			}
 			dma_buf->abs_write_cnt++;
@@ -528,7 +530,7 @@ int _sde_reg_write_check_split(struct sde_reg_dma_buffer *dma_buf, u32 size)
 		dma_buf->split_size = dma_buf->index;
 		dma_buf->split_start[dma_buf->num_splits] = dma_buf->index;
 		dma_buf->num_splits++;
-		DRM_DEBUG("Create split idx=%d size=%d bufsize=%d splits=%d split=%d write=%d\n",
+		REG_WRITE_DBG("Create split idx=%d sz=%d bufsz=%d splits=%d split=%d wr=%d\n",
 			dma_buf->index, size, dma_buf->buffer_size,
 			dma_buf->num_splits, dma_buf->split_size, dma_buf->abs_write_cnt);
 	}
@@ -544,6 +546,10 @@ void sde_reg_write_dec_sel_mdss(struct sde_reg_dma_buffer *dma_buf)
 {
 	u32 *loc = NULL;
 
+	REG_WRITE_DBG("dpu%d vq%d %X REG_WRITE [DECODE_SEL:0x%X] <= MDSS\n",
+				dma_buf->dpu_idx, dma_buf->vq_idx,
+				(u32)dma_buf->iova + dma_buf->index,
+				reg_dma_decode_sel);
 	loc =  (u32 *)((u8 *)dma_buf->vaddr + dma_buf->index);
 	loc[0] = reg_dma_decode_sel;
 	loc[1] = BIT(31);
@@ -583,7 +589,9 @@ void sde_reg_write_reg_dma(struct sde_hw_blk_reg_map *c,
 
 	/* don't need to mutex protect this */
 	if (c->log_mask & sde_hw_util_log_mask)
-		SDE_DEBUG_DRIVER("REG_WRITE [%s:0x%X] <= 0x%X\n",
+		REG_WRITE_DBG("dpu%d vq%d %X REG_WRITE [%s:0x%X] <= 0x%X\n",
+				dma_buf->dpu_idx, dma_buf->vq_idx,
+				(u32)dma_buf->iova + dma_buf->index,
 				name, c->blk_off + reg_off, val);
 
 	vatran = sde_hw_get_vatran(dma_buf->dpu_idx);
@@ -620,7 +628,6 @@ void sde_reg_write_reg_dma_inc(struct sde_hw_blk_reg_map *c,
 		u32 *data, u32 size,
 		const char *name)
 {
-	//SDE_ERROR("sde_reg_write_reg_dma_inc   %pK, %X %pK %s\n", c, reg_off, data, name);
 	if (!c) {
 		SDE_ERROR("Invalid c\n");
 		return;
@@ -663,7 +670,9 @@ void sde_reg_write_reg_dma_inc(struct sde_hw_blk_reg_map *c,
 		for (i = 0; i < size; i++) {
 			if (i % 16 == 0) {
 				if (p != log)
-					SDE_DEBUG_DRIVER("REG_WRITE %s\n", log);
+					REG_WRITE_DBG("dpu%d vq%d %X REG_WRITE %s\n",
+							dma_buf->dpu_idx, dma_buf->vq_idx,
+							(u32)dma_buf->iova + dma_buf->index, log);
 				p = log;
 				p += snprintf(p, (u32)(end - p), "[%s:0x%lX]++ <=", name,
 						c->blk_off + reg_off + i * sizeof(u32));
@@ -671,7 +680,9 @@ void sde_reg_write_reg_dma_inc(struct sde_hw_blk_reg_map *c,
 			p += snprintf(p, (u32)(end - p), " 0x%8.8X", *data++);
 		}
 		if (p != log)
-			SDE_DEBUG_DRIVER("REG_WRITE %s\n", log);
+			REG_WRITE_DBG("dpu%d vq%d %X REG_WRITE %s\n",
+					dma_buf->dpu_idx, dma_buf->vq_idx,
+					(u32)dma_buf->iova + dma_buf->index, log);
 	}
 
 	SDE_REG_LOG(c->log_mask ? ilog2(c->log_mask)+1 : 0,
@@ -724,14 +735,18 @@ void sde_reg_write_reg_dma_single(struct sde_hw_blk_reg_map *c,
 		for (i = 0; i < size; i++) {
 			if (i % 16 == 0) {
 				if (p != log)
-					SDE_DEBUG_DRIVER("REG_WRITE %s\n", log);
+					REG_WRITE_DBG("dpu%d vq%d %X REG_WRITE %s\n",
+							dma_buf->dpu_idx, dma_buf->vq_idx,
+							(u32)dma_buf->iova + dma_buf->index, log);
 				p = log;
 				p += snprintf(p, (u32)(end - p), "[%s:0x%X] <=", name, c->blk_off + reg_off);
 			}
 			p += snprintf(p, (u32)(end - p), " 0x%8.8X", *data++);
 		}
 		if (p != log)
-			SDE_DEBUG_DRIVER("REG_WRITE %s\n", log);
+			REG_WRITE_DBG("dpu%d vq%d %X REG_WRITE %s\n",
+					dma_buf->dpu_idx, dma_buf->vq_idx,
+					(u32)dma_buf->iova + dma_buf->index, log);
 	}
 
 	SDE_REG_LOG(c->log_mask ? ilog2(c->log_mask)+1 : 0,
@@ -788,7 +803,9 @@ void sde_reg_write_reg_dma_multiple(struct sde_hw_blk_reg_map *c,
 		for (i = 0; i < size; i++) {
 			if (i % 16 == 0) {
 				if (p != log)
-					SDE_DEBUG_DRIVER("REG_MODIFY %s\n", log);
+					REG_WRITE_DBG("dpu%d vq%d %X REG_WRITE %s\n",
+							dma_buf->dpu_idx, dma_buf->vq_idx,
+							(u32)dma_buf->iova + dma_buf->index, log);
 				p = log;
 				p += snprintf(p, (u32)(end - p), "[%s:0x%lX]++%d|%d <=", name,
 						c->blk_off + reg_off + i * sizeof(u32), inc, wrap);
@@ -796,7 +813,9 @@ void sde_reg_write_reg_dma_multiple(struct sde_hw_blk_reg_map *c,
 			p += snprintf(p, (u32)(end - p), " 0x%8.8X", *data++);
 		}
 		if (p != log)
-			SDE_DEBUG_DRIVER("REG_WRITE %s\n", log);
+			REG_WRITE_DBG("dpu%d vq%d %X REG_WRITE %s\n",
+					dma_buf->dpu_idx, dma_buf->vq_idx,
+					(u32)dma_buf->iova + dma_buf->index, log);
 	}
 
 	SDE_REG_LOG(c->log_mask ? ilog2(c->log_mask)+1 : 0,
@@ -835,7 +854,9 @@ void sde_reg_modify_reg_dma(struct sde_hw_blk_reg_map *c,
 
 	/* don't need to mutex protect this */
 	if (c->log_mask & sde_hw_util_log_mask)
-		SDE_DEBUG_DRIVER("REG_WRITE [%s:0x%X] <= (0x%X mask 0x%X)\n",
+		REG_WRITE_DBG("dpu%d vq%d %X REG_MODIFY [%s:0x%X] <= (0x%X mask 0x%X)\n",
+				dma_buf->dpu_idx, dma_buf->vq_idx,
+				(u32)dma_buf->iova + dma_buf->index,
 				name, c->blk_off + reg_off, val, mask);
 
 	vatran = sde_hw_get_vatran(dma_buf->dpu_idx);
@@ -917,8 +938,9 @@ int write_multi_reg_index(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_INDEX %X: blk %lX sz %X\n",
+	REG_WRITE_DBG("dpu%d vq%d %X %s WRITE_INDEX %X: blk %lX sz %X\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			(u32)cfg->dma_buf->iova + cfg->dma_buf->index,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			cfg->blk_offset, cfg->blk, cfg->data_size);
 
@@ -939,8 +961,9 @@ int write_multi_reg_inc(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_INC %X: blk %lX sz %X\n",
+	REG_WRITE_DBG("dpu%d vq%d %X %s WRITE_INC %X: blk %lX sz %X\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			(u32)cfg->dma_buf->iova + cfg->dma_buf->index,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			cfg->blk_offset, cfg->blk, cfg->data_size);
 
@@ -961,8 +984,9 @@ static int write_multi_lut_reg(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_LUT %X: blk %lX sz %X\n",
+	REG_WRITE_DBG("dpu%d vq%d %X %s WRITE_LUT %X: blk %lX sz %X\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			(u32)cfg->dma_buf->iova + cfg->dma_buf->index,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			cfg->blk_offset, cfg->blk, cfg->data_size);
 
@@ -986,8 +1010,9 @@ static int write_single_reg(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_SINGLE %X: blk %lX %X\n",
+	REG_WRITE_DBG("dpu%d vq%d %X %s WRITE_SINGLE %X: blk %lX %X\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			(u32)cfg->dma_buf->iova + cfg->dma_buf->index,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			cfg->blk_offset, cfg->blk, *cfg->data);
 
@@ -1012,8 +1037,9 @@ static int write_single_modify(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s MODIFY_SINGLE %X: blk %lX mask %X %X\n",
+	REG_WRITE_DBG("dpu%d vq%d %X %s MODIFY_SINGLE %X: blk %lX mask %X %X\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			(u32)cfg->dma_buf->iova + cfg->dma_buf->index,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			cfg->blk_offset, cfg->blk, cfg->mask, *cfg->data);
 
@@ -1038,8 +1064,9 @@ static int write_block_lut_reg(struct sde_reg_dma_setup_ops_cfg *cfg)
 	u32 *loc = NULL;
 	int rc = -EINVAL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s BLOCK_LUT %X: blk %lX tbl %d blk_sel %X sz %X x %X\n",
+	REG_WRITE_DBG("dpu%d vq%d %X %s BLOCK_LUT %X: blk %lX tbl %d blk_sel %X sz %X x %X\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			(u32)cfg->dma_buf->iova + cfg->dma_buf->index,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			cfg->blk_offset, cfg->blk, cfg->table_sel, cfg->block_sel,
 			cfg->trans_size, cfg->lut_size);
@@ -1075,8 +1102,9 @@ static int write_decode_sel(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_DEC_SEL %X: blk %lX\n",
+	REG_WRITE_DBG("dpu%d vq%d %X %s WRITE_DEC_SEL %X: blk %lX\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			(u32)cfg->dma_buf->iova + cfg->dma_buf->index,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			reg_dma_decode_sel, cfg->blk);
 
@@ -1521,7 +1549,7 @@ int reg_dump_dump_raw(char *str, u32 *p, int len, int width, int wrap, char *end
 	for (i = 0; i < len; i++) {
 		if (i % width == 0) {
 			if (i)
-				SDE_DEBUG("%s\n", str);
+				WORKLOAD_DBG("%s\n", str);
 			pstr = str;
 			pstr += snprintf(pstr, sizeof(str), "\t");
 		}
@@ -1531,7 +1559,7 @@ int reg_dump_dump_raw(char *str, u32 *p, int len, int width, int wrap, char *end
 			c++;
 		}
 	}
-	SDE_DEBUG("%s\n", str);
+	WORKLOAD_DBG("%s\n", str);
 
 	return c;
 }
@@ -1546,15 +1574,15 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg, u32 offset, u32 s
 	u32 dec_sel = BIT(31);
 	char str[1024], *end = str + sizeof(str) - 1;
 
-	SDE_DEBUG("VQ%d CTL%d payload dump sz 0x%X/0x%lX  %pK %pK  %u\n",
+	WORKLOAD_DBG("VQ%d CTL%d payload dump sz 0x%X/0x%lX  %pK %pK  %u\n",
 			cfg->dma_buf->vq_idx, cfg->ctl->idx, size,
 			cfg->dma_buf->index / sizeof(u32), p, cfg->dma_buf->vaddr, offset);
-	SDE_DEBUG("===============================\n");
+	WORKLOAD_DBG("===============================\n");
 	while (size) {
 		pp = p;
 		switch (*p & OPCODE_MASK) {
 		case NO_OP_OPCODE:
-			SDE_DEBUG("[%5X] NO-OP\n", (int)((void *)pp - cfg->dma_buf->vaddr));
+			WORKLOAD_DBG("[%5X] NO-OP\n", (int)((void *)pp - cfg->dma_buf->vaddr));
 			p++;
 			size --;
 			break;
@@ -1564,11 +1592,11 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg, u32 offset, u32 s
 			if (*p == reg_dma_decode_sel) {
 				p++;
 				dec_sel = *p;
-				SDE_DEBUG("[%5X] DECODE_SEL %8.8X\n",
+				WORKLOAD_DBG("[%5X] DECODE_SEL %8.8X\n",
 						(int)((void *)pp - cfg->dma_buf->vaddr), dec_sel);
 			} else {
 				p++;
-				SDE_DEBUG("[%5X] WRITE%s @0x%6.6X %8.8X\n",
+				WORKLOAD_DBG("[%5X] WRITE%s @0x%6.6X %8.8X\n",
 						(int)((void *)pp - cfg->dma_buf->vaddr),
 						abs_addr ? "_ABS" : "_REL", addr, *p);
 			}
@@ -1580,7 +1608,7 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg, u32 offset, u32 s
 			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			mask = *p++;
-			SDE_DEBUG("[%5X] WRITE%s @0x%6.6X  mask %8.8X  val %8.8X\n",
+			WORKLOAD_DBG("[%5X] WRITE%s @0x%6.6X  mask %8.8X  val %8.8X\n",
 					(int)((void *)pp - cfg->dma_buf->vaddr),
 					abs_addr ? "_ABS" : "_REL", addr, ~mask, *p);
 			p++;
@@ -1591,7 +1619,7 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg, u32 offset, u32 s
 			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			len = *p++;
-			SDE_DEBUG("[%5X] WRITE%s @0x%6.6X  len %d:\n",
+			WORKLOAD_DBG("[%5X] WRITE%s @0x%6.6X  len %d:\n",
 					(int)((void *)pp - cfg->dma_buf->vaddr),
 					abs_addr ? "_ABS" : "_REL", addr, len);
 			p += reg_dump_dump_raw(str, p, len, 16, 1, end);
@@ -1602,7 +1630,7 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg, u32 offset, u32 s
 			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			len = *p++;
-			SDE_DEBUG("[%5X] WRITE%s @0x%6.6X++  len %d:\n",
+			WORKLOAD_DBG("[%5X] WRITE%s @0x%6.6X++  len %d:\n",
 					(int)((void *)pp - cfg->dma_buf->vaddr),
 					abs_addr ? "_ABS" : "_REL", addr, len);
 			p += reg_dump_dump_raw(str, p, len, 16, 1, end);
@@ -1616,7 +1644,7 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg, u32 offset, u32 s
 			wrap = (*p >> 16)  & WRAP_MAX_SIZE;
 			len = *p & MAX_DWORDS_SZ;
 			p++;
-			SDE_DEBUG("[%5X] WRITE%s @0x%6.6X%s%d  len %d:\n",
+			WORKLOAD_DBG("[%5X] WRITE%s @0x%6.6X%s%d  len %d:\n",
 					(int)((void *)pp - cfg->dma_buf->vaddr),
 					abs_addr ? "_ABS" : "_REL", addr,
 					inc ? "++" : "--", wrap, len);
@@ -1630,14 +1658,14 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg, u32 offset, u32 s
 			wrap = (*p & LUTBUS_TRANS_SZ_MASK) >> 16;
 			len = *p & LUTBUS_LUT_SIZE_MASK;
 			p++;
-			SDE_DEBUG("[%5X] WRITE LUT %4.4X TBL %s  TRANS %d  len %d:\n",
+			WORKLOAD_DBG("[%5X] WRITE LUT %4.4X TBL %s  TRANS %d  len %d:\n",
 					(int)((void *)pp - cfg->dma_buf->vaddr),
 					blk, tbl ? "B" : "A", wrap, len);
 			p += reg_dump_dump_raw(str, p, len, wrap * 4, wrap, end);
 			size -= 2 + len * wrap * 4;
 			break;
 		default:
-			SDE_DEBUG("[%5X] UNKNOWN\n",
+			WORKLOAD_DBG("[%5X] UNKNOWN\n",
 					(int)((void *)pp - cfg->dma_buf->vaddr));
 			p++;
 			size --;
@@ -1646,8 +1674,8 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg, u32 offset, u32 s
 	}
 
 	if (cfg->last_command)
-		SDE_DEBUG("LAST command\n");
-	SDE_DEBUG("===============================\n");
+		WORKLOAD_DBG("LAST command\n");
+	WORKLOAD_DBG("===============================\n");
 }
 
 void reg_dma_workload_dump(struct sde_reg_dma_kickoff_cfg *cfg)
@@ -1658,24 +1686,24 @@ void reg_dma_workload_dump(struct sde_reg_dma_kickoff_cfg *cfg)
 	char str[1024], *pstr, *end = str + sizeof(str) - 1;
 	int i;
 
-	SDE_DEBUG("VQ%d CTL%d workload dump sz 0x%X  %pK\n",
+	WORKLOAD_DBG("VQ%d CTL%d workload dump sz 0x%X  %pK\n",
 			cfg->dma_buf->vq_idx, cfg->ctl->idx, size, p);
-	SDE_DEBUG("===============================\n");
+	WORKLOAD_DBG("===============================\n");
 	while (size) {
 		opcode = *p;
 		offset = (u64)p - (u64)cfg->dma_buf->vaddr;
 		switch (opcode & OPCODE_MASK) {
 		case NO_OP_OPCODE:
-			SDE_DEBUG("%05X: %08X\tNO-OP\n", offset, opcode);
+			WORKLOAD_DBG("%05X: %08X\tNO-OP\n", offset, opcode);
 			p++;
 			size --;
 			break;
 		case SINGLE_REG_WRITE_OPCODE:
 			data = p[1];
 			if (data == reg_dma_decode_sel) {
-				SDE_DEBUG("%05X: %08X %08X\tDECODE_SEL\n", offset, opcode, data);
+				WORKLOAD_DBG("%05X: %08X %08X\tDECODE_SEL\n", offset, opcode, data);
 			} else {
-				SDE_DEBUG("%05X: %08X %08X\tWRITE\n", offset, opcode, data);
+				WORKLOAD_DBG("%05X: %08X %08X\tWRITE\n", offset, opcode, data);
 			}
 			p+=2;
 			size -= 2;
@@ -1683,86 +1711,86 @@ void reg_dma_workload_dump(struct sde_reg_dma_kickoff_cfg *cfg)
 		case SINGLE_REG_MODIFY_OPCODE:
 			data = p[1];
 			data2 = p[2];
-			SDE_DEBUG("%05X: %08X %08X %08X\tMODIFY\n", offset, opcode, data, data2);
+			WORKLOAD_DBG("%05X: %08X %08X %08X\tMODIFY\n", offset, opcode, data, data2);
 			p+=3;
 			size -= 3;
 			break;
 		case HW_INDEX_REG_WRITE_OPCODE:
 			data = p[1];
 			len = data;
-			SDE_DEBUG("%05X: %08X %08X\tINDEX WRITE:\n", offset, opcode, data);
+			WORKLOAD_DBG("%05X: %08X %08X\tINDEX WRITE:\n", offset, opcode, data);
 			p+=2;
 			for (i = 0; i < len; i++) {
 				if (i % 16 == 0) {
 					if (i)
-						SDE_DEBUG("%s\n", str);
+						WORKLOAD_DBG("%s\n", str);
 					pstr = str;
 					pstr += snprintf(pstr, sizeof(str), "\t");
 				}
 				pstr += snprintf(pstr, (int)(end - pstr), " %8.8X", *p);
 				p++;
 			}
-			SDE_DEBUG("%s\n", str);
+			WORKLOAD_DBG("%s\n", str);
 			size -= 2 + len;
 			break;
 		case AUTO_INC_REG_WRITE_OPCODE:
 			data = p[1];
 			len = data;
-			SDE_DEBUG("%05X: %08X %08X\tINC WRITE:\n", offset, opcode, data);
+			WORKLOAD_DBG("%05X: %08X %08X\tINC WRITE:\n", offset, opcode, data);
 			p+=2;
 			for (i = 0; i < len; i++) {
 				if (i % 16 == 0) {
 					if (i)
-						SDE_DEBUG("%s\n", str);
+						WORKLOAD_DBG("%s\n", str);
 					pstr = str;
 					pstr += snprintf(pstr, sizeof(str), "\t");
 				}
 				pstr += snprintf(pstr, (int)(end - pstr), " %8.8X", *p);
 				p++;
 			}
-			SDE_DEBUG("%s\n", str);
+			WORKLOAD_DBG("%s\n", str);
 			size -= 2 + len;
 			break;
 		case BLK_REG_WRITE_OPCODE:
 			data = p[1];
 			wrap = (data >> 16)  & WRAP_MAX_SIZE;
 			len = data & MAX_DWORDS_SZ;
-			SDE_DEBUG("%05X: %08X %08X\tMULTI WRITE:\n", offset, opcode, data);
+			WORKLOAD_DBG("%05X: %08X %08X\tMULTI WRITE:\n", offset, opcode, data);
 			p+=2;
 			for (i = 0; i < len*wrap; i++) {
 				if (i % 16 == 0) {
 					if (i)
-						SDE_DEBUG("%s\n", str);
+						WORKLOAD_DBG("%s\n", str);
 					pstr = str;
 					pstr += snprintf(pstr, sizeof(str), "\t");
 				}
 				pstr += snprintf(pstr, (int)(end - pstr), " %8.8X", *p);
 				p++;
 			}
-			SDE_DEBUG("%s\n", str);
+			WORKLOAD_DBG("%s\n", str);
 			size -= 2 + len * wrap;
 			break;
 		case LUTBUS_WRITE_OPCODE:
 			data = p[1];
 			wrap = (data & LUTBUS_TRANS_SZ_MASK) >> 16;
 			len = data & LUTBUS_LUT_SIZE_MASK;
-			SDE_DEBUG("%05X: %08X %08X\tLUT WRITE:\n", offset, opcode, data);
+			WORKLOAD_DBG("%05X: %08X %08X\tLUT WRITE:\n", offset, opcode, data);
 			p+=2;
 			for (i = 0; i < len*wrap; i++) {
 				if (i % 16 == 0) {
 					if (i)
-						SDE_DEBUG("%s\n", str);
+						WORKLOAD_DBG("%s\n", str);
 					pstr = str;
 					pstr += snprintf(pstr, sizeof(str), "\t");
 				}
 				pstr += snprintf(pstr, (int)(end - pstr), " %8.8X", *p);
 				p++;
 			}
-			SDE_DEBUG("%s\n", str);
+			WORKLOAD_DBG("%s\n", str);
 			size -= 2 + len * wrap * 4;
 			break;
 		default:
-			SDE_DEBUG("UNKNOWN\n");
+			WORKLOAD_DBG("UNKNOWN\n");
 			p++;
 			size --;
 			break;
@@ -1770,8 +1798,8 @@ void reg_dma_workload_dump(struct sde_reg_dma_kickoff_cfg *cfg)
 	}
 
 	if (cfg->last_command)
-		SDE_DEBUG("LAST command\n");
-	SDE_DEBUG("===============================\n");
+		WORKLOAD_DBG("LAST command\n");
+	WORKLOAD_DBG("===============================\n");
 }
 
 inline u32 reg_dma_readback(u32 addr, bool abs_addr, struct sde_hw_ctl *ctl,
@@ -1812,13 +1840,13 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 
 	vatran = sde_hw_get_vatran(cfg->ctl->dpu_idx);
 
-	SDE_DEBUG("VQ%d CTL%d payload readback sz 0x%X  %pK\n",
+	WORKLOAD_DBG("VQ%d CTL%d payload readback sz 0x%X  %pK\n",
 			cfg->dma_buf->vq_idx, cfg->ctl->idx, size, p);
-	SDE_DEBUG("===============================\n");
+	WORKLOAD_DBG("===============================\n");
 	while (size) {
 		switch (*p & OPCODE_MASK) {
 		case NO_OP_OPCODE:
-			SDE_DEBUG("NO-OP\n");
+			WORKLOAD_DBG("NO-OP\n");
 			p++;
 			size --;
 			break;
@@ -1829,7 +1857,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 				dec_sel = p[1];
 			p++;
 			data = reg_dma_readback(addr, abs_addr, cfg->ctl, vatran);
-			SDE_DEBUG("WRITE%s @0x%6.6X %8.8X : [%8.8X]%s\n",
+			WORKLOAD_DBG("WRITE%s @0x%6.6X %8.8X : [%8.8X]%s\n",
 					abs_addr ? "_ABS" : "_REL", addr, *p, data,
 					(*p == data) ? "" : " ***");
 			p++;
@@ -1841,7 +1869,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			p++;
 			mask = *p++;
 			data = reg_dma_readback(addr, abs_addr, cfg->ctl, vatran);
-			SDE_DEBUG("WRITE%s @0x%6.6X  mask %8.8X  val %8.8X : [%8.8X]%s\n",
+			WORKLOAD_DBG("WRITE%s @0x%6.6X  mask %8.8X  val %8.8X : [%8.8X]%s\n",
 					abs_addr ? "_ABS" : "_REL", addr, ~mask, *p, data,
 					(*p == (data & ~mask)) ? "" : " ***");
 			p++;
@@ -1852,12 +1880,12 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			len = *p++;
-			SDE_DEBUG("WRITE%s @0x%6.6X  len %d:\n",
+			WORKLOAD_DBG("WRITE%s @0x%6.6X  len %d:\n",
 					abs_addr ? "_ABS" : "_REL", addr, len);
 			for (i = 0; i < len; i++) {
 				if (i % 16 == 0) {
 					if (i)
-						SDE_DEBUG("%s\n", str);
+						WORKLOAD_DBG("%s\n", str);
 					pstr = str;
 					pstr += snprintf(pstr, sizeof(str), "\t");
 				}
@@ -1866,7 +1894,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 						*p, data, (*p == data) ? "" : " ***");
 				p++;
 			}
-			SDE_DEBUG("%s\n", str);
+			WORKLOAD_DBG("%s\n", str);
 			size -= 2 + len;
 			break;
 		case AUTO_INC_REG_WRITE_OPCODE:
@@ -1874,12 +1902,12 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			len = *p++;
-			SDE_DEBUG("WRITE%s @0x%6.6X++  len %d:\n",
+			WORKLOAD_DBG("WRITE%s @0x%6.6X++  len %d:\n",
 					abs_addr ? "_ABS" : "_REL", addr, len);
 			for (i = 0; i < len; i++) {
 				if (i % 16 == 0) {
 					if (i)
-						SDE_DEBUG("%s\n", str);
+						WORKLOAD_DBG("%s\n", str);
 					pstr = str;
 					pstr += snprintf(pstr, sizeof(str), "\t");
 				}
@@ -1889,7 +1917,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 				addr += 4;
 				p++;
 			}
-			SDE_DEBUG("%s\n", str);
+			WORKLOAD_DBG("%s\n", str);
 			size -= 2 + len;
 			break;
 		case BLK_REG_WRITE_OPCODE:
@@ -1900,7 +1928,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			wrap = (*p >> 16)  & WRAP_MAX_SIZE;
 			len = *p & MAX_DWORDS_SZ;
 			p++;
-			SDE_DEBUG("WRITE%s @0x%6.6X%s%d  len %d:\n",
+			WORKLOAD_DBG("WRITE%s @0x%6.6X%s%d  len %d:\n",
 					abs_addr ? "_ABS" : "_REL", addr, inc ? "++" : "--", wrap, len);
 			if (!inc)
 				addr -= wrap * sizeof(u32);
@@ -1916,7 +1944,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 					addr += inc ? sizeof(u32) : -sizeof(u32);
 					p++;
 				}
-				SDE_DEBUG("%s\n", str);
+				WORKLOAD_DBG("%s\n", str);
 			}
 			size -= 2 + len * wrap;
 			break;
@@ -1927,13 +1955,13 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			wrap = (*p & LUTBUS_TRANS_SZ_MASK) >> 16;
 			len = *p & LUTBUS_LUT_SIZE_MASK;
 			p++;
-			SDE_DEBUG("WRITE LUT %4.4X TBL %s  TRANS %d  len %d SKIP READ BACK!\n",
+			WORKLOAD_DBG("WRITE LUT %4.4X TBL %s  TRANS %d  len %d SKIP READ BACK!\n",
 					blk, tbl ? "B" : "A", wrap, len);
 			p += len * wrap * 4;
 			size -= 2 + len * wrap * 4;
 			break;
 		default:
-			SDE_DEBUG("UNKNOWN\n");
+			WORKLOAD_DBG("UNKNOWN\n");
 			p++;
 			size --;
 			break;
@@ -1941,8 +1969,8 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 	}
 
 	if (cfg->last_command)
-		SDE_DEBUG("LAST command\n");
-	SDE_DEBUG("===============================\n");
+		WORKLOAD_DBG("LAST command\n");
+	WORKLOAD_DBG("===============================\n");
 }
 
 static void reg_dma_trigger_v4(struct sde_reg_dma_kickoff_cfg *cfg,
@@ -3115,6 +3143,10 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 	 * Enqueue workload, if the workload has been split into multiple sections,
 	 * process from first split to last, then the left over.
 	 */
+	if (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask)
+		WORKLOAD_DBG("DPU%d VQ%d CTL%d payload sz 0x%lX  %X\n",
+				cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx, cfg->ctl->idx,
+				cfg->dma_buf->index / sizeof(u32), (u32)cfg->dma_buf->iova);
 	while (pos < cfg->dma_buf->index) {
 		if (i < cfg->dma_buf->num_splits) {
 			size = SIZE_DWORD(cfg->dma_buf->buf_splits[i] - pos) & MAX_DWORDS_SZ;
@@ -3157,8 +3189,23 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 			//TODO: reset VQ
 		}
 
-		if (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask)
+		if (0 && (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask))
 			reg_dma_dump_payload(cfg, pos, size * sizeof(u32));
+		if (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask) {
+			char temp[256];
+
+			WORKLOAD_DBG("DPU%d VQ%d CTL%d enqueue %s sz 0x%X/0x%lX  %X/%X  %u\n",
+					cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx, cfg->ctl->idx,
+					buf_type_str[cfg->dma_buf->buffer_type], size,
+					cfg->dma_buf->index / sizeof(u32), (u32)cfg->dma_buf->iova,
+					(u32)cfg->dma_buf->iova + pos, pos);
+			WORKLOAD_DBG("===============================\n");
+			reg_dump_dump_raw(temp, (u32 *)(cfg->dma_buf->vaddr + pos),
+					size, 16, 1, temp + sizeof(temp) - 1);
+			if (cfg->last_command)
+				WORKLOAD_DBG("LAST command\n");
+			WORKLOAD_DBG("===============================\n");
+		}
 		SDE_DEBUG("Enqueue ctl %d dpu %d vq %d @ 0x%8.8X  0x%8.8X\n",
 				ctl_id, dpu_idx, vq_idx, cmd0, cmd1);
 		if (cfg->dma_type == REG_DMA_TYPE_DB) {
@@ -3214,8 +3261,12 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 							[cfg->ctl->display_idx][q_id]);
 				wmb();
 
-				if (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask)
+				if (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask) {
+					WORKLOAD_DBG("DPU%d VQ%d CTL%d trigger\n",
+						cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+						cfg->ctl->idx);
 					vatran->ops.check_violation(vatran);
+				}
 			} else {
 				SDE_ERROR("Fail remap VQ_TRIGGER reg %X ctl%d dpu%d vq%d\n",
 						reg_dma_ctl_trigger_offset,
@@ -3451,7 +3502,7 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	}
 
 	/* debug only */
-	if (0 && mode == REG_DMA_WAIT4_COMP) {
+	if (0 && (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask) && mode == REG_DMA_WAIT4_COMP) {
 		i = 0;
 		// Readback each buffer queue is not empty
 		while (vq_kickoff[i].type != REG_DMA_TYPE_MAX) {
@@ -3693,7 +3744,6 @@ bool check_engine_status_v4(struct sde_hw_ctl *ctl)
 
 void deinit_v4(u32 dpu_idx)
 {
-	return;
 	int i, j, k;
 
 	for (i = 0; i < REG_DMA_VQ_MAX; i ++) {
