@@ -1074,6 +1074,28 @@
  */
 #define HFI_PROPERTY_PANEL_PLL_CONFIG                                0x0004004A
 
+/*!
+ * HFI_PROPERTY_PANEL_GENERIC_SDP_INFO - Provide an optional CTA InfoFrame to be sent by the
+ *                                       DisplayPort Controller as a Secondary Data Packet (SDP)
+ *                                       during panel init. The property carries generic metadata
+ *                                       (the InfoFrame type and payload size) followed by the raw
+ *                                       CTA InfoFrame payload bytes. Payload is identified by one
+ *                                       of enum hfi_infoframe_type. This property is sent to DCP
+ *                                       as part of HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command
+ *                                       packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_GENERIC_SDP_INFO
+ * (u32_key) payload[0]        : HFI_PROPERTY_PANEL_GENERIC_SDP_INFO \|
+ *                               (version=0 << 20) \| (dsize=8 << 24 )
+ * (u32_value) payload[1]      : (u8)reserved << 24 \| (u8)gen_sdp_id << 16 \|
+ *                               (u8)size << 8 \| (u8)infoframe_type \|
+ *                               infoframe_type: is one of enum hfi_infoframe_type. \|
+ *                               gen_sdp_id: selects GENERICx SDP register block.
+ * (u32_value) payload[2-8]    : (u8)cta_payload[HFI_MAX_CTA_PAYLOAD_SIZE] \|
+ *                               array of raw CTA InfoFrame payload bytes.
+ */
+#define HFI_PROPERTY_PANEL_GENERIC_SDP_INFO                          0x0004004B
+
 /*
  * All panel property IDs end here
  */

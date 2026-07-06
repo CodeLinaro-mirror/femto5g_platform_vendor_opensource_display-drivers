@@ -616,6 +616,23 @@ struct hfi_panel_operating_mode_caps {
 	u32 vsync_aligned_switch;
 };
 
+/*!
+ * @enum hfi_infoframe_type
+ * @brief CTA InfoFrame Type Codes carried within a generic CTA InfoFrame SDP payload.
+ *
+ * @var HFI_INFOFRAME_TYPE_SPD
+ *   Source Product Descriptor (SPD) InfoFrame Type Code.
+ */
+enum hfi_infoframe_type {
+	HFI_INFOFRAME_TYPE_SPD = 0x03,
+};
+
+/*!
+ * @def HFI_MAX_CTA_PAYLOAD_SIZE
+ * @brief Maximum size, in bytes, of a CTA InfoFrame payload.
+ */
+#define HFI_MAX_CTA_PAYLOAD_SIZE  28
+
 /**
  * struct hfi_panel_phy_tuning_config - HFI DSI PHY tuning configuration
  * @glbl_str_ctrl:         Global drive strength control value
