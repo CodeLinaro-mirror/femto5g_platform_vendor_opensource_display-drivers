@@ -933,8 +933,15 @@ error:
 
 static int dsi_clk_esync_clk_enable(struct dsi_clk_mngr *mngr, int index)
 {
-	struct dsi_esync_clk *esync_clk = &mngr->esync_clks[index];
+	struct dsi_esync_clk *esync_clk;
 	int rc;
+
+	if (index < 0 || index >= MAX_DSI_CTRL) {
+		DSI_ERR("invalid esync clk index %d\n", index);
+		return -EINVAL;
+	}
+
+	esync_clk = &mngr->esync_clks[index];
 
 	if (IS_ERR_OR_NULL(esync_clk->clks.clk)) {
 		DSI_WARN("esync clock enable attempt with null clock handle\n");
@@ -961,7 +968,14 @@ static int dsi_clk_esync_clk_enable(struct dsi_clk_mngr *mngr, int index)
 
 static void dsi_clk_esync_clk_disable(struct dsi_clk_mngr *mngr, int index)
 {
-	struct dsi_esync_clk *esync_clk = &mngr->esync_clks[index];
+	struct dsi_esync_clk *esync_clk;
+
+	if (index < 0 || index >= MAX_DSI_CTRL) {
+		DSI_ERR("invalid esync clk index %d\n", index);
+		return;
+	}
+
+	esync_clk = &mngr->esync_clks[index];
 
 	if (IS_ERR_OR_NULL(esync_clk->clks.clk)) {
 		DSI_WARN("esync clock disable attempt with null clock handle\n");
@@ -978,6 +992,12 @@ static int dsi_clk_update_esync_clk_state(struct dsi_clk_mngr *mngr, bool enable
 
 	if (!mngr)
 		return -EINVAL;
+
+	if (mngr->master_ndx >= MAX_DSI_CTRL || mngr->dsi_ctrl_count > MAX_DSI_CTRL) {
+		DSI_ERR("invalid master_ndx %d or dsi_ctrl_count %d\n",
+			mngr->master_ndx, mngr->dsi_ctrl_count);
+		return -EINVAL;
+	}
 
 	/* master needs to be enabled first and disabled last */
 
