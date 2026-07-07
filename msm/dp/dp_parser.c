@@ -275,10 +275,9 @@ static int dp_parser_gpio(struct dp_parser *parser)
 	};
 
 	if (of_find_property(of_node, "qcom,dp-hpd-gpio", NULL)) {
-                parser->no_aux_switch = true;
+		parser->no_aux_switch = true;
 		parser->lphw_hpd = of_find_property(of_node,
 				"qcom,dp-low-power-hw-hpd", NULL);
-		return 0;
 	}
 
 	if (of_find_property(of_node, "qcom,dp-gpio-aux-switch", NULL))
