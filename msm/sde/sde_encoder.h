@@ -479,6 +479,15 @@ struct sde_encoder_hal_funcs {
 	 * @frame_count: number of frames for which MISR needs to run
 	 */
 	int (*misr_setup[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc, bool en, u32 frame_count);
+
+	/**
+	 * deregister_cwb_events - called after wait_for_commit_done completes; used
+	 * to perform teardown work (e.g. HFI event deregister) that must not
+	 * block the primary commit path.
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: Zero on success
+	 */
+	int (*deregister_cwb_events[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 };
 
 /**

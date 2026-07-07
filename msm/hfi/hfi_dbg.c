@@ -22,8 +22,8 @@ static u32 _hfi_dbg_read_prop(u32 hfi_prop, u32 *payload, u32 max_words)
 	u32 read = 0;
 	u32 prop_id = HFI_PROP_ID(hfi_prop);
 
-	if (!hfi_dbg) {
-		SDE_ERROR("invalid pointer to hfi_dbg\n");
+	if (!hfi_dbg || !payload) {
+		SDE_ERROR("invalid pointer to hfi_dbg or invalid payload\n");
 		return read;
 	}
 
@@ -186,6 +186,7 @@ static ssize_t hfi_devcoredump_read(char *buffer, loff_t offset, size_t count)
 	ssize_t copied = 0;
 	ssize_t rd_buf_offset;
 	ssize_t rd_buf_cpy, evtlog_cpy;
+	ssize_t ret;
 
 	if (!hfi_dbg || !hfi_dbg->base->evtlog || !hfi_dbg->base->evtlog->dumped_evtlog ||
 		!hfi_dbg->base->read_buf)
@@ -213,7 +214,11 @@ static ssize_t hfi_devcoredump_read(char *buffer, loff_t offset, size_t count)
 		copied += rd_buf_cpy;
 	}
 
-	return (offset < total_sz) ? copied : 0;
+	ret = (offset < total_sz) ? copied : 0;
+	if (!ret) /* reset devcoredump pending in last write*/
+		hfi_dbg->base->coredump_pending = false;
+
+	return ret;
 }
 
 #if IS_ENABLED(CONFIG_QCOM_VA_MINIDUMP)
@@ -525,9 +530,9 @@ void hfi_dbg_destroy(void)
 
 	hfi_adapter_buffer_dealloc(&hfi_kms->hfi_client, &hfi_dbg->base_buf_addr);
 
+	hfi_dbg->base_props = NULL;
+	hfi_dbg = NULL;
+
 	kfree(hfi_dbg->base_props);
 	kvfree(hfi_dbg);
-
-	hfi_dbg = NULL;
-	hfi_dbg->base_props = NULL;
 }

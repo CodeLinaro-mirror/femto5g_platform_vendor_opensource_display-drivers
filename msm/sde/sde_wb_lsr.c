@@ -10,9 +10,6 @@
 
 #define FLIP_VIEWS 2
 
-static unsigned long s_pose_fixed_iova;
-static size_t s_pose_fixed_size;
-
 void sde_wb_lsr_get_view_fbs(struct sde_connector_state *c_state)
 {
 	int i, j;
@@ -100,6 +97,10 @@ static int _sde_wb_lsr_get_view_descriptor(struct drm_connector *connector,
 		struct msm_gem_address_space *aspace;
 
 		sde_kms = sde_connector_get_kms(connector);
+		if (!sde_kms) {
+			SDE_ERROR("Invalid sde_kms\n");
+			return -EINVAL;
+		}
 		/**
 		 * TODO, assumed default as non secure for now,
 		 * secure cases will be enabled with LSR secure cases.
@@ -265,7 +266,7 @@ static void _sde_wb_lsr_set_optical_axis_offset(struct sde_connector *c_conn,
 	SDE_DEBUG("optical_axis_offset: set\n");
 }
 
-static void _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
+static int _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 	struct sde_connector_state *cstate, uint64_t val)
 {
 	struct msm_gem_address_space *aspace = NULL;
@@ -281,11 +282,20 @@ static void _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 
 	if (!connector || !cstate || !val) {
 		SDE_ERROR("invalid args\n");
-		return;
+		return -EINVAL;
 	}
 
 	sde_kms = sde_connector_get_kms(connector);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
+		return -EINVAL;
+	}
+
 	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
+	if (!aspace) {
+		SDE_ERROR("Invalid aspace\n");
+		return -EINVAL;
+	}
 
 	if (cstate->pose_fb) {
 		if (cstate->reproj_pose_iova) {
@@ -308,7 +318,7 @@ static void _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 	cstate->pose_fb = drm_framebuffer_lookup(connector->dev, NULL, val);
 	if (!cstate->pose_fb) {
 		SDE_ERROR("failed to lookup framebuffer\n");
-		return;
+		return -EINVAL;
 	}
 
 	ret = msm_framebuffer_prepare(cstate->pose_fb, aspace);
@@ -332,7 +342,8 @@ static void _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 	if (IS_ERR(pages)) {
 		SDE_ERROR("msm_gem_get_pages for HRP buffer failed with ret = %ld\n",
 			PTR_ERR(pages));
-		return;
+		ret = PTR_ERR(pages);
+		goto cleanup_fb;
 	}
 
 	cpu_va = msm_gem_get_vaddr(gem_obj);
@@ -351,37 +362,26 @@ static void _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 	addr_map.aligned_size = ALIGN(addr_map.alloc_info.size_allocated,
 			HFI_CORE_IOMMU_MAP_SIZE_ALIGNMENT);
 
-	if (!s_pose_fixed_iova) {
-		ret = hfi_core_map_sg_table(&addr_map.alloc_info, msm_obj->sgt,
-			addr_map.aligned_size, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
-		if (ret) {
-			SDE_ERROR("failed to map sg table to iova, ret:%d\n", ret);
-			goto cleanup_fb;
-		}
-		s_pose_fixed_iova = addr_map.alloc_info.mapped_iova;
-		s_pose_fixed_size = addr_map.alloc_info.size_allocated;
-	} else {
-		addr_map.alloc_info.mapped_iova = s_pose_fixed_iova;
-		ret = hfi_core_remap_sg_table(&addr_map.alloc_info, msm_obj->sgt,
-			addr_map.aligned_size, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
-		if (ret) {
-			SDE_ERROR("failed to remap sg table to fixed iova, ret:%d\n", ret);
-			s_pose_fixed_iova = 0;
-			s_pose_fixed_size = 0;
-			goto cleanup_fb;
-		}
+	ret = hfi_core_map_sg_table(&addr_map.alloc_info, msm_obj->sgt, addr_map.aligned_size,
+		HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+	if (ret) {
+		SDE_ERROR("failed to map sg table to iova, ret:%d\n", ret);
+		return ret;
 	}
 
 	SDE_DEBUG("HRP buffer mapped to FW with iova = 0x%lx\n", addr_map.alloc_info.mapped_iova);
+	SDE_EVT32(addr_map.alloc_info.mapped_iova);
 	cstate->reproj_pose_iova = addr_map.alloc_info.mapped_iova;
 	cstate->reproj_pose_size = addr_map.alloc_info.size_allocated;
-	return;
+	return ret;
 
 cleanup_fb:
 	if (cstate->pose_fb) {
 		drm_framebuffer_put(cstate->pose_fb);
 		cstate->pose_fb = NULL;
 	}
+
+	return ret;
 }
 
 int _sde_wb_lsr_set_reproj_info(
@@ -481,7 +481,7 @@ int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
 		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_LSR_WB_REPROJ_POSE_FB:
-		_sde_wb_lsr_set_reproj_pose_fb(connector, c_state, val);
+		rc = _sde_wb_lsr_set_reproj_pose_fb(connector, c_state, val);
 		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_OUT_FB_LIST:
@@ -677,6 +677,11 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_plane_buf
 
 	layout = kzalloc(sizeof(struct sde_hw_fmt_layout), GFP_KERNEL);
 	sde_kms = sde_connector_get_kms(wb_dev->connector);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
+		rc = -EINVAL;
+		goto end;
+	}
 
 	/**
 	 * TODO, assumed default as non secure for now,

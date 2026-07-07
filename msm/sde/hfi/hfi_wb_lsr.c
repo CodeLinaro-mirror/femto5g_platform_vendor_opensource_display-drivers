@@ -1040,6 +1040,12 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 		if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->base_props))
 			goto end;
 
+		if (!cmd_buf) {
+			SDE_ERROR("Invalid cmd_buf\n");
+			mutex_unlock(&hfi_conn->hfi_lock);
+			return -EINVAL;
+		}
+
 		ret = hfi_adapter_add_set_property(cmd_buf->ctx,
 			cmd_buf, HFI_COMMAND_DISPLAY_SET_PROPERTY, disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,

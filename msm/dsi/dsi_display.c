@@ -478,6 +478,7 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 	struct device *dev;
 	unsigned int te_irq, tlmm_gpio_cfg;
 	struct resource te_res;
+	void __iomem *te_gpio_base;
 
 	pdev = display->pdev;
 	if (!pdev) {
@@ -518,16 +519,24 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 	 * first TE IRQ registration. Read the TE GPIO configuration before
 	 * IRQ registration to restore it after registration.
 	 */
-	tlmm_gpio_cfg = DSI_GEN_R32(devm_ioremap(&display->pdev->dev, te_res.start,
-				TLMM_GPIO_CFG_LEN), TLMM_GPIO_CFG_OFFSET);
 
-	rc = devm_request_irq(dev, te_irq, dsi_display_panel_te_irq_handler,
-			      IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-			      "TE_GPIO", display);
+	te_gpio_base = devm_ioremap(&display->pdev->dev, te_res.start,
+		TLMM_GPIO_CFG_LEN);
+
+	if (!te_gpio_base ) {
+		DSI_ERR("Failed to mmap gpio cfg len\n");
+		return;
+	}
+
+	tlmm_gpio_cfg = DSI_GEN_R32(te_gpio_base, TLMM_GPIO_CFG_OFFSET);
+
+	rc = devm_request_irq(dev, te_irq,
+			dsi_display_panel_te_irq_handler,
+			IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+			"TE_GPIO", display);
 
 	/* Restore TE gpio configuration after IRQ registration */
-	DSI_GEN_W32(devm_ioremap(&display->pdev->dev, te_res.start,
-				TLMM_GPIO_CFG_LEN), TLMM_GPIO_CFG_OFFSET, tlmm_gpio_cfg);
+	DSI_GEN_W32(te_gpio_base, TLMM_GPIO_CFG_OFFSET, tlmm_gpio_cfg);
 
 	if (rc) {
 		DSI_ERR("TE request_irq failed for ESD rc:%d\n", rc);
@@ -1332,7 +1341,8 @@ static void _dsi_display_continuous_clk_ctrl(struct dsi_display *display,
 		 * DSI PHY to force clk lane to HS mode always whereas
 		 * for other phy ver chipsets, configure DSI controller only.
 		 */
-		if (ctrl->phy->hw.ops.set_continuous_clk[ctrl->ctrl->disp_op]) {
+		if (ctrl->ctrl->disp_op < MSM_DISP_OP_MAX &&
+				ctrl->phy->hw.ops.set_continuous_clk[ctrl->ctrl->disp_op]) {
 			dsi_ctrl_hs_req_sel(ctrl->ctrl, true);
 			dsi_ctrl_set_continuous_clk(ctrl->ctrl, enable);
 			dsi_phy_set_continuous_clk(ctrl->phy, enable);
@@ -1653,7 +1663,7 @@ static ssize_t debugfs_misr_setup(struct file *file,
 	}
 
 	disp_op = display->ctrl->ctrl->disp_op;
-	if (display->display_ops.misr_setup[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && display->display_ops.misr_setup[disp_op]) {
 		rc = display->display_ops.misr_setup[disp_op](display);
 		if (rc)
 			DSI_ERR("[%s] failed to enable MISR through hfi, rc=%d\n",
@@ -1725,7 +1735,7 @@ static ssize_t debugfs_misr_read(struct file *file,
 	}
 
 	disp_op = display->ctrl->ctrl->disp_op;
-	if (display->display_ops.misr_read[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && display->display_ops.misr_read[disp_op]) {
 		display->display_ops.misr_read[disp_op](display);
 
 		for (i = 0; i < display->misr_vals.count ; i++) {
@@ -2361,6 +2371,70 @@ free_buf:
 	return rc ? rc : count;
 }
 
+/**
+ * debugfs_exec_dcs_cmd_type_write() - debugfs write handler for exec_dcs_cmd_type node
+ *
+ * Accepts a single write in the format:
+ *   <cmd_type> [resp_req]
+ *
+ * @cmd_type:  decimal integer; either a standard type in [0, DSI_CMD_SET_MAX)
+ *             or a custom type in [DSI_CUSTOM_CMD_SET_START_IDX, DSI_CUSTOM_CMD_SET_MAX)
+ * @resp_req:  optional decimal integer; 0 = fire-and-forget (default),
+ *                                       1 = block until DCP acknowledges
+ */
+static ssize_t debugfs_exec_dcs_cmd_type_write(struct file *file,
+					       const char __user *user_buf,
+					       size_t count, loff_t *ppos)
+{
+	struct dsi_display *display = file->private_data;
+	char buf[64];
+	u32 cmd_type, resp_req_val = 0;
+	bool is_standard, is_custom, resp_req;
+	int rc = 0;
+
+	if (!display)
+		return -ENODEV;
+
+	if (*ppos)
+		return 0;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+
+	/* Parse input: "<cmd_type> [resp_req]" */
+	if (sscanf(buf, "%u %u", &cmd_type, &resp_req_val) < 1) {
+		DSI_ERR("exec_dcs_cmd_type: invalid format. Use: <cmd_type> [resp_req]\n");
+		return -EINVAL;
+	}
+
+	/* Validate cmd_type: must be a standard or custom DCS command type */
+	is_standard = (cmd_type < DSI_CMD_SET_MAX);
+	is_custom = (cmd_type >= DSI_CUSTOM_CMD_SET_START_IDX &&
+		     cmd_type < DSI_CUSTOM_CMD_SET_MAX);
+	if (!is_standard && !is_custom) {
+		DSI_ERR("cmd_type %u out of range; must be < %u (std) or in [%u, %u) (custom)\n",
+			cmd_type, DSI_CMD_SET_MAX,
+			DSI_CUSTOM_CMD_SET_START_IDX, DSI_CUSTOM_CMD_SET_MAX);
+		return -EINVAL;
+	}
+
+	resp_req = !!resp_req_val;
+
+	rc = dsi_hfi_exec_dcs_cmd_type(display, cmd_type, resp_req);
+	if (rc) {
+		DSI_ERR("exec_dcs_cmd_type: failed for cmd_type=%u resp_req=%d, rc=%d\n",
+			cmd_type, resp_req, rc);
+		return rc;
+	}
+
+	return count;
+}
+
 static const struct file_operations dump_info_fops = {
 	.open = simple_open,
 	.read = debugfs_dump_info_read,
@@ -2397,6 +2471,11 @@ static const struct file_operations cmd_remap_fops = {
 static const struct file_operations cmd_replace_fops = {
 	.open = simple_open,
 	.write = debugfs_cmd_replace_write,
+};
+
+static const struct file_operations exec_dcs_cmd_type_fops = {
+	.open  = simple_open,
+	.write = debugfs_exec_dcs_cmd_type_write,
 };
 
 static int dsi_display_debugfs_init(struct dsi_display *display)
@@ -2488,6 +2567,18 @@ static int dsi_display_debugfs_init(struct dsi_display *display)
 	if (IS_ERR_OR_NULL(dump_file)) {
 		rc = PTR_ERR(dump_file);
 		DSI_ERR("[%s] debugfs for cmd_replace failed, rc=%d\n",
+			display->name, rc);
+		goto error_remove_dir;
+	}
+
+	dump_file = debugfs_create_file("exec_dcs_cmd_type",
+					0200,
+					dir,
+					display,
+					&exec_dcs_cmd_type_fops);
+	if (IS_ERR_OR_NULL(dump_file)) {
+		rc = PTR_ERR(dump_file);
+		DSI_ERR("[%s] debugfs for exec_dcs_cmd_type failed, rc=%d\n",
 			display->name, rc);
 		goto error_remove_dir;
 	}
@@ -3496,7 +3587,8 @@ static int dsi_display_ctrl_host_disable(struct dsi_display *display)
 	 * and return early.
 	 */
 	if (display->panel->ulps_suspend_enabled &&
-			!m_ctrl->phy->hw.ops.ulps_ops.ulps_request[m_ctrl->ctrl->disp_op]) {
+			(m_ctrl->ctrl->disp_op >= MSM_DISP_OP_MAX ||
+			!m_ctrl->phy->hw.ops.ulps_ops.ulps_request[m_ctrl->ctrl->disp_op])) {
 		display_for_each_ctrl(i, display) {
 			ctrl = &display->ctrl[i];
 			rc = dsi_ctrl_update_host_state(ctrl->ctrl,
@@ -4651,6 +4743,12 @@ static int dsi_display_parse_dt(struct dsi_display *display)
 
 	DSI_DEBUG("ctrl count=%d, phy count=%d\n",
 			display->ctrl_count, phy_count);
+
+	if (display->ctrl_count > MAX_DSI_CTRL) {
+		DSI_ERR("ctrl count %d not supported\n", display->ctrl_count);
+		rc = -ENODEV;
+		goto error;
+	}
 
 	if (!phy_count || !display->ctrl_count) {
 		DSI_ERR("no ctrl/phys found\n");
@@ -5810,7 +5908,8 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 			if (!ctrl->ctrl || (ctrl != mctrl))
 				continue;
 
-			if (ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op])
+			if (ctrl->ctrl->disp_op < MSM_DISP_OP_MAX &&
+					ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op])
 				ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op](
 						&ctrl->ctrl->hw, true);
 			dsi_phy_dynamic_refresh_clear(ctrl->phy);
@@ -6003,6 +6102,11 @@ int dsi_display_cont_splash_res_disable(void *dsi_display)
 	struct dsi_display *display = dsi_display;
 	int rc = 0;
 
+	if (!display || !display->panel) {
+		DSI_ERR("invalid display or panel\n");
+		return -EINVAL;
+	}
+
 	/* Remove the panel vote that was added during dsi display probe */
 	if (!(display->panel->ctl_op_sync && !strcmp(display->panel->type, "secondary"))) {
 		rc = dsi_pwr_enable_regulator(&display->panel->power_info, false);
@@ -6054,6 +6158,9 @@ int dsi_display_cont_splash_config(void *dsi_display)
 
 	display->is_cont_splash_enabled = true;
 
+	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
+		goto exit;
+
 	/* Update splash status for clock manager */
 	dsi_display_clk_mngr_update_splash_status(display->clk_mngr,
 				display->is_cont_splash_enabled);
@@ -6102,6 +6209,7 @@ clk_manager_update:
 				false);
 	pm_runtime_put_sync(display->drm_dev->dev);
 	display->is_cont_splash_enabled = false;
+exit:
 	mutex_unlock(&display->display_lock);
 	return rc;
 }
@@ -6117,6 +6225,12 @@ int dsi_display_splash_res_cleanup(struct  dsi_display *display)
 
 	if (!display->is_cont_splash_enabled)
 		return 0;
+
+	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI) {
+		display->is_cont_splash_enabled = false;
+		SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, display->is_cont_splash_enabled);
+		return 0;
+	}
 
 	if (display->panel->esync_caps.esync_support
 	    && display->config.panel_mode == DSI_OP_VIDEO_MODE) {
@@ -6370,7 +6484,7 @@ static int dsi_display_bind(struct device *dev,
 		struct device *master,
 		void *data)
 {
-	struct dsi_display_ctrl *display_ctrl;
+	struct dsi_display_ctrl *display_ctrl = NULL;
 	struct drm_device *drm;
 	struct dsi_display *display;
 	struct dsi_clk_info info;
@@ -7133,7 +7247,9 @@ int dsi_display_drm_bridge_init(struct dsi_display *display,
 	display->bridge = bridge;
 	priv->bridges[priv->num_bridges++] = &bridge->base;
 
-	if (display->tx_cmd_buf == NULL) {
+	if (display->tx_cmd_buf == NULL &&
+			!(display->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI &&
+			display->trusted_vm_env)) {
 		rc = dsi_host_alloc_cmd_tx_buffer(display);
 		if (rc)
 			DSI_ERR("failed to allocate cmd tx buffer memory\n");
@@ -8450,8 +8566,16 @@ int dsi_display_get_panel_vfp(void *dsi_display,
 	struct dsi_display *display = (struct dsi_display *)dsi_display;
 	struct dsi_host_common_cfg *host;
 
-	if (!display || !display->panel)
+	if (!display)
 		return -EINVAL;
+
+	if (!display->panel)
+		return -EINVAL;
+
+	if (!display->modes) {
+		DSI_ERR("display modes not available\n");
+		return -EINVAL;
+	}
 
 	mutex_lock(&display->display_lock);
 
@@ -8467,6 +8591,12 @@ int dsi_display_get_panel_vfp(void *dsi_display,
 	if (!refresh_rate) {
 		mutex_unlock(&display->display_lock);
 		DSI_ERR("Null Refresh Rate\n");
+		return -EINVAL;
+	}
+
+	if (!display->modes) {
+		mutex_unlock(&display->display_lock);
+		DSI_ERR("display modes not initialized\n");
 		return -EINVAL;
 	}
 
@@ -8668,6 +8798,17 @@ void dsi_display_set_idle_pc_state(void *display, bool idle_pc)
 	}
 }
 
+static int dsi_get_mode_spr_chroma_format(const struct dsi_display_mode *mode)
+{
+	if (!mode->priv_info)
+		return MSM_CHROMA_444;
+	if (mode->priv_info->dsc_enabled)
+		return mode->priv_info->dsc.chroma_format;
+	if (mode->priv_info->vdc_enabled)
+		return mode->priv_info->vdc.chroma_format;
+	return MSM_CHROMA_444;
+}
+
 static bool dsi_display_match_timings(const struct dsi_display_mode *mode1,
 		struct dsi_display_mode *mode2, unsigned int match_flags)
 {
@@ -8718,6 +8859,11 @@ bool dsi_display_mode_match(const struct dsi_display_mode *mode1,
 	if ((match_flags & DSI_MODE_MATCH_EMSYNC_FPS) &&
 			mode1->priv_info->esync_params.emsync_fps !=
 			mode2->priv_info->esync_params.emsync_fps)
+		return false;
+
+	if ((match_flags & DSI_MODE_MATCH_SPR_MODE) &&
+			mode1->priv_info->dsc.chroma_format !=
+			dsi_get_mode_spr_chroma_format(mode2))
 		return false;
 
 	return true;
@@ -8780,6 +8926,12 @@ int dsi_display_find_mode(struct dsi_display *display,
 			match_flags |= DSI_MODE_MATCH_EMSYNC_FPS;
 			cmp->priv_info = priv_info;
 			cmp->priv_info->esync_params.emsync_fps = sub_mode->emsync_fps;
+		}
+
+		if (sub_mode && sub_mode->spr_mode != MSM_DISPLAY_SPR_MAX) {
+			match_flags |= DSI_MODE_MATCH_SPR_MODE;
+			cmp->priv_info = priv_info;
+			cmp->priv_info->dsc.chroma_format = sub_mode->spr_mode;
 		}
 
 		if (sub_mode) {
@@ -8916,6 +9068,13 @@ int dsi_display_validate_mode_change(struct dsi_display *display,
 				cur_mode->timing.v_front_porch,
 				adj_mode->timing.v_front_porch);
 		DSI_DEBUG("AVR/EM fps change detected\n");
+	} else if (dsi_get_mode_spr_chroma_format(cur_mode) !=
+		dsi_get_mode_spr_chroma_format(adj_mode)) {
+		adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_SPR_MODE_SWITCH;
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE7,
+				dsi_get_mode_spr_chroma_format(cur_mode),
+				dsi_get_mode_spr_chroma_format(adj_mode));
+		DSI_DEBUG("SPR mode change detected\n");
 	} else {
 		dyn_clk_caps = &(display->panel->dyn_clk_caps);
 		/* dfps and dynamic clock with const fps use case */

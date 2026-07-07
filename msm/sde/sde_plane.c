@@ -316,6 +316,11 @@ static void _sde_plane_set_qos_lut(struct drm_plane *plane,
 		return;
 	}
 
+	if (disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", disp_op);
+		return;
+	}
+
 	psde = to_sde_plane(plane);
 	pstate = to_sde_plane_state(plane->state);
 
@@ -645,7 +650,6 @@ static void _sde_plane_set_input_fence(struct sde_plane *psde,
 	SDE_DEBUG_PLANE(psde, "0x%llX\n", fd);
 }
 
-#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
 int sde_plane_set_input_fence_deadline(struct drm_plane *plane, ktime_t deadline)
 {
 	struct sde_plane_state *pstate;
@@ -662,17 +666,10 @@ int sde_plane_set_input_fence_deadline(struct drm_plane *plane, ktime_t deadline
 	pstate = to_sde_plane_state(plane->state);
 	input_fence = (struct dma_fence *)pstate->input_fence;
 
-	if (input_fence)
-		dma_fence_set_deadline(input_fence, deadline);
+	sde_fence_set_input_deadline(input_fence, deadline);
 
 	return 0;
 }
-#else
-int sde_plane_set_input_fence_deadline(struct drm_plane *plane, ktime_t deadline)
-{
-	return 0;
-}
-#endif /* (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE) */
 
 void sde_plane_dump_input_fence(struct drm_plane *plane)
 {
@@ -944,12 +941,7 @@ static inline void _sde_plane_set_scanout(struct drm_plane *plane,
 		 * smmu faults during secure session transition.
 		 */
 		psde->is_error = true;
-	} else if (psde->pipe_hw->ops.setup_sourceaddress[disp_op]) {
-		if (!psde->pipe_hw) {
-			SDE_ERROR_PLANE(psde, "invalid pipe_hw\n");
-			return;
-		}
-
+	} else if (psde->pipe_hw && psde->pipe_hw->ops.setup_sourceaddress[disp_op]) {
 		SDE_EVT32_VERBOSE(psde->pipe_hw->idx,
 				pipe_cfg->layout.width,
 				pipe_cfg->layout.height,
@@ -3337,6 +3329,10 @@ void sde_plane_flush(struct drm_plane *plane)
 	}
 
 	if (disp_op == MSM_DISP_OP_HFI) {
+		if (!psde->pipe_hw) {
+			SDE_ERROR("invalid pipe_hw\n");
+			return;
+		}
 		color_props = psde->pipe_hw->prop_helper;
 		if (!hfi_cp_crtc_get_color_props_count(color_props)) {
 			SDE_DEBUG("prop_helper_prop_count is empty\n");
@@ -3621,10 +3617,16 @@ static void _sde_plane_update_secure_session(struct sde_plane *psde,
 	struct sde_plane_state *pstate)
 {
 	bool enable = false;
-	int mode = sde_plane_get_property(pstate,
-			PLANE_PROP_FB_TRANSLATION_MODE);
+	int mode;
 	enum msm_disp_op disp_op;
 
+	if (!psde || !pstate) {
+		SDE_ERROR("invalid arguments\n");
+		return;
+	}
+
+	mode = sde_plane_get_property(pstate,
+			PLANE_PROP_FB_TRANSLATION_MODE);
 	disp_op = sde_plane_get_disp_op(&psde->base);
 	if ((mode == SDE_DRM_FB_SEC) ||
 			(mode == SDE_DRM_FB_SEC_DIR_TRANS))
@@ -4644,11 +4646,13 @@ static void _sde_plane_setup_capabilities_blob(struct sde_plane *psde,
 
 	index = (master_plane_id == 0) ? 0 : 1;
 	if (test_bit(SDE_FEATURE_DEMURA, catalog->features) &&
+	    psde->pipe < SSPP_MAX &&
 	    catalog->demura_supported[psde->pipe][index] != ~0x0)
 		sde_kms_info_add_keyint(info, "demura_block",
 			catalog->demura_supported[psde->pipe][index]);
 
 	if (test_bit(SDE_FEATURE_QRTC, catalog->features) &&
+	    psde->pipe < SSPP_MAX &&
 	    catalog->qrtc_supported[psde->pipe][index] != ~0x0)
 		sde_kms_info_add_keyint(info, "qrtc_block",
 			catalog->qrtc_supported[psde->pipe][index]);
@@ -5295,6 +5299,10 @@ static void _sde_plane_set_alpha_buffer(struct drm_plane *plane, struct sde_plan
 	int ret = 0;
 
 	sde_kms = _sde_plane_get_kms(plane);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return;
+	}
 
 	pstate->repro_sspp_cfg.alpha_fb = drm_framebuffer_lookup(plane->dev, NULL, alpha_fb_id);
 	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
@@ -6178,7 +6186,7 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 	struct msm_drm_private *priv;
 	struct sde_kms *kms;
 	enum drm_plane_type type;
-	struct sde_vbif_clk_client clk_client;
+	struct sde_vbif_clk_client clk_client = {0};
 	enum msm_disp_op disp_op;
 	int ret = 0;
 	bool lsr_plane;

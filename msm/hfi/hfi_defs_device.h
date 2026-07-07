@@ -174,4 +174,19 @@ struct hfi_device_ssr_info {
 	uint32_t reserved2;
 };
 
+/**
+ * @struct hfi_device_active_layers_info
+ * @brief Struct to indicate active layers for a display.
+ *
+ * @var display_id
+ *   Display ID.
+ * @var layers_mask
+ *   Bitmask indicating active layers for this display,
+ *   where each bit represent the layer-id.
+ */
+struct hfi_device_active_layers_info {
+	u32 display_id;
+	u32 layers_mask;
+};
+
 #endif // __H_HFI_DEFS_DEVICE_H__
