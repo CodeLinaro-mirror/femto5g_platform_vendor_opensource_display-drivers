@@ -5681,9 +5681,34 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 	uint32_t dma_list_size, vig_list_size, virt_vig_list_size, csc_list_size,
 			repro_list_size;
 	uint32_t index = 0, rc = 0;
+	const struct sde_format_extended *base_dma_fmts;
+	const struct sde_format_extended *base_vig_fmts;
+	uint32_t base_dma_sz, base_vig_sz;
+
+	if (test_bit(SDE_FEATURE_NO_UBWC, sde_cfg->features)) {
+		base_dma_fmts = plane_formats_dma_no_ubwc;
+		base_dma_sz = ARRAY_SIZE(plane_formats_dma_no_ubwc);
+	} else {
+		base_dma_fmts = plane_formats;
+		base_dma_sz = ARRAY_SIZE(plane_formats);
+	}
+
+	/*
+	 * The RGB-only linear ViG list represents a pipe that supports
+	 * neither UBWC nor CSC/YUV, so select it only when both features
+	 * are advertised (e.g. shikra/scuba).
+	 */
+	if (test_bit(SDE_FEATURE_NO_UBWC, sde_cfg->features) &&
+			test_bit(SDE_FEATURE_NO_CSC, sde_cfg->features)) {
+		base_vig_fmts = plane_formats_vig_no_ubwc_csc;
+		base_vig_sz = ARRAY_SIZE(plane_formats_vig_no_ubwc_csc);
+	} else {
+		base_vig_fmts = plane_formats_vig;
+		base_vig_sz = ARRAY_SIZE(plane_formats_vig);
+	}
 
 	/* DMA pipe input formats */
-	dma_list_size = ARRAY_SIZE(plane_formats);
+	dma_list_size = base_dma_sz;
 	if (test_bit(SDE_FEATURE_FP16, sde_cfg->features))
 		dma_list_size += ARRAY_SIZE(fp16_formats);
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
@@ -5699,7 +5724,7 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 	}
 
 	index = sde_copy_formats(sde_cfg->dma_formats, dma_list_size,
-			0, plane_formats, ARRAY_SIZE(plane_formats));
+			0, base_dma_fmts, base_dma_sz);
 	if (test_bit(SDE_FEATURE_FP16, sde_cfg->features))
 		index += sde_copy_formats(sde_cfg->dma_formats, dma_list_size,
 			index, fp16_formats, ARRAY_SIZE(fp16_formats));
@@ -5711,7 +5736,7 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 			index, a10_y10_formats, ARRAY_SIZE(a10_y10_formats));
 
 	/* ViG pipe input formats */
-	vig_list_size = ARRAY_SIZE(plane_formats_vig);
+	vig_list_size = base_vig_sz;
 	if (test_bit(SDE_FEATURE_VIG_P010, sde_cfg->features))
 		vig_list_size += ARRAY_SIZE(p010_ubwc_formats);
 	if (test_bit(SDE_FEATURE_VIG_P210, sde_cfg->features))
@@ -5731,7 +5756,7 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 	}
 
 	index = sde_copy_formats(sde_cfg->vig_formats, vig_list_size,
-			0, plane_formats_vig, ARRAY_SIZE(plane_formats_vig));
+			0, base_vig_fmts, base_vig_sz);
 	if (test_bit(SDE_FEATURE_VIG_P010, sde_cfg->features))
 		index += sde_copy_formats(sde_cfg->vig_formats,
 				vig_list_size, index, p010_ubwc_formats,
@@ -5751,7 +5776,7 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 			index, a10_y10_formats, ARRAY_SIZE(a10_y10_formats));
 
 	/* Virtual ViG pipe input formats (all virt pipes use DMA formats) */
-	virt_vig_list_size = ARRAY_SIZE(plane_formats);
+	virt_vig_list_size = base_dma_sz;
 	if (test_bit(SDE_FEATURE_FP16, sde_cfg->features))
 		virt_vig_list_size += ARRAY_SIZE(fp16_formats);
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
@@ -5767,7 +5792,7 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 	}
 
 	index = sde_copy_formats(sde_cfg->virt_vig_formats, virt_vig_list_size,
-			0, plane_formats, ARRAY_SIZE(plane_formats));
+			0, base_dma_fmts, base_dma_sz);
 	if (test_bit(SDE_FEATURE_FP16, sde_cfg->features))
 		index += sde_copy_formats(sde_cfg->virt_vig_formats,
 				virt_vig_list_size, index, fp16_formats,
@@ -6234,6 +6259,8 @@ static void _sde_get_hw_caps_for_scuba(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
 	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+	set_bit(SDE_FEATURE_NO_UBWC, sde_cfg->features);
+	set_bit(SDE_FEATURE_NO_CSC, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 24;
 	sde_cfg->vbif_qos_nlvl = 8;
 	sde_cfg->ts_prefill_rev = 2;
