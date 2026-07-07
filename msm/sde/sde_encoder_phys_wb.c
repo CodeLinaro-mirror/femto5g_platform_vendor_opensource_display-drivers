@@ -129,9 +129,15 @@ static void _sde_wb_get_dnsc_tap_point_dims(struct sde_connector_state *cstate,
 		break;
 	case CAPTURE_DSPP_OUT:
 	case CAPTURE_DEMURA_OUT:
-		/* Panel ROI */
-		*sw = sde_cstate->crtc_roi.w;
-		*sh = sde_cstate->crtc_roi.h;
+		if (!sde_cstate->user_roi_list.num_rects) {
+			/* ROI is cleared, fall back to full screen */
+			*sw = 0;
+			*sh = 0;
+		} else {
+			/* Panel ROI */
+			*sw = sde_cstate->crtc_roi.w;
+			*sh = sde_cstate->crtc_roi.h;
+		}
 		break;
 	default:
 		break;
