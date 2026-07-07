@@ -4354,6 +4354,10 @@ static int sde_kms_vm_state_update(struct sde_kms *sde_kms,
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
 
 	if (IS_DISP_OP_HFI(disp_op) && (vm_req == VM_REQ_ACQUIRE)) {
+		if (sde_in_trusted_vm(sde_kms) && !sde_kms->hfi_tvm_start) {
+			SDE_ERROR("HFI not initialized, skip vm state update\n");
+			return -EINVAL;
+		}
 		atomic_set(&sde_kms->tui_hfi_in_progress, 1);
 		rc = hfi_kms_set_vm_state(crtc, new_cstate, HFI_DEVICE_RESOURCE_ACQUIRE);
 		atomic_set(&sde_kms->tui_hfi_in_progress, 0);
