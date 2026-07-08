@@ -4607,7 +4607,7 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 
 	/* linux default file descriptor range on each process */
 	msm_property_install_range(&psde->property_info, "input_fence",
-		0x0, 0, INR_OPEN_MAX, 0, PLANE_PROP_INPUT_FENCE);
+		0x0, 0, ~0, 0, PLANE_PROP_INPUT_FENCE);
 
 	if (is_master)
 		_sde_plane_install_master_only_properties(psde);
