@@ -384,6 +384,7 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	case HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP:
 	case HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE:
 	case HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE:
+	case HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET:
 		break;
 	case HFI_COMMAND_DEBUG_MISR_READ:
 		dsi_hfi_process_misr_read(display, payload, size);
@@ -1201,6 +1202,162 @@ static int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 	return 0;
 }
 
+
+/**
+ * dsi_hfi_cmd_buf_allocated_size() - ensure a shared HFI command buffer is allocated
+ *
+ * @hfi_client:   handle to the HFI client
+ * @cmd_buf_map:  shared address map to check and, if needed, allocate
+ *
+ * If the buffer has not yet been allocated, allocates SZ_4K bytes.
+ *
+ * Return: allocated buffer size on success, 0 on failure.
+ */
+static size_t dsi_hfi_cmd_buf_allocated_size(struct hfi_client_t *hfi_client,
+					  struct hfi_shared_addr_map *cmd_buf_map,
+					  size_t cmd_buf_size)
+{
+	size_t mem_size;
+	int rc;
+
+	mem_size = hfi_adapter_get_shared_mem_allocated_size(hfi_client, cmd_buf_map);
+	if (mem_size)
+		return mem_size;
+
+	cmd_buf_map->size = cmd_buf_size;
+	rc = hfi_adapter_buffer_alloc(hfi_client, cmd_buf_map);
+	mem_size = hfi_adapter_get_shared_mem_allocated_size(hfi_client, cmd_buf_map);
+	if (rc || !mem_size)
+		return 0;
+
+	return mem_size;
+}
+
+int dsi_hfi_tx_cmd_set(struct dsi_display *display,
+		       struct dsi_panel_cmd_set *cmd_set)
+{
+	struct dsi_display_hfi *display_hfi;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	struct hfi_shared_addr_map *tx_cmd_buf_map;
+	struct hfi_dsi_cmd_desc_set *cmd_desc_set = NULL;
+	size_t total_tx_size = 0;
+	size_t mem_size = 0;
+	size_t payload_size;
+	u64 tx_remote_offset;
+	u8 *tx_local_ptr;
+	int rc = 0;
+	int i;
+
+	if (!display || !display->dsi_hfi_info || !cmd_set || !cmd_set->count ||
+	    !cmd_set->cmds) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < cmd_set->count; i++) {
+		cmd_set->cmds[i].ctrl_flags = 0;
+		if (cmd_set->state == DSI_CMD_SET_STATE_LP)
+			cmd_set->cmds[i].msg.flags |= MIPI_DSI_MSG_USE_LPM;
+	}
+
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms)
+		return -EINVAL;
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms)
+		return -EINVAL;
+
+	if (atomic_read(&display->panel->esd_recovery_pending))
+		return 0;
+
+	hfi_client = &hfi_kms->hfi_client;
+	display_hfi = display->dsi_hfi_info;
+
+	/* Calculate total TX size needed across all commands */
+	for (i = 0; i < cmd_set->count; i++)
+		total_tx_size += cmd_set->cmds[i].msg.tx_len;
+
+	/* Get the shared address map for TX payload transfer between host and DCP */
+	tx_cmd_buf_map = &display_hfi->tx_cmd_buf_map;
+	mem_size = dsi_hfi_cmd_buf_allocated_size(hfi_client, tx_cmd_buf_map, SZ_4K);
+	if (!mem_size) {
+		DSI_ERR("failed to allocate HFI TX buffer for cmd set\n");
+		return -ENOMEM;
+	}
+
+	if (total_tx_size > mem_size) {
+		DSI_ERR("TX payload (%zu bytes) is larger than buffer (%zu bytes)\n",
+			total_tx_size, mem_size);
+		return -EINVAL;
+	}
+
+	/*
+	 * Allocate the HFI payload: struct hfi_dsi_cmd_desc_set header
+	 * followed immediately by cmd_set->count * struct hfi_dsi_cmd_desc.
+	 */
+	payload_size = sizeof(struct hfi_dsi_cmd_desc_set) +
+		       (cmd_set->count * sizeof(struct hfi_dsi_cmd_desc));
+	cmd_desc_set = kzalloc(payload_size, GFP_KERNEL);
+	if (!cmd_desc_set) {
+		DSI_ERR("failed to allocate cmd_desc_set payload\n");
+		return -ENOMEM;
+	}
+
+	cmd_desc_set->type     = cmd_set->type;
+	cmd_desc_set->size     = payload_size;
+	cmd_desc_set->count    = cmd_set->count;
+	cmd_desc_set->state    = cmd_set->state;
+
+	/*
+	 * Pack all TX payloads sequentially into the shared TX buffer.
+	 * Each descriptor's tx_buff_addr_* points to its slice of that region.
+	 */
+	tx_local_ptr      = (u8 *)tx_cmd_buf_map->local_addr;
+	tx_remote_offset  = (u64)tx_cmd_buf_map->remote_addr;
+
+	for (i = 0; i < cmd_set->count; i++) {
+		struct dsi_cmd_desc *cmd = &cmd_set->cmds[i];
+		struct hfi_dsi_cmd_desc *descs = cmd_desc_set->cmds;
+
+		descs[i].size          = sizeof(struct hfi_dsi_cmd_desc);
+		descs[i].channel       = cmd->msg.channel;
+		descs[i].type          = cmd->msg.type;
+		descs[i].flags         = cmd->msg.flags | MIPI_DSI_MSG_UNICAST_COMMAND;
+		descs[i].tx_len        = cmd->msg.tx_len;
+		descs[i].tx_buff_addr_lsb = HFI_VAL_L32(tx_remote_offset);
+		descs[i].tx_buff_addr_msb = HFI_VAL_H32(tx_remote_offset);
+		descs[i].ctrl_idx      = cmd->ctrl;
+		descs[i].ctrl_flags    = cmd->ctrl_flags;
+		descs[i].last_command  = cmd->last_command;
+		descs[i].post_wait_ms  = cmd->post_wait_ms;
+
+		/* Copy this command's TX payload into the shared TX buffer */
+		if (!cmd->msg.tx_buf) {
+			DSI_ERR("cmd[%d] tx_buf is NULL\n", i);
+			rc = -EINVAL;
+			goto out;
+		}
+		memcpy(tx_local_ptr, cmd->msg.tx_buf, cmd->msg.tx_len);
+		tx_local_ptr     += cmd->msg.tx_len;
+		tx_remote_offset += cmd->msg.tx_len;
+	}
+
+	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client,
+			HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET, display->display_type,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, cmd_desc_set, payload_size,
+			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE));
+	if (rc)
+		DSI_ERR("Failed to send HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET, rc=%d\n",
+			rc);
+
+out:
+	kfree(cmd_desc_set);
+	return rc;
+}
+
 int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd)
 {
 	struct dsi_display *display = to_dsi_display(host);
@@ -1243,19 +1400,10 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 
 	/* Get the shared address map for command payload transfer between host and DCP */
 	tx_cmd_buf_map = &display_hfi->tx_cmd_buf_map;
-
-	mem_size = hfi_adapter_get_shared_mem_allocated_size(hfi_client, tx_cmd_buf_map);
-
+	mem_size = dsi_hfi_cmd_buf_allocated_size(hfi_client, tx_cmd_buf_map, DSI_TX_CMD_BUF_SIZE);
 	if (!mem_size) {
-		tx_cmd_buf_map->size = DSI_TX_CMD_BUF_SIZE;
-		rc = hfi_adapter_buffer_alloc(hfi_client, tx_cmd_buf_map);
-
-		if (rc || !hfi_adapter_get_shared_mem_allocated_size(hfi_client, tx_cmd_buf_map)) {
-			DSI_ERR("failed to allocate HFI buffer for command payload\n");
-			return -ENOMEM;
-		}
-
-		mem_size = hfi_adapter_get_shared_mem_allocated_size(hfi_client, tx_cmd_buf_map);
+		DSI_ERR("failed to allocate HFI buffer for command payload\n");
+		return -ENOMEM;
 	}
 
 	if (non_embedded && (cmd->msg.tx_len > display->cmd_buffer_size_non_embedded)) {
@@ -1272,18 +1420,10 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 
 	if (cmd->ctrl_flags & DSI_CTRL_CMD_READ) {
 		rx_cmd_buf_map = &display_hfi->rx_cmd_buf_map;
-		mem_size_rx = hfi_adapter_get_shared_mem_allocated_size(hfi_client, rx_cmd_buf_map);
-
+		mem_size_rx = dsi_hfi_cmd_buf_allocated_size(hfi_client, rx_cmd_buf_map, SZ_4K);
 		if (!mem_size_rx) {
-			rx_cmd_buf_map->size = SZ_4K;
-			rc = hfi_adapter_buffer_alloc(hfi_client, rx_cmd_buf_map);
-
-			if (rc || !hfi_adapter_get_shared_mem_allocated_size(hfi_client, rx_cmd_buf_map)) {
-				DSI_ERR("failed to allocate HFI buffer for receiving payload\n");
-				return -ENOMEM;
-			}
-
-			mem_size_rx = hfi_adapter_get_shared_mem_allocated_size(hfi_client, rx_cmd_buf_map);
+			DSI_ERR("failed to allocate HFI buffer for receiving payload\n");
+			return -ENOMEM;
 		}
 
 		if (cmd->msg.rx_len > mem_size_rx) {
