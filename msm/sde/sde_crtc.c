@@ -8724,7 +8724,7 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	uint64_t lp_val;
 	bool is_vid = false;
 	bool is_wb = false;
-	bool is_doze_mode = false;
+	bool is_doze_suspend = false;
 	int lsr_opmode;
 	struct drm_encoder *encoder;
 	struct sde_hw_ctl *hw_ctl = NULL;
@@ -8745,7 +8745,7 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 		if (is_vid || is_wb)
 			break;
 
-		if (!is_doze_mode && IS_DISP_OP_HFI(disp_op)) {
+		if (!is_doze_suspend && IS_DISP_OP_HFI(disp_op)) {
 			conn = sde_encoder_get_connector(crtc->dev, encoder);
 			if (conn) {
 				new_conn_state = drm_atomic_get_new_connector_state(
@@ -8753,9 +8753,8 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 				if (new_conn_state) {
 					lp_val = sde_connector_get_property(
 						new_conn_state, CONNECTOR_PROP_LP);
-					if (lp_val == SDE_MODE_DPMS_LP1 ||
-					    lp_val == SDE_MODE_DPMS_LP2)
-						is_doze_mode = true;
+					if (lp_val == SDE_MODE_DPMS_LP2)
+						is_doze_suspend = true;
 				}
 			}
 		}
@@ -8788,7 +8787,7 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	 * can be triggered only after the next frame-update.
 	 */
 	if (is_vid || lsr_opmode == WB_REPRO ||
-				(IS_DISP_OP_HFI(disp_op) && !is_wb && !lsr_opmode && !is_doze_mode))
+			(IS_DISP_OP_HFI(disp_op) && !is_wb && !lsr_opmode && !is_doze_suspend))
 		offset++;
 
 	/*
