@@ -832,8 +832,8 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 	unsigned long flags = 0;
 	bool csf25_enabled = false;
 #if IS_ENABLED(CONFIG_SMMU_PROXY)
+	int rc = 0;
 	struct csf_version csf_ver = {};
-	int rc;
 
 	rc = smmu_proxy_get_csf_version(&csf_ver);
 	if (rc) {
