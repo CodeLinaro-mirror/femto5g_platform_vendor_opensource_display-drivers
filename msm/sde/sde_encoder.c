@@ -4567,6 +4567,7 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 		atomic_set(&sde_enc->frame_done_cnt[i], 0);
 	}
 
+	mutex_lock(&sde_enc->enc_lock);
 	sde_enc->cur_master = NULL;
 	/*
 	 * clear the cached crtc in sde_enc on use case finish, after all the
@@ -4575,6 +4576,7 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 	sde_enc->crtc = NULL;
 	memset(&sde_enc->mode_info, 0, sizeof(sde_enc->mode_info));
 	sde_crtc_state->cached_cwb_enc_mask = 0;
+	mutex_unlock(&sde_enc->enc_lock);
 	SDE_DEBUG_ENC(sde_enc, "encoder disabled\n");
 
 	sde_rm_release(&sde_kms->rm, drm_enc, false);
