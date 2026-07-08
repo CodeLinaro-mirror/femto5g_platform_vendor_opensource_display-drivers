@@ -2375,8 +2375,18 @@ static const struct drm_connector_funcs lt9611uxd_connector_funcs = {
 };
 
 
-static int lt9611uxd_bridge_attach(struct drm_bridge *bridge, enum drm_bridge_attach_flags flags)
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
+static int lt9611uxd_bridge_attach(struct drm_bridge *bridge,
+				   enum drm_bridge_attach_flags flags)
+#else
+static int lt9611uxd_bridge_attach(struct drm_bridge *bridge,
+				   struct drm_encoder *encoder,
+				   enum drm_bridge_attach_flags flags)
+#endif
 {
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
+	struct drm_encoder *encoder = bridge->encoder;
+#endif
 	struct mipi_dsi_host *host;
 	struct mipi_dsi_device *dsi;
 	struct lt9611uxd *pdata = bridge_to_lt9611(bridge);
@@ -2386,7 +2396,7 @@ static int lt9611uxd_bridge_attach(struct drm_bridge *bridge, enum drm_bridge_at
 						   .node = NULL,
 						 };
 
-	if (!bridge->encoder) {
+	if (!encoder) {
 		DRM_ERROR("Parent encoder object not found");
 		return -ENODEV;
 	}
@@ -2411,7 +2421,7 @@ static int lt9611uxd_bridge_attach(struct drm_bridge *bridge, enum drm_bridge_at
 	pdata->connector.polled = DRM_CONNECTOR_POLL_CONNECT;
 
 	ret = drm_connector_attach_encoder(&pdata->connector,
-						bridge->encoder);
+						encoder);
 	if (ret) {
 		DRM_ERROR("Failed to link up connector to encoder: %d\n", ret);
 		return ret;
