@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -33,6 +33,14 @@
 #define DEFAULT_TEARCHECK_SYNC_THRESH_CONTINUE	4
 
 #define SDE_ENC_WR_PTR_START_TIMEOUT_US 20000
+
+/*
+ * The safe time equals half of the panel TE signal interval.
+ */
+#define SDE_CMD_MODE_SWITCH_SAFE_TIME_NS 2000000ULL
+
+#define SDE_CMD_MODE_SWITCH_WR_PTR_TIMEOUT_MS 300
+#define SDE_VSYNC_CLK_PERIOD_NS 52ULL
 #define AUTOREFRESH_SEQ1_POLL_TIME	2000
 #define AUTOREFRESH_SEQ2_POLL_TIME	25000
 #define AUTOREFRESH_SEQ2_POLL_TIMEOUT	1000000
@@ -86,32 +94,126 @@ static void _sde_encoder_phys_cmd_config_autorefresh(
 	struct sde_hw_intf *hw_intf = phys_enc->hw_intf;
 	struct drm_connector *conn = phys_enc->connector;
 	struct sde_hw_autorefresh *cfg_cur, cfg_nxt;
+	u32 old_frame_count;
 
 	if (!conn || !conn->state || !hw_pp || !hw_intf)
 		return;
 
 	cfg_cur = &cmd_enc->autorefresh.cfg;
+	old_frame_count = cmd_enc->last_autorefresh_frame_count;
 
 	/* autorefresh property value should be validated already */
 	memset(&cfg_nxt, 0, sizeof(cfg_nxt));
 	cfg_nxt.frame_count = new_frame_count;
 	cfg_nxt.enable = (cfg_nxt.frame_count != 0);
 
-	SDE_DEBUG_CMDENC(cmd_enc, "autorefresh state %d->%d framecount %d\n",
-			cfg_cur->enable, cfg_nxt.enable, cfg_nxt.frame_count);
+	SDE_DEBUG_CMDENC(cmd_enc, "autorefresh state %d->%d framecount %d->%d\n",
+			cfg_cur->enable, cfg_nxt.enable, cfg_cur->frame_count,
+			cfg_nxt.frame_count);
 	SDE_EVT32(DRMID(phys_enc->parent), hw_pp->idx, hw_intf->idx,
-			cfg_cur->enable, cfg_nxt.enable, cfg_nxt.frame_count);
+			cfg_cur->enable, cfg_nxt.enable, cfg_cur->frame_count,
+			cfg_nxt.frame_count);
 
-	/* only proceed on state changes */
-	if (cfg_nxt.enable == cfg_cur->enable)
-		return;
+	/*
+	 * HW supports direct autorefresh register updates only for
+	 * disable->enable and enable->disable transitions. For an enabled
+	 * frame-count change, the caller waits for a safe WR_PTR window, then
+	 * disables autorefresh first before programming the new frame count.
+	 */
+	if (cfg_nxt.enable == cfg_cur->enable) {
+		if (!(cfg_cur->enable && old_frame_count &&
+				cfg_nxt.frame_count &&
+				old_frame_count != cfg_nxt.frame_count))
+			return;
+
+		/*
+		 * Disable autorefresh before update new frame count.
+		 */
+		memset(cfg_cur, 0, sizeof(*cfg_cur));
+
+		if (phys_enc->has_intf_te && hw_intf->ops.setup_autorefresh)
+			hw_intf->ops.setup_autorefresh(hw_intf, cfg_cur);
+		else if (hw_pp->ops.setup_autorefresh)
+			hw_pp->ops.setup_autorefresh(hw_pp, cfg_cur);
+	}
 
 	memcpy(cfg_cur, &cfg_nxt, sizeof(*cfg_cur));
 
+	/*
+	 * Config autorefresh with new frame count.
+	 */
 	if (phys_enc->has_intf_te && hw_intf->ops.setup_autorefresh)
 		hw_intf->ops.setup_autorefresh(hw_intf, cfg_cur);
 	else if (hw_pp->ops.setup_autorefresh)
 		hw_pp->ops.setup_autorefresh(hw_pp, cfg_cur);
+
+	cmd_enc->last_autorefresh_frame_count = cfg_nxt.frame_count;
+}
+
+static bool _sde_encoder_phys_cmd_mode_switch_wr_ptr_check(
+		struct sde_encoder_phys_cmd *cmd_enc,
+		struct sde_hw_pp_vsync_info *info,
+		u32 old_frame_count,
+		u32 new_frame_count)
+{
+	struct sde_encoder_phys *phys_enc;
+	struct sde_hw_pp_vsync_info *ar_info = NULL;
+	u32 min_frame_count, vsync_count = 0;
+	u64 elapsed_ns = 0;
+	bool safe = false;
+	int i;
+
+	if (!cmd_enc || !info || !old_frame_count || !new_frame_count)
+		return false;
+
+	phys_enc = &cmd_enc->base;
+	if (!phys_enc->hw_intf)
+		return false;
+
+	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
+		if (info[i].intf_idx == (phys_enc->hw_intf->idx - INTF_0)) {
+			ar_info = &info[i];
+			break;
+		}
+	}
+
+	if (!ar_info)
+		ar_info = info;
+
+	/*
+	 * If the read pointer frame count is still far enough from the next
+	 * autorefresh frame boundary, switching the autorefresh cadence will not
+	 * disturb the current frame transmission.
+	 */
+	min_frame_count = min(old_frame_count, new_frame_count);
+	if ((ar_info->rd_ptr_frame_count + 1) < min_frame_count)
+		safe = true;
+
+	/*
+	 * If the read pointer is still close to the beginning of the TE frame,
+	 * there is enough margin to switch the autorefresh cadence before the
+	 * current TE frame advances too far.
+	 *
+	 * Read VSYNC_COUNT directly from INTF_TEAR_SYNC_CONFIG_VSYNC[18:0].
+	 * 52ns is the 1/19.2MHz vsync clock period.
+	 */
+	if (!safe && phys_enc->has_intf_te && phys_enc->hw_intf &&
+			phys_enc->hw_intf->ops.get_vsync_count) {
+		vsync_count = phys_enc->hw_intf->ops.get_vsync_count(
+				phys_enc->hw_intf);
+		if (vsync_count) {
+			elapsed_ns = (u64)ar_info->rd_ptr_line_count *
+					vsync_count * SDE_VSYNC_CLK_PERIOD_NS;
+			if (elapsed_ns < SDE_CMD_MODE_SWITCH_SAFE_TIME_NS)
+				safe = true;
+		}
+	}
+
+	SDE_EVT32(DRMID(phys_enc->parent), old_frame_count, new_frame_count,
+			ar_info->rd_ptr_frame_count, ar_info->rd_ptr_line_count,
+			vsync_count, (u32)elapsed_ns, safe);
+
+	return safe;
 }
 
 static bool sde_encoder_phys_cmd_is_autoref_disable_pending(struct sde_encoder_phys *phys_enc)
@@ -569,14 +671,17 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 static void sde_encoder_phys_cmd_wr_ptr_irq(void *arg, int irq_idx)
 {
 	struct sde_encoder_phys *phys_enc = arg;
+	struct sde_encoder_phys_cmd *cmd_enc;
 	struct sde_hw_ctl *ctl;
 	u32 event = 0, qsync_mode = 0;
+	u32 old_frame_count, new_frame_count;
 	struct sde_hw_pp_vsync_info info[MAX_CHANNELS_PER_ENC] = {{0}};
 
 	if (!phys_enc || !phys_enc->hw_ctl)
 		return;
 
 	SDE_ATRACE_BEGIN("wr_ptr_irq");
+	cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
 	ctl = phys_enc->hw_ctl;
 	qsync_mode = sde_connector_get_qsync_mode(phys_enc->connector);
 
@@ -596,6 +701,16 @@ static void sde_encoder_phys_cmd_wr_ptr_irq(void *arg, int irq_idx)
 		info[0].wr_ptr_line_count, info[0].rd_ptr_line_count, info[1].pp_idx,
 		info[1].intf_idx, info[1].intf_frame_count, info[1].wr_ptr_line_count,
 		info[1].rd_ptr_line_count);
+
+	old_frame_count = cmd_enc->last_autorefresh_frame_count;
+	new_frame_count = _sde_encoder_phys_cmd_get_autorefresh_property(phys_enc);
+	if (old_frame_count && new_frame_count &&
+			old_frame_count != new_frame_count &&
+			_sde_encoder_phys_cmd_mode_switch_wr_ptr_check(cmd_enc,
+					info, old_frame_count, new_frame_count)) {
+		_sde_encoder_phys_cmd_config_autorefresh(phys_enc, new_frame_count);
+		complete_all(&cmd_enc->mode_switch_done);
+	}
 
 	if (qsync_mode &&
 			!test_bit(SDE_INTF_TE_SINGLE_UPDATE, &phys_enc->hw_intf->cap->features))
@@ -779,12 +894,35 @@ static void sde_encoder_phys_cmd_mode_set(
 		to_sde_encoder_phys_cmd(phys_enc);
 	struct sde_rm *rm = &phys_enc->sde_kms->rm;
 	struct sde_rm_hw_iter iter;
+	u32 old_frame_count, new_frame_count;
+	unsigned long timeout;
 	int i, instance;
 
 	if (!phys_enc || !mode || !adj_mode) {
 		SDE_ERROR("invalid args\n");
 		return;
 	}
+
+	if (sde_encoder_phys_cmd_is_master(phys_enc)) {
+		old_frame_count = cmd_enc->last_autorefresh_frame_count;
+		new_frame_count = _sde_encoder_phys_cmd_get_autorefresh_property(phys_enc);
+
+		if (new_frame_count && old_frame_count &&
+				new_frame_count != old_frame_count) {
+			reinit_completion(&cmd_enc->mode_switch_done);
+			timeout = msecs_to_jiffies(SDE_CMD_MODE_SWITCH_WR_PTR_TIMEOUT_MS);
+
+			SDE_EVT32(DRMID(phys_enc->parent), old_frame_count,
+					new_frame_count, SDE_EVTLOG_FUNC_ENTRY);
+			if (!wait_for_completion_timeout(
+					&cmd_enc->mode_switch_done, timeout))
+				SDE_ERROR_CMDENC(cmd_enc,
+						"mode switch wr_ptr wait timed out old:%u new:%u\n",
+						old_frame_count, new_frame_count);
+			SDE_EVT32(DRMID(phys_enc->parent), SDE_EVTLOG_FUNC_EXIT);
+		}
+	}
+
 	phys_enc->cached_mode = *adj_mode;
 	SDE_DEBUG_CMDENC(cmd_enc, "caching mode:\n");
 	drm_mode_debug_printmodeline(adj_mode);
@@ -1753,6 +1891,8 @@ static void sde_encoder_phys_cmd_disable(struct sde_encoder_phys *phys_enc)
 		return;
 	}
 
+	complete_all(&cmd_enc->mode_switch_done);
+
 	if (!sde_in_trusted_vm(phys_enc->sde_kms)) {
 		if (phys_enc->has_intf_te &&
 				phys_enc->hw_intf->ops.enable_tearcheck)
@@ -1781,6 +1921,9 @@ static void sde_encoder_phys_cmd_destroy(struct sde_encoder_phys *phys_enc)
 		SDE_ERROR("invalid encoder\n");
 		return;
 	}
+
+	complete_all(&cmd_enc->mode_switch_done);
+
 	kfree(cmd_enc);
 }
 
@@ -2743,6 +2886,8 @@ struct sde_encoder_phys *sde_encoder_phys_cmd_init(
 	init_waitqueue_head(&cmd_enc->pending_vblank_wq);
 	atomic_set(&cmd_enc->autorefresh.kickoff_cnt, 0);
 	init_waitqueue_head(&cmd_enc->autorefresh.kickoff_wq);
+	init_completion(&cmd_enc->mode_switch_done);
+	cmd_enc->last_autorefresh_frame_count = 0;
 	INIT_LIST_HEAD(&cmd_enc->te_timestamp_list);
 	for (i = 0; i < MAX_TE_PROFILE_COUNT; i++)
 		list_add(&cmd_enc->te_timestamp[i].list,

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -182,6 +182,11 @@ struct sde_hw_intf_ops {
 	 */
 	int (*get_vsync_info)(struct sde_hw_intf *intf,
 			struct sde_hw_pp_vsync_info  *info);
+
+	/**
+	 * retrieve INTF_TEAR_SYNC_CONFIG_VSYNC[18:0] vsync_count
+	 */
+	u32 (*get_vsync_count)(struct sde_hw_intf *intf);
 
 	/**
 	 * configure and enable the autorefresh config

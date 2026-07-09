@@ -125,6 +125,11 @@ static inline bool _msm_seamless_for_conn(struct drm_connector *connector,
 	if (!msm_mode)
 		return false;
 
+	if (msm_is_mode_seamless_autorefresh(msm_mode) &&
+			connector->state &&
+			old_conn_state->crtc == connector->state->crtc)
+		return true;
+
 	if (!old_conn_state->crtc->state->mode_changed &&
 			!old_conn_state->crtc->state->active_changed &&
 			old_conn_state->crtc->state->connectors_changed) {

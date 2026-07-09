@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023, 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -82,6 +82,7 @@ enum dsi_op_mode {
  * @DSI_MODE_FLAG_POMS_TO_CMD:
  *         Seamless transition is dynamic panel operating mode switch to cmd
  * @DSI_MODE_FLAG_NONDSC_BPP_SWITCH:  Transition is bpp mode switch without DSC.
+ * @DSI_MODE_FLAG_AUTOREFRESH: Seamless transition is autorefresh frame count change.
  */
 enum dsi_mode_flags {
 	DSI_MODE_FLAG_SEAMLESS			= BIT(0),
@@ -93,7 +94,8 @@ enum dsi_mode_flags {
 	DSI_MODE_FLAG_DMS_FPS                   = BIT(6),
 	DSI_MODE_FLAG_POMS_TO_VID		= BIT(7),
 	DSI_MODE_FLAG_POMS_TO_CMD		= BIT(8),
-	DSI_MODE_FLAG_NONDSC_BPP_SWITCH		= BIT(9)
+	DSI_MODE_FLAG_NONDSC_BPP_SWITCH		= BIT(9),
+	DSI_MODE_FLAG_AUTOREFRESH		= BIT(10)
 };
 
 /**

@@ -92,6 +92,8 @@ static void msm_parse_mode_priv_info(const struct msm_display_mode *msm_mode,
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_POMS_TO_CMD;
 	if (msm_is_mode_seamless_dyn_clk(msm_mode))
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_DYN_CLK;
+	if (msm_is_mode_seamless_autorefresh(msm_mode))
+		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_AUTOREFRESH;
 	if (msm_is_mode_bpp_switch(msm_mode))
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_NONDSC_BPP_SWITCH;
 }
@@ -162,6 +164,8 @@ static void dsi_convert_to_msm_mode(const struct dsi_display_mode *dsi_mode,
 		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_POMS_CMD;
 	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)
 		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DYN_CLK;
+	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_AUTOREFRESH)
+		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_AUTOREFRESH;
 	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_NONDSC_BPP_SWITCH)
 		msm_mode->private_flags |= MSM_MODE_FLAG_NONDSC_BPP_SWITCH;
 }
