@@ -138,6 +138,7 @@ struct dp_mgr_hfi_priv {
 	bool soft_unplug;
 
 	struct dp_audio *audio;
+	bool audio_supported;
 	u8 min_enc_level;
 
 	bool stream_manage_inflight;

@@ -1031,7 +1031,7 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 
 	_aux_switch_enable(hfi_priv, false);
 
-	if (hfi_priv->audio)
+	if (hfi_priv->audio && hfi_priv->audio_supported)
 		hfi_priv->audio->off(hfi_priv->audio, false);
 
 	_hfi_update_config(hfi_priv, &config);
@@ -1762,6 +1762,7 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	char *buf_addr;
 	struct hfi_shared_addr_map *edid_map;
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
+	struct edid *edid;
 
 	if (!payload) {
 		DP_ERR("Invalid payload\n");
@@ -1788,6 +1789,7 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 		hfi->connected = true;
 	} else {
 		hfi->connected = false;
+		hfi_priv->audio_supported = false;
 		DP_INFO("Setting connected=0 due to empty EDID buffer\n");
 		goto end;
 	}
@@ -1840,7 +1842,12 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 end:
 	_hfi_notify_hpd_user(hfi, hfi->connected);
 
-	if (hfi_priv->audio) {
+	if (hfi->edid_ctrl && hfi->edid_ctrl->edid) {
+		edid = hfi->edid_ctrl->edid;
+		hfi_priv->audio_supported = drm_detect_monitor_audio(edid);
+	}
+
+	if (hfi_priv->audio && hfi_priv->audio_supported) {
 		ret = hfi_priv->audio->on(hfi_priv->audio);
 		(void)ret;
 	}
@@ -2891,7 +2898,7 @@ static int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 	hfi_client = hfi->hfi_client;
 
 	/* turn off audio if still enabled */
-	if (hfi_priv->audio)
+	if (hfi_priv->audio && hfi_priv->audio_supported)
 		hfi_priv->audio->off(hfi_priv->audio, false);
 
 	DP_DEBUG("Sending DISPLAY_DISABLE command to DCP, panel_id=%d\n", panel_id);
