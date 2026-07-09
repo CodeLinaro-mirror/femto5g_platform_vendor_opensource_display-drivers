@@ -650,8 +650,6 @@ static const struct drm_bridge_funcs hdmi_bridge_ops = {
 	.mode_set     = hdmi_bridge_mode_set,
 };
 
-
-
 int hdmi_drm_bridge_init(void *data, struct drm_encoder *encoder,
 		u32 max_mixer_count, u32 max_dsc_count)
 {
@@ -661,18 +659,28 @@ int hdmi_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	struct hdmi_display *display = data;
 	struct msm_drm_private *priv = NULL;
 
+	dev = display->drm_dev;
+	priv = dev->dev_private;
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 	bridge = kzalloc(sizeof(*bridge), GFP_KERNEL);
 	if (!bridge) {
 		rc = -ENOMEM;
 		goto error;
 	}
-
-	dev = display->drm_dev;
-	bridge->display = display;
 	bridge->base.funcs = &hdmi_bridge_ops;
 	bridge->base.encoder = encoder;
-
-	priv = dev->dev_private;
+#else
+	bridge = __devm_drm_bridge_alloc(dev->dev,
+				sizeof(*bridge),
+				offsetof(struct hdmi_bridge, base),
+				&hdmi_bridge_ops);
+	if (IS_ERR(bridge)) {
+		rc = PTR_ERR(bridge);
+		HDMI_ERR("failed to alloc bridge, rc=%d\n", rc);
+		goto error;
+	}
+#endif
+	bridge->display = display;
 
 	rc = drm_bridge_attach(encoder, &bridge->base, NULL, 0);
 	if (rc) {
@@ -694,18 +702,21 @@ int hdmi_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	display->max_dsc_count = max_dsc_count;
 
 	return 0;
-error_free_bridge:
-	kfree(bridge);
-error:
 
+error_free_bridge:
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
+	kfree(bridge);
+#endif
+error:
 	return rc;
 }
 
 void hdmi_drm_bridge_deinit(void *data)
 {
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 	struct hdmi_display *display = data;
 	struct hdmi_bridge *bridge = display->bridge;
 
 	kfree(bridge);
-
+#endif
 }

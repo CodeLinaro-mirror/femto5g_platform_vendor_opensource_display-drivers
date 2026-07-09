@@ -868,12 +868,18 @@ void sde_connector_schedule_status_work(struct drm_connector *connector,
 {
 	struct sde_connector *c_conn;
 	struct msm_display_info info;
-
-	if (sde_connector_get_disp_op(connector) == MSM_DISP_OP_HFI)
-		return;
+	struct dsi_display *display;
 
 	c_conn = to_sde_connector(connector);
 	if (!c_conn)
+		return;
+
+	display = _sde_connector_get_display(c_conn);
+	if (!display)
+		return;
+
+	if (sde_connector_get_disp_op(connector) == MSM_DISP_OP_HFI &&
+		!display->panel->esd_config.esd_host_controlled)
 		return;
 
 	/* Return if there is no change in ESD status check condition */
@@ -3583,6 +3589,139 @@ static const struct file_operations conn_cmd_rx_fops = {
 	.write =        _sde_debugfs_conn_cmd_rx_write,
 };
 
+static int _sde_debugfs_conn_esd_status_interval_open(struct inode *inode, struct file *file)
+{
+	/* non-seekable */
+	file->private_data = inode->i_private;
+	return nonseekable_open(inode, file);
+}
+
+static ssize_t _sde_debugfs_conn_esd_status_interval_read(struct file *file,
+		char __user *buf, size_t count, loff_t *ppos)
+{
+	struct drm_connector *connector = file->private_data;
+	struct sde_connector *c_conn = NULL;
+	char *strs = NULL;
+	int blen = 0, left_size = 0;
+
+	if (*ppos)
+		return 0;
+
+	if (!connector) {
+		SDE_ERROR("invalid argument, conn is NULL\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+	if (!c_conn) {
+		SDE_ERROR("no valid connector\n");
+		return -EINVAL;
+	}
+
+	left_size = 16;
+	strs = kzalloc(left_size, GFP_KERNEL);
+	if (!strs)
+		return -ENOMEM;
+
+	mutex_lock(&c_conn->lock);
+	scnprintf(strs, left_size, "%u", c_conn->esd_status_interval);
+
+	mutex_unlock(&c_conn->lock);
+
+	blen = strlen(strs);
+	if (blen <= 0) {
+		SDE_ERROR("snprintf failed, blen %d\n", blen);
+		blen = -EFAULT;
+		goto err;
+	}
+
+	if (copy_to_user(buf, strs, blen)) {
+		SDE_ERROR("copy to user buffer failed\n");
+		blen = -EFAULT;
+		goto err;
+	}
+
+	*ppos += blen;
+err:
+	kfree(strs);
+	return blen;
+}
+
+static ssize_t _sde_debugfs_conn_esd_status_interval_write(struct file *file,
+			const char __user *p, size_t count, loff_t *ppos)
+{
+	struct drm_connector *connector = file->private_data;
+	struct sde_connector *c_conn = NULL;
+	char *input;
+	int rc = 0, hfi_rc = 0, strtoint = 0;
+
+	if (*ppos || !connector) {
+		SDE_ERROR("invalid argument(s), conn %d\n", connector != NULL);
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+	if (!c_conn) {
+		SDE_ERROR("no valid connector\n");
+		return -EINVAL;
+	}
+
+	input = kzalloc(count + 1, GFP_KERNEL);
+	if (!input)
+		return -ENOMEM;
+
+	if (copy_from_user(input, p, count)) {
+		SDE_ERROR("copy from user failed\n");
+		rc  = -EFAULT;
+		goto err;
+	}
+	input[count] = '\0';
+
+	SDE_INFO("ESD status interval updated to: %s\n", input);
+
+	rc = kstrtoint(input, 0, &strtoint);
+	if (rc) {
+		SDE_ERROR("input buffer conversion failed\n");
+		rc = -EINVAL;
+		goto err;
+	}
+
+	if (strtoint < 0) {
+		SDE_ERROR("invalid interval value: %d (must be a positive number)\n", strtoint);
+		rc = -EINVAL;
+		goto err;
+	}
+
+	mutex_lock(&c_conn->lock);
+	c_conn->esd_status_interval = strtoint;
+	mutex_unlock(&c_conn->lock);
+
+	if (sde_connector_get_disp_op(&c_conn->base) == MSM_DISP_OP_HFI) {
+		struct hfi_display_dbg_property dbg_prop = {
+			.prop_id = HFI_DISPLAY_DEBUG_ESD_CHECK_INTERVAL,
+			.value_lsb = strtoint
+		};
+
+		hfi_rc = hfi_connector_set_debug_prop(connector, &dbg_prop);
+		if (hfi_rc)
+			SDE_ERROR("Failed to update status check interval via HFI, rc=%d\n",
+					hfi_rc);
+	}
+
+	kfree(input);
+	return count;
+
+err:
+	kfree(input);
+	return rc;
+}
+
+static const struct file_operations conn_esd_status_interval_fops = {
+	.open =     _sde_debugfs_conn_esd_status_interval_open,
+	.read =     _sde_debugfs_conn_esd_status_interval_read,
+	.write =    _sde_debugfs_conn_esd_status_interval_write,
+};
+
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 /**
  * sde_connector_init_debugfs - initialize connector debugfs
@@ -3610,9 +3749,12 @@ static int sde_connector_init_debugfs(struct drm_connector *connector)
 	sde_connector_get_info(connector, &info);
 	if (sde_connector->ops.check_status &&
 		(info.capabilities & MSM_DISPLAY_ESD_ENABLED)) {
-		debugfs_create_u32("esd_status_interval", 0600,
-				connector->debugfs_entry,
-				&sde_connector->esd_status_interval);
+		if (!debugfs_create_file("esd_status_interval", 0600,
+			connector->debugfs_entry,
+			connector, &conn_esd_status_interval_fops)) {
+			SDE_ERROR("failed to create connector esd_status_interval\n");
+			return -ENOMEM;
+		}
 	}
 
 	if (sde_connector->ops.cmd_transfer) {
@@ -3926,9 +4068,6 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	if (!conn)
 		return ret;
 
-	if (sde_connector_get_disp_op(conn) == MSM_DISP_OP_HFI)
-		return ret;
-
 	sde_conn = to_sde_connector(conn);
 	if (!sde_conn || !sde_conn->ops.check_status)
 		return ret;
@@ -3936,6 +4075,10 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	display = _sde_connector_get_display(sde_conn);
 	if (!display)
 		return 0;
+
+	if (sde_connector_get_disp_op(conn) == MSM_DISP_OP_HFI &&
+		!display->panel->esd_config.esd_host_controlled)
+		return ret;
 
 	/* protect this call with ESD status check call */
 	mutex_lock(&sde_conn->lock);
@@ -5012,6 +5155,9 @@ int sde_connector_register_custom_event(struct sde_kms *kms,
 		atomic_set(&c_conn->ssr_notify_enabled, (val ? 1 : 0));
 		ret = 0;
 		break;
+	case DRM_EVENT_LSR_SSR:
+		ret = 0;
+		break;
 	default:
 		break;
 	}
@@ -5036,6 +5182,7 @@ int sde_connector_event_notify(struct drm_connector *connector, uint32_t type,
 	case DRM_EVENT_PANEL_DEAD:
 	case DRM_EVENT_SDE_HW_RECOVERY:
 	case DRM_EVENT_MISR_SIGN:
+	case DRM_EVENT_LSR_SSR:
 		break;
 	case DRM_EVENT_SSR:
 		c_conn = to_sde_connector(connector);

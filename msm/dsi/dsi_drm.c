@@ -991,6 +991,8 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 	bpp = dsi_ctrl_pixel_format_to_bpp(fmt);
 
 	sde_kms_info_add_keyint(info, "bit_depth", bpp);
+	if (dsi_display->panel->host_config.ext_bridge_hpd_en)
+		sde_kms_info_add_keystr(info, "ext bridge hpd support", "true");
 
 	if (dsi_display->panel->ctl_op_sync) {
 		sde_kms_info_add_keystr(info, "dpu_ctl_op_sync", "true");
@@ -1543,15 +1545,26 @@ struct dsi_bridge *dsi_drm_bridge_init(struct dsi_display *display,
 	int rc = 0;
 	struct dsi_bridge *bridge;
 
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 	bridge = kzalloc(sizeof(*bridge), GFP_KERNEL);
 	if (!bridge) {
 		rc = -ENOMEM;
 		goto error;
 	}
-
-	bridge->display = display;
-	bridge->base.funcs = &dsi_bridge_ops;
 	bridge->base.encoder = encoder;
+	bridge->base.funcs = &dsi_bridge_ops;
+#else
+	bridge = __devm_drm_bridge_alloc(dev->dev,
+				sizeof(*bridge),
+				offsetof(struct dsi_bridge, base),
+				&dsi_bridge_ops);
+	if (IS_ERR(bridge)) {
+		rc = PTR_ERR(bridge);
+		DSI_ERR("failed to alloc bridge, rc=%d\n", rc);
+		goto error;
+	}
+#endif
+	bridge->display = display;
 
 	rc = drm_bridge_attach(encoder, &bridge->base, NULL,
 				DRM_BRIDGE_ATTACH_NO_CONNECTOR);
@@ -1561,15 +1574,20 @@ struct dsi_bridge *dsi_drm_bridge_init(struct dsi_display *display,
 	}
 
 	return bridge;
+
 error_free_bridge:
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 	kfree(bridge);
+#endif
 error:
 	return ERR_PTR(rc);
 }
 
 void dsi_drm_bridge_cleanup(struct dsi_bridge *bridge)
 {
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 	kfree(bridge);
+#endif
 }
 
 static bool is_valid_poms_switch(struct dsi_display_mode *mode_a,

@@ -39,7 +39,7 @@ static int msm_lsr_set_data_bus_vote(struct msm_lsr_core *core)
 		return -EINVAL;
 	}
 
-	core->bw_sum = (core->bw_sum > max_bw) ? max_bw : core->bw_sum;
+	core->bw_sum = ((core->bw_sum/2) > max_bw) ? max_bw : core->bw_sum;
 
 	/* Vote with split voting if llcc is enabled */
 	if (msm_lsr_syscache_disable) {
@@ -365,8 +365,11 @@ int lsr_set_bw(struct bus_info *bus, unsigned long bw, unsigned long peak_bw)
 {
 	int rc = 0;
 
-	if (!bus->client)
+	mutex_lock(&bus->lock);
+	if (!bus || !bus->client) {
+		mutex_unlock(&bus->lock);
 		return -EINVAL;
+	}
 
 	dprintk(LSR_PWR, "bus->name = %s to bw = %lu KBps ib = %lu KBps\n",
 			bus->name, bw, peak_bw);
@@ -374,6 +377,8 @@ int lsr_set_bw(struct bus_info *bus, unsigned long bw, unsigned long peak_bw)
 	if (rc)
 		dprintk(LSR_ERR, "Failed voting bus %s to ab %lu ib %lu\n",
 			bus->name, bw, peak_bw);
+
+	mutex_unlock(&bus->lock);
 
 	return rc;
 }

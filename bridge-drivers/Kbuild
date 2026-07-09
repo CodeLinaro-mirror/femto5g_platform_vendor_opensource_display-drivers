@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+KDIR := $(TOP)/kernel_platform/msm-kernel
+
+ifeq ($(CONFIG_ARCH_SUN), Y)
+        include $(DISPLAY_ROOT)/config/gki_sundisp.conf
+        LINUX_INC +=    -include $(DISPLAY_ROOT)/config/gki_sundispconf.h
+endif
+
+LINUX_INC += -I$(DISPLAY_ROOT)/../mm-drivers/msm_ext_display/include
+ccflags-y += $(LINUX_INC)
+
+obj-$(CONFIG_DRM_LT9611UXD) += lt9611uxd.o
+
+CDEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"
+

@@ -969,7 +969,7 @@ exit:
 }
 
 static int hfi_cp_crtc_validate_rgb_hist_params(struct drm_msm_rgb_hist_ctrl *hist_ctrl,
-		u32 disp_h, u32 disp_v)
+		u32 panel_width, u32 panel_height)
 {
 
 	if (!hist_ctrl) {
@@ -1000,15 +1000,15 @@ static int hfi_cp_crtc_validate_rgb_hist_params(struct drm_msm_rgb_hist_ctrl *hi
 			return -EINVAL;
 		}
 
-		if (hist_ctrl->roi_x + hist_ctrl->roi_width > disp_h) {
-			SDE_ERROR("invalid roi x input = [%u,%u], disp_h = %u\n",
-				hist_ctrl->roi_x, hist_ctrl->roi_width, disp_h);
+		if (hist_ctrl->roi_x + hist_ctrl->roi_width > panel_width) {
+			SDE_ERROR("invalid roi x input = [%u,%u], panel_width = %u\n",
+				hist_ctrl->roi_x, hist_ctrl->roi_width, panel_width);
 			return -EINVAL;
 		}
 
-		if (hist_ctrl->roi_y + hist_ctrl->roi_height > disp_v) {
-			SDE_ERROR("invalid roi y input = [%u,%u], disp_v = %u\n",
-				hist_ctrl->roi_y, hist_ctrl->roi_height, disp_v);
+		if (hist_ctrl->roi_y + hist_ctrl->roi_height > panel_height) {
+			SDE_ERROR("invalid roi y input = [%u,%u], panel_height = %u\n",
+				hist_ctrl->roi_y, hist_ctrl->roi_height, panel_height);
 			return -EINVAL;
 		}
 	}
@@ -1121,7 +1121,7 @@ int hfi_setup_dspp_rgb_hist_ctrlv2(struct sde_hw_dspp *ctx, void *data)
 
 		// Validate input patams
 		ret = hfi_cp_crtc_validate_rgb_hist_params(hist_ctrl,
-			hw_cfg->displayh, hw_cfg->displayv);
+			hw_cfg->panel_width, hw_cfg->panel_height);
 		if (ret) {
 			SDE_ERROR("Invalid rgb hist params, ret: %d\n", ret);
 			return ret;

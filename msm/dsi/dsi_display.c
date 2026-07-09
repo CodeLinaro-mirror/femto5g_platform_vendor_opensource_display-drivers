@@ -15,6 +15,7 @@
 #include "msm_drv.h"
 #include "hfi_msm_drv.h"
 #include "sde_connector.h"
+#include "hfi_connector.h"
 #include "msm_mmu.h"
 #include "dsi_display.h"
 #include "dsi_panel.h"
@@ -25,6 +26,7 @@
 #include "dsi_pwr.h"
 #include "sde_dbg.h"
 #include "dsi_parser.h"
+#include "dsi_sim_bridge.h"
 #include "dsi_display_manager.h"
 #include "dsi_hfi.h"
 #include "hfi_kms.h"
@@ -74,7 +76,7 @@ bool is_skip_op_required(struct dsi_display *display)
 	return (display->is_cont_splash_enabled || display->trusted_vm_env);
 }
 
-static bool is_sim_panel(struct dsi_display *display)
+bool is_sim_panel(struct dsi_display *display)
 {
 	if (!display || !display->panel)
 		return false;
@@ -768,7 +770,14 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 			flags |= DSI_CTRL_CMD_NON_EMBEDDED_MODE;
 		}
 
-		if (display->config.esync_enabled && !(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE))
+		/*
+		 * Set flag to send multiple DMA in a single HS burst.
+		 * NOT applicable in command non-embedded mode and should be disabled.
+		 */
+
+		if (!(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE) &&
+				(display->config.esync_enabled ||
+				display->panel->panel_mode == DSI_OP_VIDEO_MODE))
 			flags |= DSI_CTRL_CMD_MULTI_DMA_BURST;
 		else
 			flags &= ~DSI_CTRL_CMD_MULTI_DMA_BURST;
@@ -843,11 +852,13 @@ static int dsi_display_read_status(struct dsi_display_ctrl *ctrl,
 	 * report a false ESD failure and hence we defer until next read
 	 * happen.
 	 */
-	if (!dsi_ctrl_validate_host_state(ctrl->ctrl))
-		return 1;
+	if (display->ctrl->ctrl->disp_op != MSM_DISP_OP_HFI) {
+		if (!dsi_ctrl_validate_host_state(ctrl->ctrl))
+			return 1;
 
-	if (phy_pll_bypass(display))
-		return 0;
+		if (phy_pll_bypass(display))
+			return 0;
+	}
 
 	config = &(panel->esd_config);
 	lenp = config->status_valid_params ?: config->status_cmds_rlen;
@@ -866,22 +877,38 @@ static int dsi_display_read_status(struct dsi_display_ctrl *ctrl,
 		cmds[i].msg.rx_len = config->status_cmds_rlen[i];
 		cmds[i].ctrl_flags = flags;
 		dsi_display_set_cmd_tx_ctrl_flags(display,&cmds[i]);
-		rc = dsi_ctrl_transfer_prepare(ctrl->ctrl, cmds[i].ctrl_flags);
-		if (rc) {
-			DSI_ERR("prepare for rx cmd transfer failed rc=%d\n", rc);
-			return rc;
-		}
 
-		rc = dsi_ctrl_cmd_transfer(ctrl->ctrl, &cmds[i], false);
-		if (rc <= 0) {
-			DSI_ERR("rx cmd transfer failed rc=%d\n", rc);
+		if (display->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI) {
+
+			if (!dsi_hfi_host_transfer_sub(&display->host, &cmds[i])) {
+				rc = cmds[i].msg.rx_len;
+
+				memcpy(config->return_buf + start,
+					config->status_buf, lenp[i]);
+				start += lenp[i];
+			} else {
+				DSI_ERR("rx cmd transfer failed.\n");
+			}
+
 		} else {
-			memcpy(config->return_buf + start,
-				config->status_buf, lenp[i]);
-			start += lenp[i];
+			rc = dsi_ctrl_transfer_prepare(ctrl->ctrl, cmds[i].ctrl_flags);
+			if (rc) {
+				DSI_ERR("prepare for rx cmd transfer failed rc=%d\n", rc);
+				return rc;
+			}
+
+			rc = dsi_ctrl_cmd_transfer(ctrl->ctrl, &cmds[i], false);
+			if (rc <= 0) {
+				DSI_ERR("rx cmd transfer failed rc=%d\n", rc);
+			} else {
+				memcpy(config->return_buf + start,
+					config->status_buf, lenp[i]);
+				start += lenp[i];
+			}
+
+			dsi_ctrl_transfer_unprepare(ctrl->ctrl, cmds[i].ctrl_flags);
 		}
 
-		dsi_ctrl_transfer_unprepare(ctrl->ctrl, cmds[i].ctrl_flags);
 	}
 
 	return rc;
@@ -993,8 +1020,8 @@ static int dsi_display_status_check_te(struct dsi_display *display,
 		if (!wait_for_completion_timeout(&display->esd_te_gate,
 					esd_te_timeout)) {
 			DSI_ERR("TE check failed\n");
-			dsi_display_change_te_irq_status(display, false);
-			return -EINVAL;
+			rc = -EINVAL;
+			break;
 		}
 	}
 
@@ -1053,8 +1080,10 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 	}
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, status_mode, te_check_override);
 
-	if (te_check_override)
+	if (te_check_override) {
 		te_rechecks = MAX_TE_RECHECKS;
+		status_mode = ESD_MODE_PANEL_TE;
+	}
 
 	if ((dsi_display->trusted_vm_env) ||
 			(panel->panel_mode == DSI_OP_VIDEO_MODE))
@@ -1062,10 +1091,13 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 
 	dsi_display_set_ctrl_esd_check_flag(dsi_display, true);
 
-	dsi_display_clk_ctrl(dsi_display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
+	if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO) {
+		dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 
-	/* Disable error interrupts while doing an ESD check */
-	dsi_display_toggle_error_interrupt_status(dsi_display, false);
+		/* Disable error interrupts while doing an ESD check */
+		dsi_display_toggle_error_interrupt_status(dsi_display, false);
+	}
 
 	if (status_mode == ESD_MODE_REG_READ) {
 		rc = dsi_display_status_reg_read(dsi_display);
@@ -1093,11 +1125,14 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 	/* Handle Panel failures during display disable sequence */
 	if (rc <=0)
 		atomic_set(&panel->esd_recovery_pending, 1);
-	else
+	else if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO)
 		/* Enable error interrupts post an ESD success */
 		dsi_display_toggle_error_interrupt_status(dsi_display, true);
 
-	dsi_display_clk_ctrl(dsi_display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
+	if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO)
+		dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
+
 release_panel_lock:
 	dsi_panel_release_panel_lock(panel);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, rc);
@@ -1193,24 +1228,29 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
 		transfer = true;
 
 	mutex_lock(&dsi_display->display_lock);
-	rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
 
-	/**
-	 * Handle scenario where a command transfer is initiated through
-	 * sysfs interface when device is in suepnd state.
-	 */
-	if (!rc && !state) {
-		pr_warn_ratelimited("Command xfer attempted while device is in suspend state\n"
-				);
-		rc = -EPERM;
-		goto end;
+	if (dsi_display->ctrl[0].ctrl->disp_op != MSM_DISP_OP_HFI) {
+		rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
+
+		/**
+		 * Handle scenario where a command transfer is initiated through
+		 * sysfs interface when device is in suepnd state.
+		 */
+		if (!rc && !state) {
+			pr_warn_ratelimited("Command xfer attempted while device is in suspend state\n"
+					);
+			rc = -EPERM;
+			goto end;
+		}
+
+		if (rc || !state) {
+			DSI_ERR("[DSI] Invalid host state %d rc %d\n",
+					state, rc);
+			rc = -EPERM;
+			goto end;
+		}
 	}
-	if (rc || !state) {
-		DSI_ERR("[DSI] Invalid host state %d rc %d\n",
-				state, rc);
-		rc = -EPERM;
-		goto end;
-	}
+
 
 	SDE_EVT32(dsi_display->tx_cmd_buf_ndx, cmd_buf_len);
 
@@ -1249,7 +1289,11 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
 
 		dsi_panel_acquire_panel_lock(dsi_display->panel);
 		for (i = 0; i < cnt; i++) {
-			rc = dsi_host_transfer_sub(&dsi_display->host, cmds, do_peripheral_flush);
+			if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
+				rc = dsi_hfi_host_transfer_sub(&dsi_display->host, cmds);
+			else
+				rc = dsi_host_transfer_sub(&dsi_display->host, cmds,
+							do_peripheral_flush);
 			if (rc < 0) {
 				DSI_ERR("failed to send command, rc=%d\n", rc);
 				break;
@@ -1829,7 +1873,7 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 	struct dsi_display *display = file->private_data;
 	struct drm_panel_esd_config *esd_config;
 	char *buf;
-	int rc = 0;
+	int rc = 0, hfi_rc = 0;
 	size_t len;
 
 	if (!display)
@@ -1893,6 +1937,18 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 		esd_config->status_mode = ESD_MODE_SW_SIM_FAILURE;
 
 	rc = len;
+
+	if (display->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI) {
+		struct hfi_display_dbg_property dbg_prop = {
+			.prop_id = HFI_DISPLAY_DEBUG_ESD_CHECK_MODE,
+			.value_lsb = dsi_get_esd_status_mode_helper(esd_config->status_mode)
+		};
+
+		hfi_rc = hfi_connector_set_debug_prop(display->drm_conn, &dbg_prop);
+		if (hfi_rc)
+			DSI_ERR("Failed to update ESD check mode via HFI, rc=%d\n", hfi_rc);
+	}
+
 error:
 	kfree(buf);
 	return rc;
@@ -2239,7 +2295,7 @@ static int dsi_display_debugfs_deinit(struct dsi_display *display)
 #endif /* CONFIG_DEBUG_FS */
 
 static void adjust_timing_by_ctrl_count(const struct dsi_display *display,
-					struct dsi_display_mode *mode)
+					struct dsi_display_mode *mode, bool mode_set)
 {
 	struct dsi_host_common_cfg *host = &display->panel->host_config;
 	bool is_split_link = host->split_link.enabled;
@@ -2253,7 +2309,7 @@ static void adjust_timing_by_ctrl_count(const struct dsi_display *display,
 		mode->timing.h_skew /= sublinks_count;
 		mode->pixel_clk_khz /= sublinks_count;
 	} else {
-		if (mode->priv_info->dsc_enabled)
+		if (mode->priv_info->dsc_enabled && mode_set)
 			mode->priv_info->dsc.config.pic_width =
 				mode->timing.h_active;
 		mode->timing.h_active /= display->ctrl_count;
@@ -5335,7 +5391,7 @@ static int dsi_display_get_dfps_timing(struct dsi_display *display,
 	}
 
 	per_ctrl_mode = *adj_mode;
-	adjust_timing_by_ctrl_count(display, &per_ctrl_mode);
+	adjust_timing_by_ctrl_count(display, &per_ctrl_mode, false);
 
 	if (!curr_refresh_rate) {
 		if (!dsi_display_is_seamless_dfps_possible(display,
@@ -6526,7 +6582,7 @@ static int dsi_display_init(struct dsi_display *display)
 		if (rc) {
 			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
 					display->panel->name, rc);
-			return rc;
+			goto vreg_fail;
 		}
 	}
 
@@ -6548,10 +6604,20 @@ static int dsi_display_init(struct dsi_display *display)
 	}
 
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
-	if (rc)
+	if (rc) {
 		DSI_ERR("component add failed, rc=%d\n", rc);
+		goto comp_add_fail;
+	}
 
 	DSI_DEBUG("component add success: %s\n", display->name);
+	return rc;
+
+comp_add_fail:
+	if (display->panel)
+		dsi_pwr_enable_regulator(&display->panel->power_info, false);
+vreg_fail:
+	_dsi_display_dev_deinit(display);
+
 end:
 	return rc;
 }
@@ -8571,7 +8637,7 @@ int dsi_display_validate_mode(struct dsi_display *display,
 	mutex_lock(&display->display_lock);
 
 	adj_mode = *mode;
-	adjust_timing_by_ctrl_count(display, &adj_mode);
+	adjust_timing_by_ctrl_count(display, &adj_mode, false);
 
 	rc = dsi_panel_validate_mode(display->panel, &adj_mode);
 	if (rc) {
@@ -8632,7 +8698,7 @@ int dsi_display_set_mode(struct dsi_display *display,
 
 	/* hfi interface expects full horizontal timings, therefore skip adjustment */
 	if (display->panel->disp_op != MSM_DISP_OP_HFI)
-		adjust_timing_by_ctrl_count(display, &adj_mode);
+		adjust_timing_by_ctrl_count(display, &adj_mode, true);
 
 	if (!display->panel->cur_mode) {
 		display->panel->cur_mode =
@@ -10227,12 +10293,14 @@ void __init dsi_display_register(void)
 
 	dsi_display_parse_boot_display_selection();
 
+	dsi_sim_bridge_register();
 	platform_driver_register(&dsi_display_driver);
 }
 
 void __exit dsi_display_unregister(void)
 {
 	platform_driver_unregister(&dsi_display_driver);
+	dsi_sim_bridge_unregister();
 	dsi_ctrl_drv_unregister();
 	dsi_phy_drv_unregister();
 }

@@ -484,6 +484,7 @@ struct sde_hw_rc_state {
  * @ops: Pointer to operations possible for this DSPP
  * @ltm_checksum_support: flag to check if checksum present
  * @spr_cfg_18_default: Default SPR cfg 18 HW details. Needed for PU handling
+ * @demura_single_rec: demura config that fetch from single pipe
  * @rc_state: Structure for RC state
  * @dpu_idx: dpu index
  * @sde_kms: pointer to sde_kms
@@ -500,6 +501,7 @@ struct sde_hw_dspp {
 	bool sb_dma_in_use;
 	bool ltm_checksum_support;
 	u32 spr_cfg_18_default;
+	bool demura_single_rec;
 
 	/* Ops */
 	struct sde_hw_dspp_ops ops;

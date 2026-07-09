@@ -523,9 +523,10 @@
  * @BasicFuntionality - HFI_PROPERTY_DISPLAY_REUSABLE_FENCE
  *     (u32_key) payload [0]      : HFI_PROPERTY_DISPLAY_REUSABLE_FENCE |
  *                                  (version=0 << 20) | (dsize = 1 + (2 x count) << 24)
- *     (u32_value) payload [1]    : Reusable Fence Count
- *     (u32_value) payload [2]    : Reusable Fence Low
- *     (u32_value) payload [3-..] : Reusable Fence High
+ *     (u32_value) payload [1]    : Reusable Fence type | enum hfi_lsr_reusable_fence_type
+ *     (u32_value) payload [2]    : Number of fences
+ *     (u32_value) payload [3]    : Reusable Fence Low
+ *     (u32_value) payload [4..]  : Reusable Fence High
  */
 #define HFI_PROPERTY_DISPLAY_REUSABLE_FENCE                          0x00020023
 

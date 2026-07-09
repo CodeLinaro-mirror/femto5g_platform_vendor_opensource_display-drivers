@@ -2759,8 +2759,13 @@ int sde_dbg_setup(struct device *dev)
 		return -EINVAL;
 	}
 
-	if (priv && IS_DISP_OP_HFI(priv->disp_op))
+	if (priv && IS_DISP_OP_HFI(priv->disp_op)) {
 		ret = hfi_dbg_init(dev, dbg_base);
+		if (ret) {
+			pr_err("hfi dbg init failed  %d, debug disabled.\n", ret);
+			return ret;
+		}
+	}
 
 	return ret;
 }

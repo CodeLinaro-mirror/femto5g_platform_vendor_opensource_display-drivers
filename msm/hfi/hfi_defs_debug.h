@@ -229,4 +229,77 @@ struct hfi_debug_log_level_info {
 	uint32_t level_bitmask;
 };
 
+/**
+ * @enum hfi_display_dbg_property_id - Defines HFI debug property ID.
+ *
+ * @HFI_DISPLAY_DEBUG_ESD_CHECK_MODE     :  Property ID for esd check mode update
+ * @HFI_DISPLAY_DEBUG_ESD_CHECK_INTERVAL :  Property ID for status check interval update.
+ * @HFI_DISPLAY_DEBUG_UIDLE              :  Property ID for micro-idle (uidle) state query.
+ */
+enum hfi_display_dbg_property_id {
+	HFI_DISPLAY_DEBUG_ESD_CHECK_MODE           = 0x1,
+	HFI_DISPLAY_DEBUG_ESD_CHECK_INTERVAL       = 0x2,
+	HFI_DISPLAY_DEBUG_UIDLE                    = 0x3,
+};
+
+/**
+ * struct hfi_display_dbg_property - HFI DCP transfer display debug property.
+ *
+ * @display_id:       display_id of required display
+ * @prop_id:          Property id specified in enum hfi_display_dbg_property_id.
+ * @value_lsb:        Data value / LSB of payload address.
+ * @value_msb:        Data value / MSB of payload address.
+ * @reserved1:        Reserved for future use.
+ * @reserved2:        Reserved for future use.
+ */
+struct hfi_display_dbg_property {
+	u32 display_id;
+	enum hfi_display_dbg_property_id prop_id;
+
+	u32 value_lsb;
+	u32 value_msb;
+
+	u32 reserved1;
+	u32 reserved2;
+};
+
+/*!
+ * @enum hfi_debug_subsystem_property_id
+ * @brief Subsystem property id's.
+ *
+ * @var HFI_DEBUG_SUBSYSTEM_PROPERTY_TRIGGER_ERROR
+ *   Trigger subsystem error.
+ */
+enum hfi_debug_subsystem_property_id  {
+	HFI_DEBUG_SUBSYSTEM_PROPERTY_TRIGGER_ERROR,
+};
+
+/*!
+ * @struct hfi_debug_subsystem_property
+ * @brief HFI DCP receive subsystem debug property.
+ *
+ * @var subsystem_type
+ *   Subsystem type specified in enum hfi_subsystem_type.
+ * @var prop_id
+ *   Property id specified in enum hfi_debug_subsystem_property_id.
+ * @var value_lsb
+ *   Data value / LSB of payload address.
+ * @var value_msb
+ *   Data value / MSB of payload address.
+ * @var reserved1
+ *   Reserved for future use.
+ * @var reserved2
+ *   Reserved for future use.
+ */
+struct hfi_debug_subsystem_property {
+	enum hfi_subsystem_type subsystem_type;
+	enum hfi_debug_subsystem_property_id prop_id;
+
+	u32 value_lsb;
+	u32 value_msb;
+
+	u32 reserved1;
+	u32 reserved2;
+};
+
 #endif // __H_HFI_DEFS_DEBUG_H__

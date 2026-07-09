@@ -1886,7 +1886,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 		 * plane_cleanup. For example, wait for vsync in case of video
 		 * mode panels. This may be a no-op for command mode panels.
 		 */
-		SDE_EVT32_VERBOSE(DRMID(crtc));
+		SDE_EVT32_VERBOSE(DRMID(crtc), DRMID(encoder));
 		ret = sde_encoder_wait_for_event(encoder, cwb_disabling ?
 						MSM_ENC_TX_COMPLETE : MSM_ENC_COMMIT_DONE);
 		if (ret && ret != -EWOULDBLOCK) {
@@ -2460,6 +2460,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			SDE_ERROR("wb %d connector init failed\n", i);
 			sde_wb_drm_deinit(display);
 			sde_encoder_destroy(encoder);
+			continue;
 		}
 	}
 
@@ -2520,6 +2521,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			dsi_display_drm_bridge_deinit(display);
 			sde_connector_destroy(connector);
 			sde_encoder_destroy(encoder);
+			continue;
 		}
 
 		dsc_count += info.dsc_count;
@@ -2595,13 +2597,15 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 
-		if (IS_DISP_OP_HFI(priv->disp_op))
-			goto skip_dp_mst;
-
 		/* update display cap to MST_MODE for DP MST encoders */
-		info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
+		if (IS_DISP_OP_HWIO(priv->disp_op))
+			info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
 		for (idx = 0; idx < dp_info->stream_cnt &&
 				priv->num_encoders < max_encoders; idx++) {
+
+			if (IS_DISP_OP_HFI(priv->disp_op) && !idx)
+				continue;  /* use sst connector for stream 0 */
+
 			info.h_tile_instance[0] = dp_info->intf_idx[idx];
 			/*
 			 * use same sst cesta client for first mst encoder as sst/mst are
@@ -2620,18 +2624,44 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 				SDE_ERROR("dp mst encoder init failed %d\n", i);
 				continue;
 			}
-			rc = dp_mst_drm_bridge_init(display, encoder);
-			if (rc) {
-				SDE_ERROR("dp mst bridge %d init failed, %d\n",
-						i, rc);
-				sde_encoder_destroy(encoder);
-				continue;
+
+			if (IS_DISP_OP_HFI(priv->disp_op)) {
+				rc = dp_drm_bridge_init(display, encoder,
+						max_dp_mixer_count, max_dp_dsc_count);
+				if (rc) {
+					SDE_ERROR("dp bridge %d init failed, %d\n", i, rc);
+					sde_encoder_destroy(encoder);
+					continue;
+				}
+				connector = sde_connector_init(dev,
+							encoder,
+							NULL,
+							display,
+							&dp_ops,
+							DRM_CONNECTOR_POLL_HPD,
+							info.intf_type, false);
+				if (!IS_ERR_OR_NULL(connector)) {
+					priv->encoders[priv->num_encoders++] = encoder;
+					priv->connectors[priv->num_connectors++] = connector;
+				} else {
+					SDE_ERROR("dp %d connector init failed\n", i);
+					dp_drm_bridge_deinit(display);
+					sde_encoder_destroy(encoder);
+					continue;
+				}
+			} else if (IS_DISP_OP_HWIO(priv->disp_op)) {
+				rc = dp_mst_drm_bridge_init(display, encoder);
+				if (rc) {
+					SDE_ERROR("dp mst bridge %d init failed, %d\n",
+							i, rc);
+					sde_encoder_destroy(encoder);
+					continue;
+				}
+				priv->encoders[priv->num_encoders++] = encoder;
 			}
-			priv->encoders[priv->num_encoders++] = encoder;
 		}
 	}
 
-skip_dp_mst:
 	setup_hdmi_displays(dev, priv, sde_kms, max_encoders,
 				max_dp_mixer_count, max_dp_dsc_count);
 
@@ -2851,9 +2881,7 @@ static int sde_kms_hfi_boot_init(struct sde_kms *sde_kms)
 		return -EPROBE_DEFER;
 	}
 
-	ret = sde_dbg_setup(sde_kms->dev->dev);
-	if (ret)
-		SDE_ERROR("debug setup failed ret: %d\n", ret);
+	sde_dbg_setup(sde_kms->dev->dev);
 
 	return ret;
 }
@@ -5218,23 +5246,6 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	msm_atomic_flush_display_threads(priv);
 }
 
-int sde_kms_idle_timer_control(struct msm_kms *kms, bool timer_state)
-{
-	struct sde_kms *sde_kms = to_sde_kms(kms);
-	int ret = 0;
-
-	if (!sde_kms) {
-		SDE_ERROR("invalid sde_kms\n");
-		return -EINVAL;
-	}
-
-	ret = hfi_kms_send_idle_timer_ctrl(sde_kms->hfi_kms, timer_state);
-	if (ret)
-		SDE_ERROR("Failed to set idle timer state ret:%d\n", ret);
-
-	return ret;
-}
-
 void sde_kms_cancel_vrr_timers(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms;
@@ -5916,7 +5927,6 @@ static const struct msm_kms_funcs kms_funcs = {
 	.get_dsc_count = sde_kms_get_dsc_count,
 	.in_trusted_vm = sde_kms_in_trusted_vm,
 	.in_loopback_mode = sde_kms_in_loopback_mode,
-	.idle_timer_control = sde_kms_idle_timer_control,
 };
 
 static int _sde_kms_mmu_destroy(struct sde_kms *sde_kms)
@@ -5939,6 +5949,7 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 	struct msm_mmu *mmu;
 	struct resource *res;
 	struct platform_device *pdev;
+	struct device *iommu_dev;
 	int i, ret;
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
@@ -6008,21 +6019,26 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 		 * bootup by smmu through the device-tree hint for cont-spash
 		 */
 
+		iommu_dev = mmu->funcs->get_dev(mmu);
+
+		if (iommu_dev && iommu_dev->of_node &&
+			of_property_read_bool(iommu_dev->of_node, "qcom,iommu-earlymap")) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-		ret = mmu->funcs->enable_smmu_translations(mmu);
-		if (ret) {
-			SDE_ERROR("failed to enable_s1_translations ret:%d\n", ret);
-			goto enable_trans_fail;
-		}
+			ret = mmu->funcs->enable_smmu_translations(mmu);
+			if (ret) {
+				SDE_ERROR("failed to enable_s1_translations ret:%d\n", ret);
+				goto enable_trans_fail;
+			}
 #else
-		ret = mmu->funcs->set_attribute(mmu, DOMAIN_ATTR_EARLY_MAP,
-				 &early_map);
-		if (ret) {
-			SDE_ERROR("failed to set_att ret:%d, early_map:%d\n",
-					ret, early_map);
-			goto enable_trans_fail;
-		}
+			ret = mmu->funcs->set_attribute(mmu, DOMAIN_ATTR_EARLY_MAP,
+					 &early_map);
+			if (ret) {
+				SDE_ERROR("failed to set_att ret:%d, early_map:%d\n",
+						ret, early_map);
+				goto enable_trans_fail;
+			}
 #endif
+		}
 	}
 
 	sde_kms->base.aspace = sde_kms->aspace[0];

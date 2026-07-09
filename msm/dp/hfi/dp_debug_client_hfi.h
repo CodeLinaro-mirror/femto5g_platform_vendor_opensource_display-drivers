@@ -39,6 +39,9 @@ struct dp_debug_client_hfi_priv {
 	struct hfi_prop_listener hfi_cb_obj;  /* HFI callback listener object */
 	u32 hpd_pin_config;              /* Cached HPD pin config */
 	u32 hpd_orientation;             /* Cached HPD orientation */
+	struct hfi_shared_addr_map *dpcd_addr_map;
+	struct hfi_shared_addr_map *edid_addr_map;
+	struct hfi_shared_addr_map *info_addr_map;
 };
 
 /**

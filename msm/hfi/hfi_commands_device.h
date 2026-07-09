@@ -491,6 +491,25 @@
  */
 #define HFI_COMMAND_DEVICE_RESOURCE_CTRL                             0x01000014
 
+/*
+ * HFI_COMMAND_DEVICE_SUBSYSTEM_RESTART_NOTIFY - Host command sent to DCP to indicate a
+ *                           subsystem error. This command is sent as a
+ *                           notification to DCP that other subsystems are restarting.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets             : 1
+ *
+ * Data layout:
+ *  struct hfi_device_ssr_info
+ *
+ * hfi_packet.payload_info.type       : HFI_PAYLOAD_U32
+ *           .cmd                     : HFI_COMMAND_DEVICE_SUBSYSTEM_RESTART_NOTIFY
+ *           .flags                   : HFI_TX_FLAGS_RESPONSE_REQUIRED(optional) |
+ *                                      HFI_TX_FLAGS_NON_DISCARDABLE
+ *           .payload                 : struct hfi_device_ssr_info
+ */
+#define HFI_COMMAND_DEVICE_SUBSYSTEM_RESTART_NOTIFY                  0x01000015
+
 #define HFI_COMMAND_DEVICE_END                                       0x01FFFFFF
 
 #endif // __H_HFI_COMMANDS_DEVICE_H__

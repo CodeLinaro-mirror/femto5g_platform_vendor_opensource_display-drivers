@@ -738,6 +738,18 @@
  */
 #define HFI_PROPERTY_PANEL_ESYNC_CAPS				     0x00040032
 
+/*
+ * HFI_PROPERTY_PANEL_DFPS_CAPS - Specifies the DFPS capabilities supported by the panel.
+ *                                 This property is sent to DCP as part of
+ *                                 HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DFPS_CAPS
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DFPS_CAPS |
+ *                               (version=0 << 20) | (dsize=(4*count+1) << 24 )
+ *   (u32_value) payload[1]    : count of DFPS method supported
+ *   (u32_value) payload[2..]  : struct hfi_panel_dfps_caps for each count
+ */
+#define HFI_PROPERTY_PANEL_DFPS_CAPS                                 0x00040033
 
 /*
  * HFI_PROPERTY_PANEL_FREQ_PATTERN - Specifies the frequency stepping pattern of the panel.
@@ -804,17 +816,32 @@
 #define HFI_PROPERTY_PANEL_FREQ_PATTERN				     0x00040034
 
 /*
- * HFI_PROPERTY_PANEL_DFPS_CAPS - Specifies the DFPS capabilities supported by the panel.
- *                                 This property is sent to DCP as part of
+ * HFI_PROPERTY_PANEL_LP11_INIT - Specifies whether panel requires LP11_INIT mode.
+ *                                This property is sent to DCP as part of
+ *                                HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_LP11_INIT
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_LP11_INIT |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : 1 (enabled) or 0 (disabled)
+ */
+#define HFI_PROPERTY_PANEL_LP11_INIT                                 0x00040035
+
+/*
+ * HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW - Specifies the width of the DMA scheduling window,
+ *                                 expressed in number of display lines. Within this window,
+ *                                 the hardware automatically triggers DSI commands for
+ *                                 command‑mode panels. This property allows precise control
+ *                                 over when command transfers occur relative to the panel’s
+ *                                 refresh cycle. This property is sent to DCP as part of
  *                                 HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
  *
- * @PanelInit - HFI_PROPERTY_PANEL_DFPS_CAPS
- *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DFPS_CAPS |
- *                               (version=0 << 20) | (dsize=(4*count+1) << 24 )
- *   (u32_value) payload[1]    : count of DFPS method supported
- *   (u32_value) payload[2..]  : struct hfi_panel_dfps_caps for each count
+ * @PanelInit - HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : u32 dma_sched_window
  */
-#define HFI_PROPERTY_PANEL_DFPS_CAPS                                 0x00040033
+#define HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW                       0x00040036
 
 /*
  * All panel property IDs end here

@@ -316,7 +316,7 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 		struct sde_plane_state *pstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
 {
-	u32 prop_id, hfi_format, supported_rot, llcc_scid;
+	u32 prop_id, hfi_format, supported_rot, llcc_scid, adjusted_crtc_x;
 	struct hfi_display_roi src, dst;
 	struct drm_plane_state *state;
 	struct hfi_plane *phfi;
@@ -338,8 +338,17 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	fmt.fourcc_format = fb->format->format;
 	fmt.modifier = fb->modifier;
 
-	HFI_POPULATE_RECT(&src, state->src_x, state->src_y,	state->src_w, state->src_h, true);
-	HFI_POPULATE_RECT(&dst, state->crtc_x, state->crtc_y, state->crtc_w, state->crtc_h, false);
+	/*
+	 * Adjust crtc_x back to global coordinates system in quadpipe usecase. This allows the
+	 * driver to split the coordinates system in 2 and figure out left and right layout.
+	 */
+	adjusted_crtc_x = state->crtc_x;
+	if (pstate->layout_offset > 0)
+		adjusted_crtc_x += pstate->layout_offset;
+
+	HFI_POPULATE_RECT(&src, state->src_x, state->src_y, state->src_w, state->src_h, true);
+	HFI_POPULATE_RECT(&dst, adjusted_crtc_x, state->crtc_y, state->crtc_w, state->crtc_h,
+			false);
 
 	hfi_format = hfi_catalog_get_hfi_format(&fmt);
 
@@ -398,21 +407,20 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &attr, sizeof(struct dcp_cache_attr));
 
-	if (attr.cache_state != HFI_CACHE_STATE_DISABLE) {
+	if (sc_cfg) {
 		prop_id = HFI_PROPERTY_LAYER_LLCC_SCID;
-		if (!sc_cfg) {
-			HFI_ERROR_PLANE(phfi, "Invalid sc_cfg\n");
-			return -EINVAL;
-		}
 		llcc_scid = sc_cfg->llcc_scid;
-		SDE_EVT32(phfi->hfi_pipe_id, attr.cache_state, attr.cache_op_type, llcc_scid);
 		hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &llcc_scid, sizeof(u32));
+	} else if (attr.cache_state != HFI_CACHE_STATE_DISABLE) {
+		HFI_ERROR_PLANE(phfi, "Invalid sc_cfg when trying to enable LLCC\n");
+		rc = -EINVAL;
+		goto end;
 	}
 
 	HFI_DEBUG_PLANE(phfi, "done adding drm props\n");
-
-	return 0;
+end:
+	return rc;
 }
 
 int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,

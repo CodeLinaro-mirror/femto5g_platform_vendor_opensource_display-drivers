@@ -1068,6 +1068,7 @@ static int __interface_queues_init(struct lsr_device *dev)
 	if (dev->iface_q_table.align_virtual_addr) {
 		memset((void *)dev->iface_q_table.align_virtual_addr,
 				0, q_size);
+		dprintk(LSR_CORE, "Queue memory is reset\n");
 		goto arp_buf__init;
 	}
 	rc = __smem_alloc(dev, mem_addr, q_size, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
@@ -1365,7 +1366,7 @@ static int __hwfence_regs_unmap(struct lsr_device *device)
 int iris_hfi_core_init(void *device)
 {
 	int rc = 0;
-	u32 ipcc_iova;
+	u32 ipcc_iova = 0;
 	struct lsr_device *dev;
 
 	if (!device) {
@@ -1415,7 +1416,8 @@ int iris_hfi_core_init(void *device)
 	if (!rc) {
 		dprintk(LSR_CORE, "IPCC iova  : 0x%x\n", ipcc_iova);
 		__write_register(dev, CVP_MMAP_ADDR, ipcc_iova);
-	}
+	} else
+		goto err_core_init;
 
 	rc = __load_fw(dev);
 	if (rc) {
@@ -1466,6 +1468,7 @@ pm_qos_bail:
 	return 0;
 
 err_core_init:
+	msm_lsr_unmap_ipcc_regs(ipcc_iova);
 	__set_state(dev, IRIS_STATE_DEINIT);
 	__unload_fw(dev);
 err_load_fw:
@@ -1512,7 +1515,7 @@ static int iris_hfi_core_release(void *dev)
 
 	__disable_subcaches(device);
 	ipcc_iova = __read_register(device, CVP_MMAP_ADDR);
-	msm_lsr_unmap_ipcc_regs(ipcc_iova);
+
 	__unload_fw(device);
 	__hwfence_regs_unmap(device);
 
@@ -1756,14 +1759,103 @@ static void __dump_sfr_log(struct lsr_device *device)
 	}
 }
 
+static int lsr_ssr_handler(struct lsr_device *device,
+		enum lsr_subsytem_error_type ssr_error_type)
+{
+	int rc = 0, ref_count, wait_count = 0;
+
+	if (!device || !lsr_driver || !lsr_driver->drm_dev) {
+		dprintk(LSR_ERR, "Invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&device->lock);
+	if (atomic_read(&device->lsr_ssr_in_progress)) {
+		mutex_unlock(&device->lock);
+		dprintk(LSR_WARN, "LSR_SRR is already in progress\n");
+		return rc;
+	}
+
+	atomic_set(&device->lsr_ssr_in_progress, 1);
+	mutex_unlock(&device->lock);
+
+	dprintk(LSR_ERR, "LSR_SSR triggered with type:%d\n", ssr_error_type);
+
+	rc = hfi_lsr_notify_ssr_event(HFI_DEVICE_SSR_EVENT_START, lsr_driver->drm_dev);
+	if (rc) {
+		dprintk(LSR_ERR, "Failed to notify SSR event rc:%d\n", rc);
+		return rc;
+	}
+
+	__dump_sfr_log(device);
+
+	rc = hfi_lsr_wait_for_display_off(lsr_driver->drm_dev);
+	if (rc) {
+		dprintk(LSR_ERR, "LSR display wait for turn off failed rc:%d\n", rc);
+		return rc;
+	}
+
+	rc = lsr_fw_reset();
+	if (rc) {
+		dprintk(LSR_ERR, "Failed to reset LSR FW:%d\n", rc);
+		return rc;
+	}
+
+	rc = hfi_reset_hwfence(lsr_driver->drm_dev);
+	if (rc) {
+		dprintk(LSR_ERR, "failed to reset hwfence for DCP:%d\n", rc);
+		return rc;
+	}
+
+	do {
+		if (wait_count++ > 100) {
+			dprintk(LSR_ERR, "Timeout waiting for ref count to get to zero\n");
+			rc = -ETIMEDOUT;
+			break;
+		}
+		usleep_range(1000, 1000 + 10);
+		ref_count = atomic_read((atomic_t *)&device->ref_count);
+		if (!ref_count)
+			break;
+	} while (ref_count);
+
+	if (atomic_read(&device->lsr_ssr_in_progress)) {
+		mutex_lock(&device->lock);
+		atomic_set(&device->lsr_ssr_in_progress, 0);
+		mutex_unlock(&device->lock);
+	}
+
+	rc = hfi_lsr_notify_ssr_event(HFI_DEVICE_SSR_EVENT_END, lsr_driver->drm_dev);
+	if (rc) {
+		dprintk(LSR_ERR, "Failed to notify SSR event rc:%d\n", rc);
+		return rc;
+	}
+
+	return rc;
+}
+
 int __response_handler(struct lsr_device *device)
 {
 	int lsr_status = 0;
+	int rc = 0;
 
 	if (!device || device->state != IRIS_STATE_INIT)
 		return 0;
 
+	mutex_lock(&device->lock);
 	lsr_status = __read_register(device, LSR_CTRL_STATUS);
+	mutex_unlock(&device->lock);
+
+	if (lsr_status & BIT(LSR_STATUS_SYS_ERROR)) {
+		if (msm_lsr_enable_ssr) {
+			rc = lsr_ssr_handler(device, LSR_SUBSYSTEM_ERROR_TYPE_SYSTEM_ERROR);
+			if (rc)
+				dprintk(LSR_ERR, "LSR SSR handling failed %d\n", rc);
+		} else {
+			pr_err("LSR sys error detected\n");
+			lsr_panic();
+		}
+	}
 
 	if (device->intr_status & CVP_FATAL_INTR_BMSK) {
 		if (device->intr_status & LSR_WRAPPER_INTR_MASK_CPU_NOC_BMSK)
@@ -1776,15 +1868,7 @@ int __response_handler(struct lsr_device *device)
 
 	__flush_debug_queue(device, NULL);
 
-	if (lsr_status & BIT(LSR_STATUS_SYS_ERROR)) {
-		__dump_sfr_log(device);
-		if (!msm_lsr_enable_ssr) {
-			pr_err("LSR sys error detected\n");
-			lsr_panic();
-		}
-		/* TODO: Handle SSR cases once SSR is implemented */
-	}
-	return 0;
+	return rc;
 }
 
 irqreturn_t iris_hfi_core_work_handler(int irq, void *data)
@@ -1825,13 +1909,14 @@ irqreturn_t iris_hfi_core_work_handler(int irq, void *data)
 	}
 
 	__core_clear_interrupt(device);
-	num_responses = __response_handler(device);
-	dprintk(LSR_HFI, "%s:: lsr_driver_debug num_responses = %d ", __func__, num_responses);
 
 err_no_work:
 	/* Keep the interrupt status before releasing device lock */
 	intr_status = device->intr_status;
 	mutex_unlock(&device->lock);
+
+	num_responses = __response_handler(device);
+	dprintk(LSR_HFI, "%s:: lsr_driver_debug num_responses = %d ", __func__, num_responses);
 
 	/* We need re-enable the irq which was disabled in ISR handler */
 	if (!(intr_status & LSR_WRAPPER_INTR_STATUS_A2HWD_BMSK))
@@ -1842,12 +1927,28 @@ err_no_work:
 
 irqreturn_t lsr_wd_handler(int irq, void *data)
 {
-	if (!msm_lsr_enable_ssr) {
+	struct msm_lsr_core *core;
+	struct lsr_device *device;
+	int rc = 0;
+
+	core = lsr_driver->lsr_core;
+
+	if (core) {
+		device = core->dev_ops->hfi_device_data;
+	} else {
+		WARN_ONCE(true, "LSR Core is not created\n");
+		cur_irq_state = LSR_IRQ_CLEAR;
+		return IRQ_HANDLED;
+	}
+
+	if (msm_lsr_enable_ssr) {
+		rc = lsr_ssr_handler(device, LSR_SUBSYSTEM_ERROR_TYPE_WATCHDOG_TIMEOUT);
+		if (rc)
+			dprintk(LSR_ERR, "SSR handling failed %d\n", rc);
+	} else {
 		pr_err("LSR watchdog is detected\n");
 		lsr_panic();
 	}
-	/* TODO: Handle SSR cases once SSR is implemented */
-
 	return IRQ_HANDLED;
 }
 
@@ -3020,6 +3121,7 @@ static struct lsr_device *__add_device(struct msm_lsr_platform_resources *res)
 
 	mutex_init(&hdevice->lock);
 	hdevice->ref_count = 0;
+	atomic_set(&hdevice->lsr_ssr_in_progress, 0);
 
 	return hdevice;
 
@@ -3179,13 +3281,6 @@ fail_reset_sleep:
 static int __power_on_core_v1(struct lsr_device *device)
 {
 	int rc = 0;
-
-	rc = msm_lsr_prepare_enable_clk(device, "core_freerun_clk");
-	if (rc) {
-		dprintk(LSR_PWR, "Failed to enable core_freerun_clk: %d\n", rc);
-		// TODO: check with clk team for merge of fix
-		// This will fail always, calling once as a workaround
-	}
 
 	if (device->res->framework_type) {
 		/* Using GenPD */
@@ -3578,5 +3673,43 @@ int lsr_iris_hfi_initialize(struct lsr_hfi_ops *ops_tbl,
 	lsr_init_hfi_callbacks(ops_tbl);
 
 err_iris_hfi_init:
+	return rc;
+}
+
+int lsr_fw_reset(void)
+{
+	struct msm_lsr_core *core;
+	struct lsr_device *device;
+	struct lsr_hfi_ops *ops_tbl;
+	int rc = 0;
+
+	core = lsr_driver->lsr_core;
+	if (core)
+		device = core->dev_ops->hfi_device_data;
+	else {
+		WARN_ONCE(true, "LSR Core is not created\n");
+		return -EINVAL;
+	}
+
+	ops_tbl = core->dev_ops;
+
+	rc = call_hfi_op(ops_tbl, core_release, ops_tbl->hfi_device_data);
+	if (rc) {
+		dprintk(LSR_ERR, "core_release failed: %d\n", rc);
+		return rc;
+	}
+
+	rc = synx_recover(device->hwfence_data.hw_fence_handle->type);
+	if (rc) {
+		dprintk(LSR_ERR, "failed to reset client %d\n", rc);
+		return rc;
+	}
+
+	rc = call_hfi_op(ops_tbl, core_init, ops_tbl->hfi_device_data);
+	if (rc) {
+		dprintk(LSR_ERR, "core_init failed: %d\n", rc);
+		return rc;
+	}
+
 	return rc;
 }

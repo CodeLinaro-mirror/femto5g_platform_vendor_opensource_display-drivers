@@ -18,6 +18,8 @@
 #define REG_MASK_ULL(n)                 ((BIT_ULL(n)) - 1)
 #define REG_MASK_SHIFT_ULL(n, shift)    ((REG_MASK_ULL(n)) << (shift))
 #define LP_DDR4_TYPE			0x7
+#define LP_DDR5_TYPE			0x8
+#define LP_DDR6_TYPE			0x9
 
 struct sde_format_extended;
 

@@ -157,7 +157,7 @@ static int dp_aux_switch_init(struct dp_aux_switch *aux_switch)
 
 	priv = container_of(aux_switch, struct dp_aux_switch_priv, aux_switch);
 
-	if (priv->aux_switch_ready) {
+	if (priv->aux_switch_ready || priv->switch_type == DP_AUX_SWITCH_BYPASS) {
 		rc = 0;
 		goto end;
 	}
@@ -231,9 +231,6 @@ struct dp_aux_switch *dp_aux_switch_get(struct device *dev)
 		priv->switch_type = DP_AUX_SWITCH_WCD939x;
 	else
 		priv->switch_type = DP_AUX_SWITCH_BYPASS;
-
-	if (priv->switch_type == DP_AUX_SWITCH_BYPASS)
-		goto bail;
 
 	DP_DEBUG("DP AUX SWITCH: %s\n", priv->aux_switch_node->name);
 

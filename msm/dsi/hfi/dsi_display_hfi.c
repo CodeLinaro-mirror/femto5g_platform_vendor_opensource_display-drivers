@@ -49,7 +49,8 @@ int dsi_display_hfi_panel_enable_supplies(struct dsi_display *display, bool enab
 	mutex_lock(&display->panel->panel_lock);
 
 	if (enable) {
-		if (display->panel->powered)
+		/* If LP11_INIT is set, panel will be powered up after display enable */
+		if (display->panel->powered || display->panel->lp11_init)
 			goto error;
 
 		DSI_DEBUG("powering on panel\n");
@@ -166,6 +167,8 @@ end:
 int dsi_display_hfi_enable(struct dsi_display *display)
 {
 	struct sde_kms *sde_kms;
+	struct msm_kms *msm_kms;
+	bool is_cont_splash = false;
 	struct hfi_kms *hfi_kms;
 	struct hfi_client_t *hfi_client;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_ENABLE;
@@ -174,9 +177,18 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 	if (display->trusted_vm_env)
 		return rc;
 
+	if (!display->panel) {
+		DSI_ERR("invalid panel\n");
+		return -EINVAL;
+	}
+
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)
 		return -EINVAL;
+
+	msm_kms = &sde_kms->base;
+	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
+		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
 
 	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms)
@@ -193,6 +205,27 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 	}
 
 	display->panel->panel_initialized = true;
+
+	/*
+	 * If LP11_INIT is set, please ensure custom dcs on commands are sent after panel power on.
+	 */
+	mutex_lock(&display->panel->panel_lock);
+	if (display->panel->lp11_init && !display->panel->powered) {
+		DSI_DEBUG("powering on panel\n");
+		rc = dsi_panel_power_on(display->panel, is_cont_splash);
+		if (rc) {
+			DSI_ERR("dsi panel failed to enable power supplies\n");
+			mutex_unlock(&display->panel->panel_lock);
+			return rc;
+		}
+
+		display->panel->powered = true;
+
+		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_SET_CUSTOM_ON, false);
+		if (rc)
+			DSI_ERR("Could not send custom dcs on cmd, rc=%d\n", rc);
+	}
+	mutex_unlock(&display->panel->panel_lock);
 
 error:
 	return rc;

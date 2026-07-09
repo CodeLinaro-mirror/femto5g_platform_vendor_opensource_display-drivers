@@ -2,7 +2,9 @@
 
 DISPLAY_ROOT=$(ROOTDIR)display/vendor/qcom/opensource/display-drivers
 CONFIG_DRM_MSM=$(MODULE_DRM_MSM)
+CONFIG_DRM_LT9611UXD=$(MODULE_DRM_LT9611UXD)
 KBUILD_OPTIONS := DISPLAY_ROOT=$(DISPLAY_ROOT) CONFIG_DRM_MSM=$(CONFIG_DRM_MSM)
+KBUILD_OPTIONS += CONFIG_DRM_LT9611UXD=$(CONFIG_DRM_LT9611UXD)
 
 ifeq ($(TARGET_SUPPORT),genericarmv8)
 	KBUILD_OPTIONS += CONFIG_ARCH_SUN=y
@@ -11,6 +13,7 @@ ifeq ($(TARGET_SUPPORT),genericarmv8)
 endif
 
 obj-m += msm/
+obj-m += bridge-drivers/
 
 all:
 	$(MAKE) -C $(KERNEL_SRC) M=$(M) modules $(KBUILD_OPTIONS)

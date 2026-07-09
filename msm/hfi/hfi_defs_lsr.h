@@ -116,6 +116,7 @@ enum hfi_lsr_buffer_index {
 enum hfi_lsr_reusable_fence_type {
 	HFI_LSR_REUSABLE_FENCE_GCX_OUT_BUFFERS,
 	HFI_LSR_REUSABLE_FENCE_INVALIDATE_GFX_IN_BUFFERS,
+	HFI_LSR_REUSABLE_FENCE_MAX,
 };
 
 /**

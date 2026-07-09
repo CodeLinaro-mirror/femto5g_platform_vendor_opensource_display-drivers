@@ -285,10 +285,12 @@ static int dp_parser_gpio(struct dp_parser *parser)
 
 		if (!gpio_is_valid(mp->gpio_config[i].gpio)) {
 			DP_DEBUG("%s gpio not specified\n", dp_gpios[i]);
-			/* In case any gpio was not specified, we think gpio
-			 * aux switch also was not specified.
+			/* In case aux-sel and aux-en gpio was not specified,
+			 * we think gpio aux switch also was not specified.
 			 */
-			parser->gpio_aux_switch = false;
+			if (i == DP_GPIO_AUX_SEL || i == DP_GPIO_AUX_ENABLE)
+				parser->gpio_aux_switch = false;
+
 			continue;
 		}
 

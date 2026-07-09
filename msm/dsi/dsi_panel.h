@@ -196,6 +196,7 @@ enum esd_check_status_mode {
 
 struct drm_panel_esd_config {
 	bool esd_enabled;
+	bool esd_host_controlled;
 
 	enum esd_check_status_mode status_mode;
 	struct dsi_panel_cmd_set status_cmd;
@@ -605,4 +606,7 @@ int dsi_panel_power_on(struct dsi_panel *panel, bool is_cont_splash);
 int dsi_panel_power_off(struct dsi_panel *panel);
 
 int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel);
+
+int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
+		enum dsi_cmd_set_type type, bool do_peripheral_flush);
 #endif /* _DSI_PANEL_H_ */

@@ -76,6 +76,7 @@ struct bus_info {
 	struct devfreq *devfreq;
 	struct icc_path *client;
 	bool is_prfm_gov_used;
+	struct mutex lock;
 };
 
 struct bus_set {
