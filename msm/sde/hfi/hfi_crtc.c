@@ -157,8 +157,10 @@ static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate, struct sde
 		lm_cfg.height = 0;
 	}
 
-	rc = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop, HFI_VAL_U32_ARRAY,
-		&lm_cfg, sizeof(struct hfi_resource_cfg));
+	if (lm_cfg.width && lm_cfg.height) {
+		rc = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+			HFI_VAL_U32_ARRAY, &lm_cfg, sizeof(struct hfi_resource_cfg));
+	}
 
 	return rc;
 }
