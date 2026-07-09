@@ -100,7 +100,7 @@ struct device *dp_hdcp_get_msm_hdcp_dev(void)
 int dp_hdcp1x_start(void *input, u32 *aksv_msb, u32 *aksv_lsb)
 {
 	struct dp_hdcp1x_ctx *ctx = input;
-	int rc;
+	int rc __maybe_unused;
 
 	if (!ctx || !aksv_msb || !aksv_lsb) {
 		DP_ERR("invalid input\n");
@@ -140,7 +140,7 @@ int dp_hdcp1x_start(void *input, u32 *aksv_msb, u32 *aksv_lsb)
 void dp_hdcp1x_set_enc(void *input, bool enable)
 {
 	struct dp_hdcp1x_ctx *ctx = input;
-	int rc;
+	int rc __maybe_unused;
 
 	if (!ctx) {
 		DP_ERR("invalid input\n");
@@ -173,7 +173,7 @@ void dp_hdcp1x_topology_update(void *input, u32 depth, u32 device_count,
 			     u32 max_devices_exceeded, u32 max_cascade_exceeded)
 {
 	struct dp_hdcp1x_ctx *ctx = input;
-	int rc;
+	int rc __maybe_unused;
 
 	if (!ctx) {
 		DP_ERR("invalid input\n");
@@ -444,7 +444,7 @@ void dp_hdcp2x_deinit(void *input)
 int dp_hdcp2x_start(void *input, uint8_t **ake_init, uint32_t *ake_init_len)
 {
 	struct dp_hdcp2x_ctx *ctx = input;
-	int rc;
+	int rc __maybe_unused;
 
 	if (!ctx || !ake_init || !ake_init_len) {
 		DP_ERR("invalid input\n");
@@ -583,7 +583,7 @@ int dp_hdcp2x_process_msg(void *input, uint8_t *req_buf, uint32_t req_len, uint8
 	uint32_t *resp_len, bool *repeater_flag, uint32_t *timeout_ms)
 {
 	struct dp_hdcp2x_ctx *ctx = input;
-	int rc;
+	int rc __maybe_unused;
 
 	if (!ctx || !req_buf || !resp_buf || !resp_len || !repeater_flag || !timeout_ms) {
 		DP_ERR("invalid input\n");
@@ -675,7 +675,7 @@ int dp_hdcp2x_timeout(void *input, uint8_t *req_buf, uint32_t req_len, uint8_t *
 	uint32_t *resp_len)
 {
 	struct dp_hdcp2x_ctx *ctx = input;
-	int rc;
+	int rc __maybe_unused;
 
 	if (!ctx || !resp_buf || !resp_len) {
 		DP_ERR("invalid input\n");
@@ -727,7 +727,7 @@ int dp_hdcp2x_timeout(void *input, uint8_t *req_buf, uint32_t req_len, uint8_t *
 int dp_hdcp2x_query_stream(void *input, uint8_t **resp_buf, uint32_t *resp_len)
 {
 	struct dp_hdcp2x_ctx *ctx = input;
-	int rc;
+	int rc __maybe_unused;
 
 	if (!ctx || !resp_buf || !resp_len) {
 		DP_ERR("invalid input\n");

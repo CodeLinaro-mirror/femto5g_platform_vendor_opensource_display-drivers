@@ -36,9 +36,7 @@
 #include "dp_hdcp.h"
 #include "dp_drm.h"
 #include "dp_altmode.h"
-#if IS_ENABLED(CONFIG_HDCP_QSEECOM)
 #include "linux/msm_hdcp.h"
-#endif
 
 #define DRM_DP_IPC_NUM_PAGES 10
 #define HPD_STRING_SIZE	    30
