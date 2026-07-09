@@ -2122,7 +2122,7 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 		for (i = 0; i < num_mixers && !ret; i++) {
 			hw_lm = sde_crtc->mixers[i].hw_lm;
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
-			if (!hw_lm) {
+			if (!hw_lm || !hw_dspp) {
 				ret = -EINVAL;
 				continue;
 			}
@@ -2170,7 +2170,7 @@ disable_feature:
 		for (i = 0; i < num_mixers && !ret; i++) {
 			hw_lm = sde_crtc->mixers[i].hw_lm;
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
-			if (!hw_lm) {
+			if (!hw_lm || !hw_dspp) {
 				ret = -EINVAL;
 				continue;
 			}
@@ -2599,6 +2599,10 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 		for (j = 0; j < hw_cfg.num_of_mixers; j++) {
 			hw_lm = sde_crtc->mixers[j].hw_lm;
 			hw_dspp = sde_crtc->mixers[j].hw_dspp;
+			if (!hw_lm || !hw_dspp) {
+				ret = -EINVAL;
+				continue;
+			}
 			hw_cfg.dspp_idx = hw_dspp->idx;
 			hw_cfg.mixer_info = hw_lm;
 			hw_cfg.ctl = sde_crtc->mixers[j].hw_ctl;
@@ -3373,7 +3377,7 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 		for (i = 0; i < num_mixers && !ret; i++) {
 			hw_lm = sde_crtc->mixers[i].hw_lm;
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
-			if (!hw_lm) {
+			if (!hw_lm || !hw_dspp) {
 				ret = -EINVAL;
 				continue;
 			}
