@@ -2467,11 +2467,11 @@ msm_gem_smmu_address_space_get(struct drm_device *dev,
 	const struct msm_kms_funcs *funcs;
 	struct msm_gem_address_space *aspace;
 
-	if (!mdss_iommu_present(dev))
-		return ERR_PTR(-ENODEV);
-
 	if ((!dev) || (!dev->dev_private))
 		return ERR_PTR(-EINVAL);
+
+	if (!mdss_iommu_present(dev))
+		return ERR_PTR(-ENODEV);
 
 	priv = dev->dev_private;
 	kms = priv->kms;

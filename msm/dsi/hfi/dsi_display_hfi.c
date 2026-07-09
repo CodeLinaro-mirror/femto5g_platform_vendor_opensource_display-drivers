@@ -514,6 +514,12 @@ static void dsi_display_aspace_cb_locked(void *cb_data, bool is_detach)
 		msm_gem_put_vaddr(display->tx_cmd_buf);
 		msm_gem_vunmap(display->tx_cmd_buf, OBJ_LOCK_NORMAL);
 
+		if (display->tx_cmd_buf_non_embedded) {
+			display->cmd_buffer_iova_non_embedded = 0;
+			msm_gem_put_vaddr(display->tx_cmd_buf_non_embedded);
+			msm_gem_vunmap(display->tx_cmd_buf_non_embedded, OBJ_LOCK_NORMAL);
+		}
+
 	} else {
 		rc = msm_gem_get_iova(display->tx_cmd_buf,
 				display->aspace, &(display->cmd_buffer_iova));
@@ -528,6 +534,23 @@ static void dsi_display_aspace_cb_locked(void *cb_data, bool is_detach)
 		if (IS_ERR_OR_NULL(display->vaddr)) {
 			DSI_ERR("failed to get va rc %d\n", rc);
 			goto end;
+		}
+
+		if (display->tx_cmd_buf_non_embedded) {
+			rc = msm_gem_get_iova(display->tx_cmd_buf_non_embedded,
+					display->aspace, &(display->cmd_buffer_iova_non_embedded));
+			if (rc) {
+				DSI_ERR("failed to get non-embedded iova rc %d\n", rc);
+				goto end;
+			}
+
+			display->vaddr_non_embedded =
+				(void *) msm_gem_get_vaddr(display->tx_cmd_buf_non_embedded);
+
+			if (IS_ERR_OR_NULL(display->vaddr_non_embedded)) {
+				DSI_ERR("failed to get non-embedded va rc %d\n", rc);
+				goto end;
+			}
 		}
 	}
 
@@ -600,6 +623,62 @@ free_gem:
 	mutex_lock(&display->drm_dev->struct_mutex);
 #endif
 	msm_gem_free_object(display->tx_cmd_buf);
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
+	mutex_unlock(&display->drm_dev->struct_mutex);
+#endif
+error:
+	return rc;
+}
+
+int dsi_hfi_host_alloc_cmd_tx_buffer_non_embedded(struct dsi_display *display)
+{
+	int rc = 0;
+
+	if (!display->aspace) {
+		DSI_ERR("non-embedded cmd tx buffer allocation failed: aspace is not initialized\n");
+		rc = -EINVAL;
+		goto error;
+	}
+
+	display->tx_cmd_buf_non_embedded = msm_gem_new(display->drm_dev,
+			DSI_TX_CMD_BUF_NON_EMBEDDED_SIZE,
+			MSM_BO_UNCACHED);
+
+	if ((display->tx_cmd_buf_non_embedded) == NULL) {
+		DSI_ERR("Failed to allocate non-embedded cmd tx buf memory\n");
+		rc = -ENOMEM;
+		goto error;
+	}
+
+	display->cmd_buffer_size_non_embedded = DSI_TX_CMD_BUF_NON_EMBEDDED_SIZE;
+
+	rc = msm_gem_get_iova(display->tx_cmd_buf_non_embedded, display->aspace,
+				&(display->cmd_buffer_iova_non_embedded));
+	if (rc) {
+		DSI_ERR("failed to get the iova for non-embedded buf rc %d\n", rc);
+		goto free_gem;
+	}
+
+	display->vaddr_non_embedded =
+		(void *)msm_gem_get_vaddr(display->tx_cmd_buf_non_embedded);
+
+	if (IS_ERR_OR_NULL(display->vaddr_non_embedded)) {
+		DSI_ERR("failed to get va for non-embedded buf rc %d\n", rc);
+		rc = -EINVAL;
+		goto put_iova;
+	}
+
+	return rc;
+
+put_iova:
+	msm_gem_put_iova(display->tx_cmd_buf_non_embedded, display->aspace);
+	display->cmd_buffer_iova_non_embedded = 0;
+free_gem:
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
+	mutex_lock(&display->drm_dev->struct_mutex);
+#endif
+	msm_gem_free_object(display->tx_cmd_buf_non_embedded);
+	display->tx_cmd_buf_non_embedded = NULL;
 #if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_unlock(&display->drm_dev->struct_mutex);
 #endif

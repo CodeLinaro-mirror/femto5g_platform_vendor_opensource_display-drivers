@@ -107,6 +107,7 @@ struct dp_mgr_hfi_priv {
 	struct dp_intf_info intf_info;
 	struct dp_hpd *hpd;
 	struct dp_hpd_cb hpd_cb;
+	struct dp_parser *parser;
 
 	struct dp_aux_switch *aux_switch;
 	struct dp_display_mode default_mode;
@@ -140,8 +141,13 @@ struct dp_mgr_hfi_priv {
 
 	u32 active_streams;
 
+	bool aux_params_valid;
+
 	/* TUI state */
 	bool tui_active;
+
+	/* Set once panel generic caps have been sent to DCP */
+	bool generic_caps_sent;
 };
 
 int dp_mgr_hfi_send_audio_config(struct dp_client *client,

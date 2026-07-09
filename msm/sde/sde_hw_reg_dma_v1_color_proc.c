@@ -7555,6 +7555,12 @@ void reg_dmav1_setup_spr_udc_cfgv2(struct sde_hw_dspp *ctx, void *cfg)
 			uint32_t index  = i * (SPR_UDC_PARAM_SIZE_2 / 3);
 			uint32_t line_cnt = (lines[i] + 1) >> 1;
 
+			if (line_cnt > SPR_UDC_MAX_REG_CNT) {
+				DRM_ERROR("invalid UDC line_cnt %u for region %u\n",
+					  line_cnt, i);
+				goto cleanup;
+			}
+
 			if (i == 0)
 				j = (SPR_UDC_PARAM_SIZE_2 / 12) * 2;
 			else if (i == 1)
@@ -9546,6 +9552,8 @@ void reg_dmav1_setup_qrtc_config_v1(struct sde_hw_dspp *ctx, void *cfg, void *bu
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, QRTC);
 
 	hfi_cfg.flags = hw_cfg->flags;
+	if (qrtc_buffer->flags & HFI_QRTC_SECURE_BUFF)
+		hfi_cfg.flags = hw_cfg->flags | HFI_QRTC_SECURE_BUFF;
 	hfi_cfg.lut_dma_flags = hw_cfg->flags;
 	hfi_cfg.iova_l = (kick_off.dma_buf->iova & 0xFFFFFFFF);
 	hfi_cfg.iova_h = (kick_off.dma_buf->iova >> 32) & 0xFFFFFFFF;

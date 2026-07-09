@@ -956,9 +956,9 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 			}
 		}
 #if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
-	sgt = dma_buf_map_attachment_unlocked(data->srcp_attachment, dir);
+		sgt = dma_buf_map_attachment_unlocked(data->srcp_attachment, dir);
 #else
-	sgt = dma_buf_map_attachment(data->srcp_attachment, dir);
+		sgt = dma_buf_map_attachment(data->srcp_attachment, dir);
 #endif
 
 		if (IS_ERR_OR_NULL(sgt) ||

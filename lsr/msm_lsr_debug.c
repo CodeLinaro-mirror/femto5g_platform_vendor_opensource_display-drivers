@@ -50,6 +50,25 @@ DEFINE_DEBUGFS_ATTRIBUTE(lsr_fw_debug_fops, _lsr_fw_debug_get, _lsr_fw_debug_set
 
 static int _lsr_ssr_trigger(void *data, u64 val)
 {
+	struct msm_lsr_core *core;
+	struct lsr_device *device;
+
+	core = lsr_driver->lsr_core;
+	if (core) {
+		device = core->dev_ops->hfi_device_data;
+	} else {
+		dprintk(LSR_ERR, "Invalid lsr core\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&device->lock);
+	if (!device->power_enabled) {
+		dprintk(LSR_ERR, "LSR state is inactive, SSR valid only when LSR is active\n");
+		mutex_unlock(&device->lock);
+		return -EINVAL;
+	}
+
+	mutex_unlock(&device->lock);
 	return hfi_lsr_trigger_ssr(val, lsr_driver->drm_dev);
 }
 

@@ -493,4 +493,19 @@ int dsi_hfi_send_dcs_cmd_set_replace_cmd(struct dsi_display *display, bool resp_
  */
 int dsi_hfi_exec_dcs_cmd_type(struct dsi_display *display, u32 cmd_type, bool resp_req);
 
+/**
+ * dsi_hfi_tx_cmd_set() - transfers a set of DSI write commands from host to DCP
+ *                        in a single HFI operation
+ * @display:              pointer to the DSI display structure
+ * @cmd_set:              pointer to the panel command set containing an array of DSI commands
+ *
+ * Packs all commands in @cmd_set into a single HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET
+ * packet, copying all TX payloads into one contiguous DCP-mapped shared memory region.
+ * This avoids the per-command HFI round-trip overhead of dsi_hfi_host_transfer_sub().
+ * Only write (TX) commands are supported; read commands are not handled by this function.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dsi_hfi_tx_cmd_set(struct dsi_display *display, struct dsi_panel_cmd_set *cmd_set);
+
 #endif

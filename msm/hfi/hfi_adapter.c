@@ -1058,7 +1058,7 @@ static void _hfi_adapter_remove_listeners_by_event(struct hfi_client_t *ctx,
 
 	list_for_each_safe(pos, temp, &ctx->packet_listeners.list_ptr) {
 		listener_entry = list_entry(pos, struct listener_list, list_ptr);
-		if (!listener_entry || !listener_entry->listener_obj)
+		if (!listener_entry->listener_obj)
 			continue;
 
 		/*
@@ -1514,11 +1514,6 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 		mutex_lock(&ctx->listener_lock);
 		list_for_each(pos, &ctx->packet_listeners.list_ptr) {
 			listener_entry = list_entry(pos, struct listener_list, list_ptr);
-			if (!listener_entry) {
-				HFI_AD_DEBUG("listener_entry is NULL\n");
-				continue;
-			}
-
 			if (!listener_entry->listener_obj) {
 				HFI_AD_ERROR("[warning] no listener's attached\n");
 				ret = -HFI_ERROR;
@@ -1606,8 +1601,6 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 	mutex_lock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
 	list_for_each_safe(pos, updated_pos, &ctx->cmd_buf_list) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
-		if (!buf_entry)
-			continue;
 
 		if (buf_entry->unique_id == cmd_buf->unique_id) {
 			HFI_AD_DEBUG("matched response buf 0x%x to original 0x%x at ktime:%llu\n",
@@ -1777,10 +1770,8 @@ void hfi_adapter_deinit(struct hfi_client_t *ctx)
 	if (!list_empty(&ctx->cmd_buf_list)) {
 		list_for_each_safe(pos, updated_pos, &ctx->cmd_buf_list) {
 			buf = list_entry(pos, struct hfi_cmdbuf_t, node);
-			if (buf) {
-				i++;
-				_release_tx_buffers(buf);
-			}
+			i++;
+			_release_tx_buffers(buf);
 		}
 	}
 	mutex_unlock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
@@ -1789,11 +1780,9 @@ void hfi_adapter_deinit(struct hfi_client_t *ctx)
 	mutex_lock(&ctx->listener_lock);
 	list_for_each_safe(pos, updated_pos, &ctx->packet_listeners.list_ptr) {
 		listener_entry = list_entry(pos, struct listener_list, list_ptr);
-		if (listener_entry) {
-			list_del(pos);
-			kfree(listener_entry);
-			i++;
-		}
+		list_del(pos);
+		kfree(listener_entry);
+		i++;
 	}
 	mutex_unlock(&ctx->listener_lock);
 
@@ -1989,9 +1978,6 @@ int hfi_adapter_release_all_cmd_bufs(struct hfi_client_t *client)
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
 	list_for_each_safe(pos, updated_pos, &client->cmd_buf_list) {
 		cmd_buf = list_entry(pos, struct hfi_cmdbuf_t, node);
-		if (!cmd_buf)
-			continue;
-
 		ret = hfi_adapter_release_cmd_buf_no_lock(client, cmd_buf);
 		if (ret)
 			HFI_AD_ERROR("failed to release cmd buf, ret: %d\n", ret);

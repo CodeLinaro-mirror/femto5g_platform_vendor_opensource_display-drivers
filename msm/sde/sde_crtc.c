@@ -1106,7 +1106,7 @@ static void sde_crtc_destroy(struct drm_crtc *crtc)
 
 	drm_crtc_cleanup(crtc);
 	mutex_destroy(&sde_crtc->crtc_lock);
-	kfree(sde_crtc);
+	kvfree(sde_crtc);
 }
 
 static struct sde_connector_state *_sde_crtc_get_sde_connector_state(struct drm_crtc *crtc,
@@ -3344,6 +3344,10 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 			hw_ctl = sde_crtc->mixers[lm_idx].hw_ctl;
 			hw_ds  = sde_crtc->mixers[lm_idx].hw_ds;
 			hw_dspp = sde_crtc->mixers[lm_idx].hw_dspp;
+			if (!hw_dspp) {
+				SDE_ERROR("no dspp assigned for mixer %d\n", lm_idx);
+				continue;
+			}
 
 			hw_ds->ctl = hw_ctl;
 			if (IS_DISP_OP_HFI(disp_op))
@@ -10158,7 +10162,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	priv = dev->dev_private;
 	kms = to_sde_kms(priv->kms);
 
-	sde_crtc = kzalloc(sizeof(*sde_crtc), GFP_KERNEL);
+	sde_crtc = kvzalloc(sizeof(*sde_crtc), GFP_KERNEL);
 	if (!sde_crtc)
 		return ERR_PTR(-ENOMEM);
 
@@ -10168,7 +10172,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	if (IS_DISP_OP_HFI(priv->disp_op)) {
 		rc = hfi_crtc_init(sde_crtc);
 		if (rc) {
-			kfree(sde_crtc);
+			kvfree(sde_crtc);
 			return ERR_PTR(rc);
 		}
 	}
@@ -10232,7 +10236,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	if (rc) {
 		drm_crtc_cleanup(crtc);
 		kfree(sde_crtc->hfi_crtc);
-		kfree(sde_crtc);
+		kvfree(sde_crtc);
 		return ERR_PTR(rc);
 	}
 
@@ -10243,7 +10247,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 		rc = PTR_ERR(sde_crtc->output_fence);
 		SDE_ERROR("failed to init fence, %d\n", rc);
 		drm_crtc_cleanup(crtc);
-		kfree(sde_crtc);
+		kvfree(sde_crtc);
 		return ERR_PTR(rc);
 	}
 

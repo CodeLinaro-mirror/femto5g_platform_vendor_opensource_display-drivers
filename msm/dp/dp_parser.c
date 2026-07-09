@@ -96,7 +96,7 @@ static void dp_parser_phy_aux_cfg_reset(struct dp_parser *parser)
 		parser->aux_cfg[i] = (const struct dp_aux_cfg){ 0 };
 }
 
-static int dp_parser_aux(struct dp_parser *parser)
+int dp_parser_aux(struct dp_parser *parser)
 {
 	struct device_node *of_node = parser->pdev->dev.of_node;
 	int len = 0, i = 0, j = 0, config_count = 0;
@@ -903,7 +903,7 @@ static void dp_parser_clear_link_training_params(struct dp_parser *dp_parser)
 	dp_parser->valid_lt_params = false;
 }
 
-static void dp_parser_link_training_params(struct dp_parser *parser)
+void dp_parser_link_training_params(struct dp_parser *parser)
 {
 	struct device *dev = &parser->pdev->dev;
 	int ret = 0;

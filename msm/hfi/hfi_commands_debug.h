@@ -492,6 +492,30 @@
 #define HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY                      0xFF000014
 
 /*
+ * HFI_COMMAND_DEBUG_DUMP_ALL is sent from Host to DCP to trigger a dump of all debug data
+ * into the pre-allocated memory buffers. Upon receiving this command, DCP will dump all
+ * properties that were previously configured via HFI_COMMAND_DEBUG_SETUP into their
+ * respective memory locations. Once the dump is complete, DCP replies with success to Host.
+ *
+ * Prerequisites:
+ *  Before sending this command, Host must first send HFI_COMMAND_DEBUG_SETUP to establish
+ *  the memory buffer addresses for all properties to be dumped. If this setup command is
+ *  not sent beforehand, HFI_COMMAND_DEBUG_DUMP_ALL will fail.
+
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_NONE
+ *           .cmd                      : HFI_COMMAND_DEBUG_DUMP_ALL
+ *           .flags                    : HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_NONE
+ *           .cmd                      : HFI_COMMAND_DEBUG_DUMP_ALL
+ *           .flags                    : HFI_RX_FLAGS_SUCCESS
+ */
+#define HFI_COMMAND_DEBUG_DUMP_ALL                                   0xFF000015
+
+/*
  * DP Simulation HFI commands
  */
 #define HFI_COMMAND_DEBUG_DP_BEGIN                                     0xFF000500

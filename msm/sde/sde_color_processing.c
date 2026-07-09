@@ -1291,6 +1291,7 @@ static void _sde_cp_crtc_unmap_qrtc_buffer(struct sde_crtc *sde_crtc)
 	sde_crtc->qrtc_buffer.gem = NULL;
 	sde_crtc->qrtc_buffer.aspace = NULL;
 	sde_crtc->qrtc_buffer.fb = NULL;
+	sde_crtc->qrtc_buffer.flags = 0;
 }
 
 static void _sde_cp_crtc_map_qrtc_buffer(struct sde_crtc *sde_crtc, void *cfg)
@@ -1303,6 +1304,7 @@ static void _sde_cp_crtc_map_qrtc_buffer(struct sde_crtc *sde_crtc, void *cfg)
 	struct drm_crtc *crtc;
 	u32 size = 0, expected_size = 0, cached_fd = 0;
 	int ret = 0;
+	enum msm_mmu_domain_type buffer_domain_type = MSM_SMMU_DOMAIN_UNSECURE;
 
 	if (!sde_crtc || !cfg) {
 		DRM_ERROR("invalid parameters sde_crtc %pK cfg %pK\n", sde_crtc, cfg);
@@ -1320,6 +1322,9 @@ static void _sde_cp_crtc_map_qrtc_buffer(struct sde_crtc *sde_crtc, void *cfg)
 		DRM_ERROR("invalid QRTC buffer config\n");
 		return;
 	}
+
+	if (buf_cfg->flags & QRTC_SECURE_BUFF)
+		buffer_domain_type = MSM_SMMU_DOMAIN_SECURE;
 
 	cached_fd = sde_crtc->qrtc_buffer.drm_fb_id;
 	if (cached_fd >= 0 && buf_cfg->fd == cached_fd) {
@@ -1360,7 +1365,7 @@ static void _sde_cp_crtc_map_qrtc_buffer(struct sde_crtc *sde_crtc, void *cfg)
 		drm_framebuffer_put(fb);
 		return;
 	}
-	aspace = msm_gem_smmu_address_space_get(crtc->dev, MSM_SMMU_DOMAIN_UNSECURE);
+	aspace = msm_gem_smmu_address_space_get(crtc->dev, buffer_domain_type);
 	if (PTR_ERR(aspace) == -ENODEV) {
 		DRM_DEBUG("IOMMU not present, relying on VRAM\n");
 	} else if (IS_ERR_OR_NULL(aspace)) {
@@ -1380,6 +1385,8 @@ static void _sde_cp_crtc_map_qrtc_buffer(struct sde_crtc *sde_crtc, void *cfg)
 	sde_crtc->qrtc_buffer.drm_fb_id = buf_cfg->fd;
 	sde_crtc->qrtc_buffer.len = size;
 	sde_crtc->qrtc_buffer.format = buf_cfg->format;
+	if (buf_cfg->flags & QRTC_SECURE_BUFF)
+		sde_crtc->qrtc_buffer.flags = HFI_QRTC_SECURE_BUFF;
 
 	return;
 exit:
@@ -2115,7 +2122,7 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 		for (i = 0; i < num_mixers && !ret; i++) {
 			hw_lm = sde_crtc->mixers[i].hw_lm;
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
-			if (!hw_lm) {
+			if (!hw_lm || !hw_dspp) {
 				ret = -EINVAL;
 				continue;
 			}
@@ -2163,7 +2170,7 @@ disable_feature:
 		for (i = 0; i < num_mixers && !ret; i++) {
 			hw_lm = sde_crtc->mixers[i].hw_lm;
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
-			if (!hw_lm) {
+			if (!hw_lm || !hw_dspp) {
 				ret = -EINVAL;
 				continue;
 			}
@@ -2592,6 +2599,10 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 		for (j = 0; j < hw_cfg.num_of_mixers; j++) {
 			hw_lm = sde_crtc->mixers[j].hw_lm;
 			hw_dspp = sde_crtc->mixers[j].hw_dspp;
+			if (!hw_lm || !hw_dspp) {
+				ret = -EINVAL;
+				continue;
+			}
 			hw_cfg.dspp_idx = hw_dspp->idx;
 			hw_cfg.mixer_info = hw_lm;
 			hw_cfg.ctl = sde_crtc->mixers[j].hw_ctl;
@@ -3366,7 +3377,7 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 		for (i = 0; i < num_mixers && !ret; i++) {
 			hw_lm = sde_crtc->mixers[i].hw_lm;
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
-			if (!hw_lm) {
+			if (!hw_lm || !hw_dspp) {
 				ret = -EINVAL;
 				continue;
 			}

@@ -27,6 +27,7 @@
 #include "sde_dbg.h"
 #include "sde_edid_parser.h"
 #include "hfi_commands_device.h"
+#include "hfi_commands_panel.h"
 #include "dp_aux_switch.h"
 #include "hfi_defs_display.h"
 #include "dp_panel_tu.h"
@@ -1319,6 +1320,21 @@ static int dp_mgr_hfi_send_transfer_unit(struct dp_mgr_hfi_priv *hfi_priv,
 		HFI_HOST_FLAGS_NON_DISCARDABLE);
 }
 
+static int dp_mgr_hfi_parser(struct dp_mgr_hfi_priv *hfi_priv)
+{
+	struct dp_parser *parser = hfi_priv->parser;
+	int rc = 0;
+
+	hfi_priv->aux_params_valid = false;
+	rc = dp_parser_aux(parser);
+	if (!rc)
+		hfi_priv->aux_params_valid = true;
+
+	dp_parser_link_training_params(parser);
+
+	return 0;
+}
+
 int dp_mgr_hfi_set_mode(struct dp_client *client, int panel_id, struct dp_display_mode *mode)
 {
 	struct hfi_client_t *hfi_client;
@@ -1631,12 +1647,23 @@ static int dp_mgr_hfi_request_irq(struct dp_client *client)
 
 static void dp_mgr_hfi_post_open(struct dp_client *client)
 {
+	struct dp_mgr_hfi_priv *hfi_priv;
+	struct dp_hfi *hfi;
+
 	if (!client) {
 		DP_ERR("Invalid params\n");
 		return;
 	}
 
 	DP_DEBUG("HFI post open\n");
+
+	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+	hfi = hfi_priv->hfi[0];
+
+	if (!hfi_priv->generic_caps_sent && hfi) {
+		dp_hfi_send_panel_generic_caps(hfi);
+		hfi_priv->generic_caps_sent = true;
+	}
 }
 
 static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 size)
@@ -3057,6 +3084,10 @@ static void dp_mgr_hfi_unbind(struct device *dev, struct device *master,
 		dp_hpd_put(hfi_priv->hpd);
 		hfi_priv->hpd = NULL;
 	}
+	if (hfi_priv->parser) {
+		dp_parser_put(hfi_priv->parser);
+		hfi_priv->parser = NULL;
+	}
 }
 
 static struct dp_intf_info *dp_mgr_hfi_get_info(struct dp_client *client)
@@ -3367,6 +3398,18 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_
 	client->dp_ipc_log = ipc_log_context_create(DRM_DP_IPC_NUM_PAGES, "drm_dp", 0);
 	if (!client->dp_ipc_log)
 		DP_WARN("Error in creating ipc_log_context for drm_dp\n");
+
+	hfi_priv->parser = dp_parser_get(pdev);
+	if (IS_ERR(hfi_priv->parser)) {
+		rc = PTR_ERR(hfi_priv->parser);
+		DP_ERR("failed to initialize parser, rc = %d\n", rc);
+		hfi_priv->parser = NULL;
+		goto bail;
+	}
+
+	rc = dp_mgr_hfi_parser(hfi_priv);
+	if (rc)
+		DP_WARN("Failed to parse, ret:%d\n", rc);
 
 	/* Setup HFI-specific DRM operations */
 	drm_ops->enable        = dp_mgr_hfi_enable;

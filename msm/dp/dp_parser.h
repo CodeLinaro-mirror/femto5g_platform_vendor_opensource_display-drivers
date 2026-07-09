@@ -356,6 +356,32 @@ enum dp_mainlink_lane_num {
 struct dp_parser *dp_parser_get(struct platform_device *pdev);
 
 /**
+ * dp_parser_aux() - parses the DP PHY AUX configuration from device tree
+ *
+ * @parser: pointer to the parser's data.
+ * return: 0 on success, negative error code on failure.
+ *
+ * This function reads the PHY AUX config register offsets and their
+ * corresponding LUT values from the device tree and populates the
+ * aux_cfg array in the dp_parser structure.
+ */
+int dp_parser_aux(struct dp_parser *parser);
+
+/**
+ * dp_parser_link_training_params() - parses voltage swing and pre-emphasis
+ *                                    tables from device tree
+ *
+ * @parser: pointer to the parser's data.
+ *
+ * This function reads the per-rate voltage swing and pre-emphasis LUT values
+ * (HBR/RBR and HBR2/HBR3) from the device tree and populates the
+ * swing_hbr_rbr, pre_emp_hbr_rbr, swing_hbr2_3 and pre_emp_hbr2_3 arrays
+ * in the dp_parser structure. Falls back to default values when the device
+ * tree properties are absent.
+ */
+void dp_parser_link_training_params(struct dp_parser *parser);
+
+/**
  * dp_parser_put() - cleans the dp_parser module
  *
  * @parser: pointer to the parser's data.

@@ -1009,12 +1009,12 @@ struct hfi_cmdbuf_t *hfi_plane_get_cmd_buf(struct drm_plane *plane)
 		return NULL;
 	}
 
-	if (plane->state && plane->state->crtc) {
+	if (plane->state && plane->state->crtc)
 		drm_crtc = plane->state->crtc;
-		if (!drm_crtc) {
-			SDE_ERROR("invalid drm_crtc\n");
-			return NULL;
-		}
+
+	if (!drm_crtc) {
+		SDE_ERROR("invalid drm_crtc\n");
+		return NULL;
 	}
 	disp_id = hfi_crtc_get_display_id(drm_crtc, drm_crtc->state);
 	if (disp_id == U32_MAX) {
