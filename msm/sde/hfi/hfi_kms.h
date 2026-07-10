@@ -25,9 +25,9 @@
  * Qtimer runs at 19.2 MHz timer, the accurate conversion to ns is
  * (qtimer * 10 * 1000) / 192
  */
-#define QTIMER_TO_NS(qtimer) (((qtimer) * 10 * 1000) / 192)
-#define QTIMER_TO_US(qtimer) (QTIMER_TO_NS(qtimer)  / 1000)
-#define NS_TO_QTIMER(ns) (((ns) * 192) / (10 * 1000))
+#define QTIMER_TO_NS(qtimer) (((uint64_t)(qtimer) * 10ULL * 1000ULL) / 192ULL)
+#define QTIMER_TO_US(qtimer) (QTIMER_TO_NS(qtimer)  / 1000ULL)
+#define NS_TO_QTIMER(ns) (((uint64_t)(ns) * 192ULL) / (10ULL * 1000ULL))
 
 /*
  * hfi_catalog_base - base struct for sde HW information
