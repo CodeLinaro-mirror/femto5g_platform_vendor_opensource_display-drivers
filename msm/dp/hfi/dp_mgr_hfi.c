@@ -3327,6 +3327,7 @@ static bool dp_mgr_hfi_hpd_detect(struct dp_client *client, int panel_id)
 	struct dp_mgr_hfi_priv *hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
 	u32 stream_id;
 	struct dp_hfi *hfi;
+	bool connected;
 
 	if (panel_id > DP_STREAMS_MAX)
 		return false;
@@ -3339,15 +3340,17 @@ static bool dp_mgr_hfi_hpd_detect(struct dp_client *client, int panel_id)
 	if (!hfi)
 		return false;
 
-	/* if dp was unplugged mark all streams as disconnected */
-	if (!hfi_priv->connected)
-		hfi->connected = false;
+	mutex_lock(&hfi_priv->hpd_mutex);
 
-	DP_DEBUG("conn %d panel %d stream %d status %d\n",
-			(hfi->connector ? hfi->connector->base.id : -1), panel_id,
-			stream_id, hfi->connected);
+	connected = hfi->connected;
 
-	return hfi->connected;
+	DP_DEBUG("conn=%d stream_id=%d connected=%d\n",
+				(hfi->connector ? hfi->connector->base.id : -1),
+				stream_id, connected);
+
+	mutex_unlock(&hfi_priv->hpd_mutex);
+
+	return connected;
 }
 
 void dp_mgr_hfi_set_mst_mode(struct dp_mgr_hfi_priv *hfi_priv, bool mst_en)
