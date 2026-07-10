@@ -787,6 +787,8 @@ static void dsi_get_panel_esd_config_helper(struct dsi_display *display,
 			cmd_desc->tx_len =       cmds[i].msg.tx_len;
 			cmd_desc->type =         cmds[i].msg.type;
 			cmd_desc->flags =        cmds[i].msg.flags | MIPI_DSI_MSG_UNICAST_COMMAND;
+			if (display->panel->esd_config.status_cmd.state == DSI_CMD_SET_STATE_LP)
+				cmd_desc->flags |= MIPI_DSI_MSG_USE_LPM;
 			cmd_desc->ctrl_idx =     cmds[i].ctrl;
 			cmd_desc->channel =      cmds[i].msg.channel;
 			cmd_desc->last_command = cmds[i].last_command;
