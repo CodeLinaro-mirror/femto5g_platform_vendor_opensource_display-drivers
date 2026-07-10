@@ -341,6 +341,10 @@ static int dsi_phy_settings_init(struct platform_device *pdev,
 	struct dsi_phy_per_lane_cfgs *strength = &phy->cfg.strength;
 	struct dsi_phy_per_lane_cfgs *timing = &phy->cfg.timing;
 	struct dsi_phy_per_lane_cfgs *regs = &phy->cfg.regulators;
+	struct dsi_phy_tuning_cfg *tuning = &phy->cfg.tuning;
+	u32 hstx[2] = {0, 0};
+	u32 rescode[3] = {0, 0, 0};
+	u32 ctrl2_val = 0, ldo0_lvl = 0, ldo1_lvl = 0;
 
 	lane->count_per_lane = phy->ver_info->lane_cfg_count;
 	rc = dsi_phy_parse_dt_per_lane_cfgs(pdev, lane,
@@ -371,6 +375,60 @@ static int dsi_phy_settings_init(struct platform_device *pdev,
 
 	/* Actual timing values are dependent on panel */
 	timing->count_per_lane = phy->ver_info->timing_cfg_count;
+
+	if (phy->disp_op == MSM_DISP_OP_HFI) {
+		tuning->is_valid = false;
+		tuning->flags = 0;
+
+		if (!of_property_read_u32_array(pdev->dev.of_node,
+				"qcom,platform-phy-hstx-str-ctrl", hstx, 2)) {
+			tuning->glbl_str_ctrl =
+				DSI_PHY_HSTX_STR_CTRL(hstx[0], hstx[1]);
+			tuning->flags |= DSI_PHY_GLBL_STR_CTRL_VALID;
+			DSI_PHY_DBG(phy,
+				"PHY tuning: HSTX_STR_CTRL_0=0x%02x (hstop=%u hsbot=%u)\n",
+				tuning->glbl_str_ctrl, hstx[0], hstx[1]);
+		}
+
+		if (!of_property_read_u32_array(pdev->dev.of_node,
+				"qcom,platform-phy-rescode-offset", rescode, 3)) {
+			tuning->glbl_rescode_top_ctrl = (u8)rescode[0];
+			tuning->glbl_rescode_bot_ctrl = (u8)rescode[1];
+			tuning->glbl_rescode_mid_ctrl = (u8)rescode[2];
+			tuning->flags |= DSI_PHY_GLBL_RESCODE_VALID;
+			DSI_PHY_DBG(phy,
+				"PHY tuning: RESCODE top=0x%02x bot=0x%02x mid=0x%02x\n",
+				tuning->glbl_rescode_top_ctrl,
+				tuning->glbl_rescode_bot_ctrl,
+				tuning->glbl_rescode_mid_ctrl);
+		}
+
+		if (!of_property_read_u32(pdev->dev.of_node,
+				"qcom,platform-phy-de-emphasis-ctrl", &ctrl2_val)) {
+			tuning->cmn_ctrl2 = (u8)ctrl2_val;
+			tuning->flags |= DSI_PHY_CMN_CTRL2_VALID;
+			DSI_PHY_DBG(phy, "PHY tuning: CTRL_2=0x%02x\n",
+				tuning->cmn_ctrl2);
+		}
+
+		if (!of_property_read_u32(pdev->dev.of_node,
+				"qcom,platform-phy-ldo-0p4-vreg-level", &ldo0_lvl) &&
+		    !of_property_read_u32(pdev->dev.of_node,
+				"qcom,platform-phy-ldo-0p2-vreg-level", &ldo1_lvl)) {
+			tuning->vreg_ctrl0 =
+				DSI_PHY_VREG_CTRL0_FROM_LVL(ldo0_lvl & 0x3);
+			tuning->vreg_ctrl1 = (u8)(ldo1_lvl & 0x3);
+			tuning->flags |= DSI_PHY_VREG_CTRL_VALID;
+			DSI_PHY_DBG(phy,
+				"PHY tune: ldo0=0x%02x ldo1=0x%02x V0=0x%02x V1=0x%02x\n",
+				ldo0_lvl, ldo1_lvl,
+				tuning->vreg_ctrl0,
+				tuning->vreg_ctrl1);
+		}
+
+		if (tuning->flags)
+			tuning->is_valid = true;
+	}
 
 	phy->allow_phy_power_off = of_property_read_bool(pdev->dev.of_node,
 			"qcom,panel-allow-phy-poweroff");
