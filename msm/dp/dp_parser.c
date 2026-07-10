@@ -141,6 +141,32 @@ error:
 	return -EINVAL;
 }
 
+void dp_parser_max_link_rate(struct dp_parser *parser)
+{
+	int rc = 0;
+	struct device_node *of_node = parser->pdev->dev.of_node;
+
+	rc = of_property_read_u32(of_node,
+		"qcom,max-lclk-frequency-khz", &parser->max_lclk_khz);
+	if (rc)
+		/* unable to parse device tree max-link-rate, HFI Prop will not be sent*/
+		parser->max_lclk_khz = 0;
+	return;
+}
+
+void dp_parser_max_lane_count(struct dp_parser *parser)
+{
+	int rc = 0;
+	struct device_node *of_node = parser->pdev->dev.of_node;
+
+	rc = of_property_read_u32(of_node,
+		"qcom,max-lane-count", &parser->max_lane_count);
+	if (rc)
+		/* unable to parse device tree max-link-rate, HFI Prop will not be sent*/
+		parser->max_lane_count = 0;
+	return;
+}
+
 static int dp_parser_misc(struct dp_parser *parser)
 {
 	int rc = 0, len = 0, i = 0;

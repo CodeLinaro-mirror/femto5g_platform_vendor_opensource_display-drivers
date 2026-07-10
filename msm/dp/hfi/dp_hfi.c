@@ -419,30 +419,28 @@ int dp_hfi_send_batch_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client, b
 	return rc;
 }
 
-static int dp_hfi_append_panel_generic_caps(struct dp_hfi *hfi, struct hfi_cmdbuf_t *buffer,
-		u32 object_id, u32 *size)
+/*
+ * _append_aux_cfg - Pack AUX config KV pairs into kv_props.
+ *
+ * aux_cfg_payload must remain valid until hfi_adapter_add_prop_array().
+ */
+static int _append_aux_cfg(struct dp_hfi *hfi, u32 *aux_cfg_payload)
 {
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
 	struct dp_parser *parsed;
 	struct dp_aux_cfg *aux_cfg;
 	struct hfi_util_kv_helper *kv_props = hfi->kv_props;
-	u32 aux_cfg_payload[1 + PHY_AUX_CFG_MAX];
-	u32 vswing_payload[NUM_BW_CODE][2 + NUM_VSWING_VAL];
-	u32 bw_code[NUM_BW_CODE] = {6, 10, 20, 30};
-	u32 kv_count, payload_size, aux_offset, kv_size = 0;
-	int i, j, rc = 0;
-	u8 *vswing_lut, *pre_emp_lut;
+	u32 aux_offset, kv_size = 0;
+	int i;
 
 	if (!hfi_priv->parser)
-		return -ENOMEM;
+		return kv_size;
+
 	parsed = hfi_priv->parser;
 	aux_cfg = parsed->aux_cfg;
 
-	kv_props = hfi_util_kv_helper_alloc(NUM_BW_CODE + 1);
 	if (!kv_props)
-		return -ENOMEM;
-
-	hfi_util_kv_helper_reset(kv_props);
+		return kv_size;
 
 	aux_cfg_payload[0] = PHY_AUX_CFG_MAX;
 	for (i = 0; i < PHY_AUX_CFG_MAX; i++) {
@@ -450,16 +448,43 @@ static int dp_hfi_append_panel_generic_caps(struct dp_hfi *hfi, struct hfi_cmdbu
 		aux_cfg_payload[i + 1] = ((u8)aux_offset << 16) | (u8)aux_cfg[i].lut[0];
 	}
 
-	if (hfi_priv->aux_params_valid) {
+	if (hfi_priv->aux_params_valid && aux_cfg_payload) {
 		hfi_util_kv_helper_add(kv_props,
-			HFI_PACKKEY(HFI_PROPERTY_PANEL_DP_AUX_CFG, 0,
-				((ARRAY_SIZE(aux_cfg_payload) *
-				sizeof(aux_cfg_payload[0])) / sizeof(u32))),
-			aux_cfg_payload);
-		kv_size += sizeof(aux_cfg_payload);
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_DP_AUX_CFG, 0,
+				(((PHY_AUX_CFG_MAX + 1) * sizeof(aux_cfg_payload[0]))
+				/ sizeof(u32))), aux_cfg_payload);
+		kv_size += PHY_AUX_CFG_MAX * sizeof(u32);
 	}
 
-	if (parsed->valid_lt_params) {
+	return kv_size;
+}
+
+/*
+ * _append_lt_params - Pack vswing/preemph KV pairs into kv_props.
+ *
+ * lt_params_payload must remain valid until hfi_adapter_add_prop_array().
+ */
+static int _append_lt_params(struct dp_hfi *hfi, u32 *payload)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
+	struct dp_parser *parsed;
+	struct hfi_util_kv_helper *kv_props = hfi->kv_props;
+	u32 bw_code[NUM_BW_CODE] = {6, 10, 20, 30};
+	u32 (*lt_params_payload)[2 + NUM_VSWING_VAL] = (u32 (*)[2 + NUM_VSWING_VAL])payload;
+	u32 kv_size = 0, lt_params_cols;
+	int i, j;
+	u8 *vswing_lut, *pre_emp_lut;
+
+	if (!hfi_priv->parser)
+		return kv_size;
+
+	parsed = hfi_priv->parser;
+
+	if (!kv_props)
+		return kv_size;
+
+	if (parsed->valid_lt_params && payload) {
+		lt_params_cols = 2 + NUM_VSWING_VAL;
 		for (i = 0; i < NUM_BW_CODE; i++) {
 			if (bw_code[i] <= DP_LINK_RATE_HBR) {
 				vswing_lut = parsed->swing_hbr_rbr;
@@ -469,77 +494,137 @@ static int dp_hfi_append_panel_generic_caps(struct dp_hfi *hfi, struct hfi_cmdbu
 				pre_emp_lut = parsed->pre_emp_hbr2_3;
 			}
 
-			vswing_payload[i][0] = bw_code[i];
-			vswing_payload[i][1] = NUM_VSWING_VAL;
+			lt_params_payload[i][0] = bw_code[i];
+			lt_params_payload[i][1] = NUM_VSWING_VAL;
 
-			for (j = 0; j < NUM_VSWING_VAL; j++) {
-				vswing_payload[i][j + 2] = (vswing_lut[j] << 16) | pre_emp_lut[j];
-			}
+			for (j = 0; j < NUM_VSWING_VAL; j++)
+				lt_params_payload[i][j + 2] =
+					(vswing_lut[j] << 16) | pre_emp_lut[j];
 
 			hfi_util_kv_helper_add(kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_DP_VOLTAGESWING_PREEMPHASIS, 0,
-					((ARRAY_SIZE(vswing_payload[i]) *
-					sizeof(vswing_payload[i][0])) / sizeof(u32))),
-				vswing_payload[i]);
-			kv_size += sizeof(vswing_payload[i]);
+					HFI_PACKKEY(HFI_PROPERTY_PANEL_DP_VOLTAGESWING_PREEMPHASIS,
+					0, lt_params_cols), lt_params_payload[i]);
+			kv_size += lt_params_cols * sizeof(u32);
 		}
+	}
+
+	return kv_size;
+}
+
+/*
+ * _append_max_link_params - Pack max link rate and lane count KV pairs.
+ *
+ * Uses &parsed->max_lclk_khz / max_lane_count as value pointers so the stored
+ * kv_pair stays valid until hfi_adapter_add_prop_array() is called.
+ */
+static int _append_max_link_params(struct dp_hfi *hfi)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
+	struct dp_parser *parsed;
+	struct hfi_util_kv_helper *kv_props = hfi->kv_props;
+	u32 kv_size = 0;
+
+	if (!hfi_priv->parser)
+		return kv_size;
+
+	parsed = hfi_priv->parser;
+
+	if (!kv_props)
+		return kv_size;
+
+	if (parsed->max_lclk_khz) {
+		hfi_util_kv_helper_add(kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_MAX_LINK_RATE, 0,
+				sizeof(parsed->max_lclk_khz) / sizeof(u32)),
+				&parsed->max_lclk_khz);
+		kv_size += sizeof(parsed->max_lclk_khz);
+	}
+
+	if (parsed->max_lane_count) {
+		hfi_util_kv_helper_add(kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_MAX_LANE_COUNT, 0,
+				sizeof(parsed->max_lane_count) / sizeof(u32)),
+				&parsed->max_lane_count);
+		kv_size += sizeof(parsed->max_lane_count);
+	}
+
+	return kv_size;
+}
+
+void dp_hfi_panel_init(struct dp_hfi *hfi)
+{
+	struct hfi_client_t *hfi_client = hfi->hfi_client;
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
+	struct hfi_util_kv_helper *kv_props;
+	struct hfi_cmdbuf_t *buffer;
+	u32 obj_id;
+	int rc = 0;
+
+	/* Declared here so they remain valid when hfi_adapter_add_prop_array()
+	 * uses the kv_pairs packed by _append_aux_cfg() and _append_lt_params().
+	 */
+	u32 aux_cfg_payload[PHY_AUX_CFG_MAX + 1];
+	u32 lt_params_payload[NUM_BW_CODE * (2 + NUM_VSWING_VAL)];
+	u32 kv_count, payload_size, kv_size = 0;
+
+	if (!hfi_client) {
+		DP_ERR("Failed to get HFI client for dp panel init\n");
+		return;
+	}
+
+	if (!hfi_priv || !hfi_priv->parser) {
+		DP_ERR("No parser available for dp panel init\n");
+		return;
+	}
+
+	obj_id = sde_conn_get_display_obj_id(hfi->connector);
+	buffer = hfi_adapter_get_cmd_buf(hfi_client, obj_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!buffer) {
+		DP_ERR("Failed to get cmd buffer for dp panel init\n");
+		return;
+	}
+
+	/* aux_cfg(1) + lt_params(NUM_BW_CODE) + max_link_rate(1) + max_lane_count(1) */
+	kv_props = hfi_util_kv_helper_alloc(1 + NUM_BW_CODE + 2);
+	if (!kv_props) {
+		DP_ERR("Failed to allocate kv_props for dp panel init\n");
+		hfi_adapter_release_cmd_buf(hfi_client, buffer);
+		return;
+	}
+
+	hfi->kv_props = kv_props;
+	hfi_util_kv_helper_reset(kv_props);
+
+	kv_size += _append_aux_cfg(hfi, aux_cfg_payload);
+	kv_size += _append_lt_params(hfi, lt_params_payload);
+	kv_size += _append_max_link_params(hfi);
+
+	if (!kv_size) {
+		DP_DEBUG("No dp panel init caps to send\n");
+		kfree(kv_props);
+		hfi_adapter_release_cmd_buf(hfi_client, buffer);
+		return;
 	}
 
 	kv_count = hfi_util_kv_helper_get_count(kv_props);
 	payload_size = (kv_count * sizeof(u32)) + kv_size;
-	*size = kv_size;
-
-	if (kv_size) {
-		rc = hfi_adapter_add_prop_array(buffer->ctx, buffer,
-				HFI_COMMAND_PANEL_INIT_GENERIC_CAPS,
-				object_id,
-				HFI_PAYLOAD_TYPE_U32_ARRAY,
-				hfi_util_kv_helper_get_payload_addr(kv_props),
-				kv_count,
-				payload_size);
-		if (rc)
-			DP_ERR("Failed to append HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, rc=%d\n", rc);
-	}
-
-	kfree(kv_props);
-	return rc;
-}
-
-void dp_hfi_send_panel_generic_caps(struct dp_hfi *hfi)
-{
-	struct hfi_client_t *hfi_client = hfi->hfi_client;
-	struct hfi_cmdbuf_t *buffer;
-	u32 obj_id, kv_size = 0;
-	int rc = 0;
-
-	if (!hfi_client) {
-		DP_ERR("Failed to get HFI client for dp panel generic caps\n");
-		return;
-	}
-	obj_id = sde_conn_get_display_obj_id(hfi->connector);
-	DP_ERR("object id from sde: %d\n", obj_id);
-
-	buffer = hfi_adapter_get_cmd_buf(hfi_client, obj_id,
-					HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
-	if (!buffer) {
-		DP_ERR("Failed to get cmd buffer for dp panel generic caps\n");
-		return;
-	}
-
-	rc = dp_hfi_append_panel_generic_caps(hfi, buffer, obj_id, &kv_size);
-	if (rc < 0) {
-		DP_ERR("Failed to append dp panel generic caps, rc=%d\n", rc);
-		hfi_adapter_release_cmd_buf(hfi_client, buffer);
-		return;
-	} else if (kv_size == 0) {
-		DP_DEBUG("No dp panel generic caps to send\n");
+	rc = hfi_adapter_add_prop_array(buffer->ctx, buffer,
+			HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, obj_id, HFI_PAYLOAD_TYPE_U32_ARRAY,
+			hfi_util_kv_helper_get_payload_addr(kv_props), kv_count, payload_size);
+	if (rc) {
+		DP_ERR("Failed to append HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, rc=%d\n", rc);
+		kfree(kv_props);
 		hfi_adapter_release_cmd_buf(hfi_client, buffer);
 		return;
 	}
 
 	rc = hfi_adapter_set_cmd_buf(hfi_client, buffer);
-	if (rc)
+	if (rc) {
 		DP_ERR("Failed to send HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, rc=%d\n", rc);
+		hfi_adapter_release_cmd_buf(hfi_client, buffer);
+	}
+
+	kfree(kv_props);
 }
 
 /**
