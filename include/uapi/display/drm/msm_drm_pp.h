@@ -954,6 +954,8 @@ struct drm_msm_rgb_hist_buffer {
 #define QRTC_RECT_MODE 0x0
 #define QRTC_PIPE_MODE 0x1
 
+/* Bit 0 of drm_msm_qrtc_buffer.flags will be used to indicate buffer type(secure or non-secure */
+#define QRTC_SECURE_BUFF   0x1
 struct drm_msm_qrtc_buffer {
 	__u32 fd;
 	__u32 width;
@@ -961,6 +963,7 @@ struct drm_msm_qrtc_buffer {
 	__u32 format;
 	__u32 aligned_height;
 	__u32 aligned_width;
+	__u32 flags;
 };
 
 struct drm_msm_qrtc_config {

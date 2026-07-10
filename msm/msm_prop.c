@@ -111,8 +111,6 @@ int msm_property_clear_dirty_list(struct msm_property_info *info,
 
 	list_for_each_entry_safe(property_state_entry, tmp, &property_state->dirty_list,
 		dirty_node) {
-		if (!property_state_entry)
-			continue;
 		list_del_init(&property_state_entry->dirty_node);
 	}
 

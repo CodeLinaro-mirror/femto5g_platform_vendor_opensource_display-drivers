@@ -523,6 +523,36 @@ struct hfi_dsi_cmd_desc {
 };
 
 /*
+ * struct hfi_dsi_cmd_desc_set - hfi dcp transfer a set of dcs commands
+ * @size      : Total size of this struct including the trailing cmds array
+ *              in bytes. Used for backward compatibility.
+ * @type      : Command set type. Mirrors enum dsi_cmd_set_type, identifying
+ *              which panel command set (e.g. ON, OFF, LP1) this transfer
+ *              belongs to.
+ * @count     : Number of DCS commands in the set.
+ * @state     : Command state (LP/HS mode). Mirrors enum dsi_cmd_set_state:
+ *              0 = DSI_CMD_SET_STATE_LP (low power),
+ *              1 = DSI_CMD_SET_STATE_HS (high speed).
+ * @reserved1 : Reserved for future use.
+ * @reserved2 : Reserved for future use.
+ * @cmds      : Flexible array of DCS command descriptors; @count entries
+ *              of struct hfi_dsi_cmd_desc immediately follow this header
+ *              in the allocated buffer.
+ *
+ * The TX payload data for each command resides in DCP-mapped shared memory
+ * whose address is carried inside each hfi_dsi_cmd_desc entry.
+ */
+struct hfi_dsi_cmd_desc_set {
+	u32 size;
+	u32 type;
+	u32 count;
+	u32 state;
+	u32 reserved1; /* Reserved for future use */
+	u32 reserved2; /* Reserved for future use */
+	struct hfi_dsi_cmd_desc cmds[];
+};
+
+/*
  * enum hfi_display_blend_stage - Defines blending stages
  * @HFI_BLEND_STAGE_BASE    :  base layer
  * @HFI_BLEND_STAGE_0       :  Blend Stage #0(One base layer + one foreground layer)
@@ -982,9 +1012,10 @@ struct hfi_hdcp2_message {
  *     Compressed bits per pixel.
  * @cmpr_slice_count:
  *     Number of compressed slices per line.
- * @reserved1:
- *     Reserved for future use.
- * @reserved2:
+ * @test_pattern:
+ *     DP compliance test pattern ID (DPCD 0x221). Set to the pattern requested
+ *     by the sink during a TEST_PATTERN compliance test; 0 in all other scenarios.
+ * @reserved:
  *     Reserved for future use.
  */
 struct hfi_display_mode_extended_info {
@@ -995,8 +1026,8 @@ struct hfi_display_mode_extended_info {
 	u32 cmpr_enabled;
 	u32 cmpr_bpp;
 	u32 cmpr_slice_count;
-	u32 reserved1;
-	u32 reserved2;
+	u8  test_pattern;
+	u8  reserved[7];
 };
 
 /*
@@ -1085,6 +1116,29 @@ struct hfi_batch_mode_info {
 	enum hfi_batch_mode mode;
 	enum hfi_batch_usecase_id usecase_id;
 	u32 reserved[2];
+};
+
+/**
+ * @def HFI_WB_DNSC_CFG_DISABLE
+ * @brief Set to disable WB downscaling for the output layer.
+ */
+#define HFI_WB_DNSC_CFG_DISABLE	(1 << 0)
+
+/*!
+ * @struct hfi_dnsc_cfg
+ * @brief Downscale configuration parameters for output layer.
+ *
+ * @var flags
+ *  Configuration flags for downscaling.
+ * @var dst_width
+ *  Destination width for downscaling operation.
+ * @var dst_height
+ *  Destination height for downscaling operation.
+ */
+struct hfi_dnsc_cfg {
+	u32 flags;
+	u32 dst_width;
+	u32 dst_height;
 };
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

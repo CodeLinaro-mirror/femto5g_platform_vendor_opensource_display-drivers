@@ -38,6 +38,14 @@
 #define SDE_WB_ROT_MAX_SRCW 4096
 #define SDE_WB_ROT_MAX_SRCH 4096
 
+/* WB DNSC dimension constraints (ratio limits come from per-device catalog caps) */
+#define WB_DNSC_SRC_MIN_DIM	16
+#define WB_DNSC_SRC_MAX_DIM	8192
+#define WB_DNSC_DST_MIN_DIM	4
+#define WB_DNSC_DST_MAX_DIM	8192
+
+#define POLL_WB_DETACH_TIMEOUT_US 33000
+
 static const u32 cwb_irq_tbl[PINGPONG_MAX] = {SDE_NONE, INTR_IDX_PP1_OVFL,
 	INTR_IDX_PP2_OVFL, INTR_IDX_PP3_OVFL, INTR_IDX_PP4_OVFL,
 	INTR_IDX_PP5_OVFL, SDE_NONE, SDE_NONE};
@@ -57,6 +65,228 @@ static struct sde_csc_cfg sde_encoder_phys_wb_rgb2yuv_601l = {
 	{ 0x000, 0x3ff, 0x000, 0x3ff, 0x000, 0x3ff },
 	{ 0x040, 0x3ac, 0x040, 0x3c0, 0x040, 0x3c0 },
 };
+
+/**
+ * _sde_wb_get_dnsc_tap_point_dims - resolve CWB tap point source dimensions
+ * @cstate: SDE connector state
+ * @new_crtc_state: new CRTC state (populated after drm_atomic_helper_check)
+ * @crtc: CRTC pointer
+ * @sw: output source width
+ * @sh: output source height
+ *
+ * For CAPTURE_MIXER_OUT: use DS output dims if DS is enabled, else LM ROI.
+ * For CAPTURE_DSPP_OUT / CAPTURE_DEMURA_OUT: use panel (CRTC) ROI.
+ * Falls back to mode->hdisplay/vdisplay when the ROI is unset (0,0).
+ */
+static void _sde_wb_get_dnsc_tap_point_dims(struct sde_connector_state *cstate,
+		struct drm_crtc_state *new_crtc_state, struct drm_crtc *crtc,
+		u32 *sw, u32 *sh)
+{
+	struct sde_crtc_state *sde_cstate = to_sde_crtc_state(new_crtc_state);
+	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	const struct drm_display_mode *mode = cstate->msm_mode.base;
+	int j;
+
+	*sw = 0;
+	*sh = 0;
+
+	if (!mode)
+		return;
+
+	switch (cstate->capture_mode) {
+	case CAPTURE_MIXER_OUT:
+		/*
+		 * LM tap point dimension priority:
+		 * 1. AI scaler output (ai_scaler_res.dst_w/h) if AI scaler is
+		 *    enabled. AI scaler and DS are mutually exclusive for
+		 *    scaling; DS may be enabled for detail enhancement only.
+		 * 2. DS output dimensions if DS is performing actual scaling.
+		 * 3. LM ROI.
+		 * 4. Full mode dimensions (handled by fallback below).
+		 */
+		if (sde_crtc->ai_scaler_res.enabled) {
+			*sw = sde_crtc->ai_scaler_res.dst_w;
+			*sh = sde_crtc->ai_scaler_res.dst_h;
+		} else if (sde_cstate->num_ds_enabled) {
+			for (j = 0; j < sde_cstate->num_ds_enabled; j++) {
+				if (sde_cstate->ds_cfg[j].scl3_cfg.enable) {
+					*sw += sde_cstate->ds_cfg[j].scl3_cfg.dst_width;
+					if (!*sh)
+						*sh = sde_cstate->ds_cfg[j].scl3_cfg.dst_height;
+				}
+			}
+		}
+		/* Fall back to LM ROI */
+		if (!*sw || !*sh) {
+			*sw = 0;
+			*sh = 0;
+			for (j = 0; j < sde_crtc->num_mixers; j++) {
+				*sw += sde_cstate->lm_roi[j].w;
+				if (!*sh)
+					*sh = sde_cstate->lm_roi[j].h;
+			}
+		}
+		break;
+	case CAPTURE_DSPP_OUT:
+	case CAPTURE_DEMURA_OUT:
+		/* Panel ROI */
+		*sw = sde_cstate->crtc_roi.w;
+		*sh = sde_cstate->crtc_roi.h;
+		break;
+	default:
+		break;
+	}
+
+	/* Fall back to full panel dimensions if ROI is unset */
+	if (!*sw || !*sh) {
+		*sw = mode->hdisplay;
+		*sh = mode->vdisplay;
+	}
+}
+
+static int sde_wb_dnsc_atomic_check(struct drm_connector_state *conn_state)
+{
+	struct sde_wb_device *wb_dev;
+	struct sde_connector_state *cstate;
+	struct sde_drm_wb_dnsc_cfg *wb_dnsc_cfg;
+	struct drm_crtc_state *new_crtc_state;
+	const struct drm_display_mode *mode;
+	u32 sw, sh, dw, dh, ratio_h, ratio_v;
+
+	if (!conn_state)
+		return -EINVAL;
+
+	cstate = to_sde_connector_state(conn_state);
+	wb_dnsc_cfg = &cstate->wb_dnsc_cfg;
+
+	/*
+	 * If the disable flag is not set and both dimensions are zero,
+	 * no WB DNSC configuration has been provided — nothing to validate.
+	 */
+	if (!(wb_dnsc_cfg->flags & WB_DNSC_DISABLE) &&
+			!wb_dnsc_cfg->dst_width && !wb_dnsc_cfg->dst_height)
+		return 0;
+
+	/* Verify HW support */
+	wb_dev = sde_wb_connector_get_wb(conn_state->connector);
+	if (!wb_dev || !wb_dev->wb_dnsc_supported) {
+		SDE_ERROR("WB DNSC: not supported on WB block %d\n",
+				wb_dev ? wb_dev->index : -1);
+		return -EINVAL;
+	}
+
+	/* Explicit disable request */
+	if (wb_dnsc_cfg->flags & WB_DNSC_DISABLE)
+		return 0;
+
+	if (!wb_dnsc_cfg->dst_width || !wb_dnsc_cfg->dst_height) {
+		SDE_ERROR("WB DNSC: dst w/h cannot be 0 if not disabled dw=%u dh=%u\n",
+				wb_dnsc_cfg->dst_width, wb_dnsc_cfg->dst_height);
+		return -EINVAL;
+	}
+
+	mode = cstate->msm_mode.base;
+	if (!mode) {
+		SDE_ERROR("WB DNSC: invalid mode\n");
+		return -EINVAL;
+	}
+
+	dw = wb_dnsc_cfg->dst_width;
+	dh = wb_dnsc_cfg->dst_height;
+
+	/* Get source dimensions from CWB tap point via CRTC state */
+	if (conn_state->crtc) {
+		new_crtc_state = drm_atomic_get_new_crtc_state(conn_state->state,
+				conn_state->crtc);
+		if (new_crtc_state)
+			_sde_wb_get_dnsc_tap_point_dims(cstate, new_crtc_state,
+					conn_state->crtc, &sw, &sh);
+		else
+			sw = sh = 0;
+	} else {
+		sw = sh = 0;
+	}
+
+	/* Final fallback to mode dimensions */
+	if (!sw || !sh) {
+		sw = mode->hdisplay;
+		sh = mode->vdisplay;
+	}
+
+	SDE_EVT32(cstate->capture_mode, sw, sh, dw, dh);
+
+	/* Validate source dimensions */
+	if (sw < WB_DNSC_SRC_MIN_DIM || sh < WB_DNSC_SRC_MIN_DIM ||
+			sw > WB_DNSC_SRC_MAX_DIM || sh > WB_DNSC_SRC_MAX_DIM) {
+		SDE_ERROR("WB DNSC: src out of range sw=%u sh=%u (valid [%u, %u])\n",
+				sw, sh, WB_DNSC_SRC_MIN_DIM, WB_DNSC_SRC_MAX_DIM);
+		return -EINVAL;
+	}
+
+	/* Validate destination dimensions */
+	if (dw < WB_DNSC_DST_MIN_DIM || dh < WB_DNSC_DST_MIN_DIM ||
+			dw > WB_DNSC_DST_MAX_DIM || dh > WB_DNSC_DST_MAX_DIM) {
+		SDE_ERROR("WB DNSC: dst out of range dw=%u dh=%u (valid [%u, %u])\n",
+				dw, dh, WB_DNSC_DST_MIN_DIM, WB_DNSC_DST_MAX_DIM);
+		return -EINVAL;
+	}
+
+	/* Reject upscaling */
+	if (dw > sw || dh > sh) {
+		SDE_ERROR("WB DNSC: upscale not supported sw=%u sh=%u dw=%u dh=%u\n",
+				sw, sh, dw, dh);
+		return -EINVAL;
+	}
+
+	ratio_h = sw / dw;
+	ratio_v = sh / dh;
+
+	/* 1:1 ratio - no downscale needed, valid */
+	if (ratio_h == 1 && ratio_v == 1)
+		return 0;
+
+	/* Validate integer-only constraint from catalog */
+	if (wb_dev->wb_dnsc_integer_only && (sw % dw != 0 || sh % dh != 0)) {
+		SDE_ERROR("WB DNSC: must be integer only ratio sw=%u sh=%u dw=%u dh=%u\n",
+				sw, sh, dw, dh);
+		return -EINVAL;
+	}
+
+	/* Validate ratio against catalog min/max */
+	if (wb_dev->wb_dnsc_min_ratio && ratio_h > 1 &&
+			ratio_h < wb_dev->wb_dnsc_min_ratio) {
+		SDE_ERROR("WB DNSC: h ratio %u below min %u\n",
+				ratio_h, wb_dev->wb_dnsc_min_ratio);
+		return -EINVAL;
+	}
+
+	if (wb_dev->wb_dnsc_min_ratio && ratio_v > 1 &&
+			ratio_v < wb_dev->wb_dnsc_min_ratio) {
+		SDE_ERROR("WB DNSC: v ratio %u below min %u\n",
+				ratio_v, wb_dev->wb_dnsc_min_ratio);
+		return -EINVAL;
+	}
+
+	if (wb_dev->wb_dnsc_max_ratio && ratio_h > wb_dev->wb_dnsc_max_ratio) {
+		SDE_ERROR("WB DNSC: h ratio %u exceeds max %u\n",
+				ratio_h, wb_dev->wb_dnsc_max_ratio);
+		return -EINVAL;
+	}
+
+	if (wb_dev->wb_dnsc_max_ratio && ratio_v > wb_dev->wb_dnsc_max_ratio) {
+		SDE_ERROR("WB DNSC: v ratio %u exceeds max %u\n",
+				ratio_v, wb_dev->wb_dnsc_max_ratio);
+		return -EINVAL;
+	}
+
+	if (ratio_h == 1 && ratio_v > 1) {
+		SDE_ERROR("WB DNSC: ratio_h cannot be 1 if ratio_v > 1\n");
+		return -EINVAL;
+	}
+
+	SDE_EVT32(sw, sh, dw, dh, ratio_h, ratio_v);
+	return 0;
+}
 
 /**
  * sde_encoder_phys_wb_is_master - report wb always as master encoder
@@ -887,6 +1117,59 @@ static void _sde_encoder_phys_wb_setup_ctl(struct sde_encoder_phys *phys_enc,
 
 }
 
+static void _sde_enc_phys_wb_check_pending_disable(struct sde_encoder_phys *phys_enc,
+		struct drm_crtc_state *crtc_state)
+{
+	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
+	struct sde_encoder_virt *sde_enc;
+	u32 sleep, loop_count = 20, i;
+	bool cwb_enc_disable_pending = false;
+	char atrace_buf[32];
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	sleep = POLL_WB_DETACH_TIMEOUT_US / loop_count;
+
+	/* Userspace already waits on retire fence of the
+	 * main connector before switching the CWB drm connector.
+	 * In some cases, wakeup of commit thread of main connector
+	 * can race with new CWB request. Fix this race by adding
+	 * poll for disable pending.
+	 */
+	mutex_lock(&sde_enc->enc_lock);
+	if (sde_enc->crtc && crtc_state->crtc) {
+		if (sde_enc->crtc->base.id != crtc_state->crtc->base.id) {
+			cwb_enc_disable_pending = true;
+			snprintf(atrace_buf, sizeof(atrace_buf),
+				"cwb_enc_disable_pending %d %d",
+				sde_enc->crtc->base.id, crtc_state->crtc->base.id);
+		}
+	}
+	mutex_unlock(&sde_enc->enc_lock);
+
+	if (cwb_enc_disable_pending) {
+		for (i = 0; i < loop_count; i++) {
+			SDE_ATRACE_BEGIN(atrace_buf);
+			usleep_range(sleep, sleep * 2);
+			SDE_ATRACE_END(atrace_buf);
+
+			mutex_lock(&sde_enc->enc_lock);
+			cwb_enc_disable_pending = sde_enc->crtc ? true : false;
+			mutex_unlock(&sde_enc->enc_lock);
+
+			if (!cwb_enc_disable_pending)
+				break;
+		}
+	}
+
+	if (cwb_enc_disable_pending) {
+		SDE_DEBUG("[enc:%d wb:%d] CWB disable pending timed out\n",
+				DRMID(phys_enc->parent), WBID(wb_enc));
+		SDE_EVT32(DRMID(phys_enc->parent), i, WBID(wb_enc), SDE_EVTLOG_ERROR);
+	}
+
+
+}
+
 static void _sde_enc_phys_wb_detect_cwb(struct sde_encoder_phys *phys_enc,
 		struct drm_crtc_state *crtc_state)
 {
@@ -1327,6 +1610,71 @@ static int _sde_encoder_phys_wb_validate_output_fmt(struct sde_encoder_phys *phy
 	return ret;
 }
 
+static int _sde_encoder_phys_wb_atomic_check_helper(struct sde_encoder_phys *phys_enc,
+		struct drm_crtc_state *crtc_state, struct drm_connector_state *conn_state,
+		struct drm_framebuffer *fb, const struct sde_format *fmt,
+		enum sde_wb_rot_type rotation_type)
+{
+	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
+	struct sde_rect wb_roi;
+	struct sde_hw_wb *hw_wb = wb_enc->hw_wb;
+	const struct sde_wb_cfg *wb_cfg = hw_wb->caps;
+	const struct drm_display_mode *mode = &crtc_state->mode;
+	u32 out_width = 0, out_height = 0;
+	int rc = 0;
+
+	memset(&wb_roi, 0, sizeof(struct sde_rect));
+
+	rc = sde_wb_connector_state_get_output_roi(conn_state, &wb_roi);
+	if (rc) {
+		SDE_ERROR("[enc:%d wb:%d] failed to get roi; ret:%d\n",
+				DRMID(phys_enc->parent), WBID(wb_enc), rc);
+		return rc;
+	}
+
+	if (rotation_type != WB_ROT_NONE) {
+		rc = _sde_encoder_phys_wb_validate_rotation(phys_enc, crtc_state, conn_state);
+		if (rc) {
+			SDE_ERROR("[enc:%d wb:%d] failed in WB rotation validation %d\n",
+					DRMID(phys_enc->parent), WBID(wb_enc), rc);
+			return rc;
+		}
+	}
+
+	_sde_enc_phys_wb_get_out_resolution(crtc_state, conn_state, &out_width, &out_height);
+	if (!wb_roi.w || !wb_roi.h) {
+		wb_roi.x = 0;
+		wb_roi.y = 0;
+		wb_roi.w = out_width;
+		wb_roi.h = out_height;
+	}
+
+	if ((wb_roi.x + wb_roi.w > fb->width) || (wb_roi.w > out_width)) {
+		SDE_ERROR("[enc:%d wb:%d] invalid roi x:%d, w:%d, fb_w:%d, mode_w:%d, out_w:%d\n",
+				DRMID(phys_enc->parent), WBID(wb_enc), wb_roi.x, wb_roi.w,
+				fb->width, mode->hdisplay, out_width);
+		return -EINVAL;
+	} else if ((wb_roi.y + wb_roi.h > fb->height) || (wb_roi.h > out_height)) {
+		SDE_ERROR("[enc:%d wb:%d] invalid roi y:%d, h:%d, fb_h:%d, mode_h%d, out_h:%d\n",
+				DRMID(phys_enc->parent), WBID(wb_enc), wb_roi.y, wb_roi.h,
+				fb->height, mode->vdisplay, out_height);
+		return -EINVAL;
+	} else if ((rotation_type == WB_ROT_NONE) && ((out_width > mode->hdisplay) ||
+		(out_height > mode->vdisplay))) {
+		SDE_ERROR("[enc:%d wb:%d] invalid o w/h o_w:%d, mode_w:%d, o_h:%d, mode_h:%d\n",
+				DRMID(phys_enc->parent), WBID(wb_enc), out_width, mode->hdisplay,
+				out_height, mode->vdisplay);
+		return -EINVAL;
+	} else if (wb_roi.w > SDE_WB_MAX_LINEWIDTH(fmt, wb_cfg)) {
+		SDE_ERROR("[enc:%d wb:%d] invalid roi ubwc:%d, w:%d, maxlinewidth:%u\n",
+				DRMID(phys_enc->parent), WBID(wb_enc), SDE_FORMAT_IS_UBWC(fmt),
+				wb_roi.w, SDE_WB_MAX_LINEWIDTH(fmt, wb_cfg));
+		return -EINVAL;
+	}
+
+	return rc;
+}
+
 /**
  * sde_encoder_phys_wb_atomic_check - verify and fixup given atomic states
  * @phys_enc:	Pointer to physical encoder
@@ -1345,7 +1693,6 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 	struct drm_framebuffer *fb;
 	const struct sde_format *fmt;
 	struct sde_rect wb_roi;
-	u32 out_width = 0, out_height = 0;
 	const struct drm_display_mode *mode = &crtc_state->mode;
 	int rc = 0;
 	bool clone_mode_curr = false;
@@ -1370,6 +1717,8 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 	sde_conn =  to_sde_connector(conn_state->connector);
 	sde_conn_state = to_sde_connector_state(conn_state);
 	clone_mode_curr = phys_enc->in_clone_mode;
+
+	_sde_enc_phys_wb_check_pending_disable(phys_enc, crtc_state);
 
 	_sde_enc_phys_wb_detect_cwb(phys_enc, crtc_state);
 
@@ -1459,6 +1808,13 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 		return rc;
 	}
 
+	rc = sde_wb_dnsc_atomic_check(conn_state);
+	if (rc) {
+		SDE_ERROR("[enc:%d wb:%d] WB DNSC atomic check failed; ret:%d\n",
+				DRMID(phys_enc->parent), WBID(wb_enc), rc);
+		return rc;
+	}
+
 	/* if in clone mode, return after cwb validation */
 	if (cstate->cwb_enc_mask) {
 		rc = _sde_enc_phys_wb_validate_cwb(phys_enc, crtc_state, conn_state);
@@ -1469,44 +1825,12 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 		return rc;
 	}
 
-	if (rotation_type != WB_ROT_NONE) {
-		rc = _sde_encoder_phys_wb_validate_rotation(phys_enc, crtc_state, conn_state);
-		if (rc) {
-			SDE_ERROR("[enc:%d wb:%d] failed in WB rotation validation %d\n",
-					DRMID(phys_enc->parent), WBID(wb_enc), rc);
-			return rc;
-		}
-	}
-
-	_sde_enc_phys_wb_get_out_resolution(crtc_state, conn_state, &out_width, &out_height);
-	if (!wb_roi.w || !wb_roi.h) {
-		wb_roi.x = 0;
-		wb_roi.y = 0;
-		wb_roi.w = out_width;
-		wb_roi.h = out_height;
-	}
-
-	if ((wb_roi.x + wb_roi.w > fb->width) || (wb_roi.w > out_width)) {
-		SDE_ERROR("[enc:%d wb:%d] invalid roi x:%d, w:%d, fb_w:%d, mode_w:%d, out_w:%d\n",
-				DRMID(phys_enc->parent), WBID(wb_enc), wb_roi.x, wb_roi.w,
-				fb->width, mode->hdisplay, out_width);
-		return -EINVAL;
-	} else if ((wb_roi.y + wb_roi.h > fb->height) || (wb_roi.h > out_height)) {
-		SDE_ERROR("[enc:%d wb:%d] invalid roi y:%d, h:%d, fb_h:%d, mode_h%d, out_h:%d\n",
-				DRMID(phys_enc->parent), WBID(wb_enc), wb_roi.y, wb_roi.h,
-				fb->height, mode->vdisplay, out_height);
-		return -EINVAL;
-	} else if ((rotation_type == WB_ROT_NONE) && ((out_width > mode->hdisplay) ||
-		(out_height > mode->vdisplay))) {
-		SDE_ERROR("[enc:%d wb:%d] invalid o w/h o_w:%d, mode_w:%d, o_h:%d, mode_h:%d\n",
-				DRMID(phys_enc->parent), WBID(wb_enc), out_width, mode->hdisplay,
-				out_height, mode->vdisplay);
-		return -EINVAL;
-	} else if (wb_roi.w > SDE_WB_MAX_LINEWIDTH(fmt, wb_cfg)) {
-		SDE_ERROR("[enc:%d wb:%d] invalid roi ubwc:%d, w:%d, maxlinewidth:%u\n",
-				DRMID(phys_enc->parent), WBID(wb_enc), SDE_FORMAT_IS_UBWC(fmt),
-				wb_roi.w, SDE_WB_MAX_LINEWIDTH(fmt, wb_cfg));
-		return -EINVAL;
+	rc = _sde_encoder_phys_wb_atomic_check_helper(phys_enc, crtc_state,
+				conn_state, fb, fmt, rotation_type);
+	if (rc) {
+		SDE_ERROR("[enc:%d wb:%d] failed writeback validation; ret:%d\n",
+				DRMID(phys_enc->parent), WBID(wb_enc), rc);
+		return rc;
 	}
 
 	return rc;
@@ -1749,6 +2073,14 @@ static void _sde_encoder_phys_wb_update_cwb_flush(struct sde_encoder_phys *phys_
 	if (!phys_enc->in_clone_mode) {
 		SDE_DEBUG("enc:%d, wb:%d - not in CWB mode. early return\n",
 				DRMID(phys_enc->parent), WBID(wb_enc));
+		return;
+	}
+
+	if (!wb_enc->crtc || !wb_enc->crtc->state ||
+			!phys_enc->connector || !phys_enc->connector->state) {
+		SDE_ERROR("[enc:%d wb:%d] invalid CWB flush state crtc:%pK conn:%pK\n",
+				DRMID(phys_enc->parent), WBID(wb_enc),
+				wb_enc->crtc, phys_enc->connector);
 		return;
 	}
 
@@ -2386,7 +2718,7 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 	}
 
 	sde_crtc = to_sde_crtc(sde_enc->crtc);
-	if (sde_crtc)
+	if (sde_crtc && sde_enc->crtc->state->active)
 		sde_crtc->cached_encoder_mask &= ~drm_encoder_mask(phys_enc->parent);
 
 	wb_enc->crtc = NULL;

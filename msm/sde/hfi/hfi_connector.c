@@ -148,15 +148,14 @@ end:
 }
 
 void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
-		struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf,
-		bool is_cont_splash)
+		struct sde_connector_state *old_state, bool is_cont_splash,
+		struct hfi_util_u32_prop_helper *prop_collector)
 {
 	struct hfi_connector *hfi_conn;
-	struct hfi_display_autorefresh_cfg payload;
-	u32 key;
+	struct hfi_display_autorefresh_cfg payload = {0};
 	int ret = 0;
 
-	if (!conn || !cmd_buf || !old_state)
+	if (!conn || !old_state)
 		return;
 
 	hfi_conn = to_hfi_connector(conn);
@@ -166,10 +165,8 @@ void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
 		payload.enable = false;
 		payload.frame_count = 0;
 	}
-
-	key = HFI_PACKKEY(HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG, 0, sizeof(payload));
-
-	ret = hfi_util_kv_helper_add(hfi_conn->kv_props, key, (u32 *)&payload);
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+			HFI_VAL_U32_ARRAY, &payload, sizeof(payload));
 	if (ret)
 		HFI_ERROR_CONN(hfi_conn, "failed adding HFI KV prop:0x%x\n", hfi_prop);
 }
@@ -489,7 +486,7 @@ static int hfi_connector_populate_custom_kv_setter_props(struct sde_connector *c
 
 	if (is_cont_splash)
 		sde_connector_add_autorefresh(HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG,
-				conn, old_cstate, cmd_buf, is_cont_splash);
+				conn, old_cstate, is_cont_splash, hfi_conn->base_props);
 
 	kv_count = hfi_util_kv_helper_get_count(hfi_conn->kv_props);
 	if (!kv_count)

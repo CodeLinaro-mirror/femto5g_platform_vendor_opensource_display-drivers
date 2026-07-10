@@ -696,7 +696,7 @@ void *sde_debugfs_get_root(struct sde_kms *sde_kms);
  * These functions/definitions allow for building up a 'sde_info' structure
  * containing one or more "key=value\n" entries.
  */
-#if IS_ENABLED(CONFIG_DRM_LOW_MSM_MEM_FOOTPRINT)
+#if IS_ENABLED(CONFIG_DRM_MSM_LOW_MEM_FOOTPRINT)
 #define SDE_KMS_INFO_MAX_SIZE (1 << 12)
 #elif IS_ENABLED(CONFIG_DSI_EXTENDED_MODES)
 #define SDE_KMS_INFO_MAX_SIZE (6 * (1 << 14))
@@ -1060,5 +1060,17 @@ int sde_kms_wait_for_display_off(struct sde_kms *kms);
  * Return: 0 on success, negative error code on failure
  */
 int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev);
+
+/**
+ * sde_kms_populate_wb_dnsc_caps - populate WB DNSC capability fields in wb_dev
+ * @sde_kms: Pointer to sde kms object
+ * @wb_dev:  Pointer to writeback device to populate
+ *
+ * Reads WB DNSC support indices, ratio range, and integer-only flag from the
+ * HFI catalog and stores them in the wb_dev capability fields.
+ */
+struct sde_wb_device;
+void sde_kms_populate_wb_dnsc_caps(struct sde_kms *sde_kms,
+		struct sde_wb_device *wb_dev);
 
 #endif /* __sde_kms_H__ */

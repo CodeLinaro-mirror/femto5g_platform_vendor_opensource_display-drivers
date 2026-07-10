@@ -82,6 +82,9 @@ struct dp_hfi {
 	struct hfi_display_mode_extended_info mode_list[64]; /* Extended mode info */
 
 	bool hpd_events_register;
+	bool disable_in_progress;
+	bool pending_synthetic_plug;
+	struct hfi_device_hotplug_config pending_plug_config;
 
 	bool mode_valid;
 	unsigned long tx_cmd_buf_dva;
@@ -184,6 +187,12 @@ int dp_hfi_end_batch_cmd(struct dp_hfi *hfi,
  * Return: error code.
  */
 int dp_hfi_send_batch_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client, bool blocking);
+
+/**
+ * dp_hfi_send_panel_generic_caps() - Send panel generic caps over HFI
+ * @hfi: handle to dp hfi structure
+ */
+void dp_hfi_send_panel_generic_caps(struct dp_hfi *hfi);
 
 /**
  * dp_hfi_setup() - setup dp hfi interface

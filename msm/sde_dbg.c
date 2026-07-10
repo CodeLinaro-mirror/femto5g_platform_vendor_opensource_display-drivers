@@ -2831,11 +2831,20 @@ int sde_dbg_init(struct device *dev)
 		sde_dbg_base.evtlog->enable, sde_dbg_base.panic_on_err,
 		sde_dbg_base.dump_option);
 
+	/*
+	 * pre-allocate core dump buffer only on non-low memory targets.
+	 * This buffer can also be allocated on-demand during dev core
+	 * dump as well, so we can skip pre-allocating this buffer for
+	 * low-memory targets to save memory
+	 */
+#if !IS_ENABLED(CONFIG_DRM_MSM_LOW_MEM_FOOTPRINT)
 	if (priv && IS_DISP_OP_HFI(priv->disp_op)) {
 		sde_dbg_base.read_buf = kvzalloc(MAX_BUFF_SIZE, GFP_KERNEL);
 		if (!sde_dbg_base.read_buf)
 			return -ENOMEM;
 	}
+#endif
+
 	sde_dbg_base.is_dumped = false;
 
 	sde_dbg_base.hal_ops.dbg_dump[MSM_DISP_OP_HWIO] = sde_dbg_dbg_dump;
