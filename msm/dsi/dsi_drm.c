@@ -712,6 +712,10 @@ int dsi_conn_get_lm_from_mode(void *display, const struct drm_display_mode *drm_
 		return rc;
 	}
 
+	/* no DT timing nodes: topology determined by ext_get_mode_info */
+	if (!dsi_display->panel || !dsi_display->panel->num_timing_nodes)
+		return -ENODATA;
+
 	convert_to_dsi_mode(drm_mode, &dsi_mode);
 	drm_to_dsi_update_overlap(dsi_display, &dsi_mode);
 
@@ -1705,6 +1709,10 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 		DSI_ERR("invalid parameters");
 		return;
 	}
+
+	/* ext-bridge displays have no DT timing nodes to match against */
+	if (!disp->panel->num_timing_nodes)
+		return;
 
 	panel = disp->panel;
 	list_for_each_entry(drm_mode, &connector->modes, head)
