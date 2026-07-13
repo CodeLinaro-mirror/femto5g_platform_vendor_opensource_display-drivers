@@ -796,6 +796,18 @@ int sde_wb_update_lsr_perf(struct drm_connector *connector,
 	reproj_conn = sde_conn->reproj_conn;
 
 	if (reproj_conn) {
+		if (reproj_conn->type == WB_CSC && connector->state) {
+			struct sde_connector_state *c_state =
+				to_sde_connector_state(connector->state);
+			int i, active_views = 0;
+
+			for (i = 0; i < MAX_VIEWS; i++)
+				if (c_state->view_descriptor[i].num_fbs > 0)
+					active_views++;
+
+			perf.is_mono = (active_views <= 1);
+		}
+
 		rc = reproj_conn->update_lsr_perf(reproj_conn, reproj_conn->type, perf);
 		SDE_DEBUG("lsr perf clk = %lu, bw = %lu peak_bw = %lu for display type = %d",
 			perf.clk_vote, perf.bw_vote, perf.ib_bw_vote, reproj_conn->type);
