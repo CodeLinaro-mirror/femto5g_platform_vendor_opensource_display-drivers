@@ -2505,6 +2505,8 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"Privacy layer not parsed from DTSI, generated dynamically",
 	"Brightness not parsed from DTSI, generated dynamically",
 	"qcom,mdss-dsi-custom-on-command",
+	"qcom,mdss-dsi-roi-pre-command",
+	"qcom,mdss-dsi-roi-post-command",
 };
 
 /**
@@ -2566,6 +2568,8 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"Privacy layer not parsed from DTSI, generated dynamically",
 	"Brightness not parsed from DTSI, generated dynamically",
 	"qcom,mdss-dsi-custom-on-command-state",
+	"qcom,mdss-dsi-roi-pre-command-state",
+	"qcom,mdss-dsi-roi-post-command-state",
 };
 
 /**
