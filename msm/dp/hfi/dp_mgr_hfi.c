@@ -1930,10 +1930,6 @@ static void dp_mgr_hfi_handle_hdcp1x_enc(struct dp_hfi *hfi, void *payload, u32 
 	if (hfi_priv->debug && hfi_priv->debug->force_encryption)
 		dp_hdcp1x_set_enc(hfi->hdcp1x_ctx, enable);
 
-	if (enable) {
-		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATED;
-		dp_mgr_update_hdcp_info(hfi, false);
-	}
 
 	DP_DEBUG("HDCP encryption %s\n", enable ? "enabled" : "disabled");
 }
@@ -1966,6 +1962,9 @@ static void dp_mgr_hfi_handle_hdcp1x_topology(struct dp_hfi *hfi, void *payload,
 
 	dp_hdcp1x_topology_update(hfi->hdcp1x_ctx, depth, device_count,
 				max_devices_exceeded, max_cascade_exceeded);
+
+	hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATED;
+	dp_mgr_update_hdcp_info(hfi, false);
 
 	DP_DEBUG("HDCP topology updated\n");
 }
