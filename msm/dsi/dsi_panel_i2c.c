@@ -862,86 +862,61 @@ static int __maybe_unused dsi_panel_i2c_fill_field_cmds(struct dsi_panel_i2c_cmd
 
 #if IS_ENABLED(CONFIG_MTD)
 /*
- * dsi_panel_i2c_read_mtd_partition - Read an entire MTD partition into a
- * newly allocated buffer.
+ * dsi_panel_read_mtd_field - Read a single calibration field from the flash
+ * at the given absolute offset and size into a newly allocated buffer.
+ * The caller is responsible for kvfree()ing *data_out on success.
+ * put_mtd_device() is NOT called here; the caller owns the MTD reference.
  */
-#define MTD_READ_CHUNK_SIZE  SZ_64K
-static int dsi_panel_read_mtd_partition(struct mtd_info *mtd,
-					 u8 **data_out, size_t *size_out)
+static int dsi_panel_read_mtd_field(struct mtd_info *mtd,
+				    loff_t offset, size_t size,
+				    u8 **data_out)
 {
-	u8 *buf = NULL;
-	int rc = 0;
+	u8 *buf;
+	size_t retlen = 0;
+	int rc;
 
-	if (!mtd) {
-		DSI_ERR("Invalid params\n");
-		return -EINVAL;
+	buf = kvzalloc(size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	rc = mtd_read(mtd, offset, size, &retlen, buf);
+	if (rc && rc != -EUCLEAN) {
+		DSI_ERR("MTD read failed for %s at offset 0x%llx size %zu, rc=%d\n",
+			mtd->name, offset, size, rc);
+		kvfree(buf);
+		return rc;
 	}
 
-	buf = kvzalloc(mtd->size, GFP_KERNEL);
-	if (!buf) {
-		rc = -ENOMEM;
-		goto put_mtd;
+	if (retlen != size) {
+		DSI_ERR("MTD short read for %s at offset 0x%llx: got %zu, expected %zu\n",
+			mtd->name, offset, retlen, size);
+		kvfree(buf);
+		return -EIO;
 	}
-
-		size_t offset    = 0;
-		size_t remaining = mtd->size;
-
-		while (remaining > 0) {
-			size_t chunk = min_t(size_t, remaining, MTD_READ_CHUNK_SIZE);
-			size_t retlen = 0;
-
-			rc = mtd_read(mtd, offset, chunk, &retlen, buf + offset);
-			if (rc && rc != -EUCLEAN) {
-				DSI_ERR("MTD read failed for %s at offset 0x%zx, rc=%d\n",
-						mtd->name, offset, rc);
-				kvfree(buf);
-				goto put_mtd;
-			}
-
-			offset    += retlen;
-			remaining -= retlen;
-		}
-
-	rc = 0;
-	DSI_INFO("MTD read ok: %s, total=%zu bytes\n", mtd->name, offset);
 
 	*data_out = buf;
-	*size_out = offset; /* actual bytes read, not assumed mtd->size */
-	goto put_mtd;
-
-put_mtd:
-	put_mtd_device(mtd);
-	return rc;
+	return 0;
 }
 
-/* Build the JBD4040 calibration I2C command set for one eye from its MTD partition. */
+/*
+ * Build the JBD4040 calibration I2C command set for one eye.
+ */
 static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 		struct dsi_panel_i2c_config *cfg,
 		struct mtd_info *mtd,
 		enum dsi_panel_i2c_cmd_set_type cmd_type)
 {
-	u8 *calibration_data = NULL;
-	size_t calibration_size = 0;
 	struct dsi_panel_i2c_cmd_set *cset;
 	u32 total_cmds = 0;
 	u32 cmd_idx = 0;
+	u8 *field_buf = NULL;
 	int rc = 0;
 
-	rc = dsi_panel_read_mtd_partition(mtd,
-					      &calibration_data,
-					      &calibration_size);
-	if (rc) {
-		DSI_ERR("Failed to read MTD partition %s, rc=%d\n",
-			mtd->name, rc);
-		return rc;
-	}
-
-	if (calibration_size < JBD4040_FLASH_MIN_PARTITION_SIZE) {
-		DSI_ERR("Partition %s too small: %zu < %u bytes\n",
-			mtd->name, calibration_size,
-			JBD4040_FLASH_MIN_PARTITION_SIZE);
-		rc = -EINVAL;
-		goto free_buf;
+	/* Sanity: flash must be large enough to hold all calibration fields */
+	if (mtd->size < JBD4040_FLASH_MIN_PARTITION_SIZE) {
+		DSI_ERR("Flash %s too small: %llu < %u bytes\n",
+			mtd->name, mtd->size, JBD4040_FLASH_MIN_PARTITION_SIZE);
+		return -EINVAL;
 	}
 
 	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_GAMMA_SIZE);
@@ -959,91 +934,149 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 
 	cset = &cfg->cmd_sets[cmd_type];
 	cset->cmds = kcalloc(total_cmds, sizeof(*cset->cmds), GFP_KERNEL);
-	if (!cset->cmds) {
-		rc = -ENOMEM;
-		goto free_buf;
-	}
+	if (!cset->cmds)
+		return -ENOMEM;
 	cset->count = total_cmds;
 
 	/* Red channel (slave 0x59) */
-	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
-		calibration_data + JBD4040_FLASH_RED_GAMMA_OFFSET,
+	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_RED_GAMMA_OFFSET,
+				      JBD4040_FLASH_GAMMA_SIZE, &field_buf);
+	if (rc)
+		goto error;
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
 		JBD4040_FLASH_GAMMA_SIZE, JBD4040_DDIC_GAMMA_BASE_ADDRESS, 0x59, false);
+	kvfree(field_buf); field_buf = NULL;
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
-		calibration_data + JBD4040_FLASH_RED_DEMURA_OFFSET,
+	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_RED_DEMURA_OFFSET,
+				      JBD4040_FLASH_DEMURA_SIZE, &field_buf);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
 		JBD4040_FLASH_DEMURA_SIZE, JBD4040_DDIC_DEMURA_BASE_ADDRESS, 0x59, false);
+	kvfree(field_buf); field_buf = NULL;
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
-		calibration_data + JBD4040_FLASH_RED_OFFSET_OFFSET,
+	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_RED_OFFSET_OFFSET,
+				      JBD4040_FLASH_OFFSET_SIZE, &field_buf);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
 		JBD4040_FLASH_OFFSET_SIZE, JBD4040_DDIC_OFFSET_BASE_ADDRESS, 0x59, true);
+	kvfree(field_buf); field_buf = NULL;
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
-		calibration_data + JBD4040_FLASH_RED_FLIP_OFFSET,
+	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_RED_FLIP_OFFSET,
+				      JBD4040_FLASH_FLIP_SIZE, &field_buf);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
 		JBD4040_FLASH_FLIP_SIZE, JBD4040_DDIC_FLIP_BASE_ADDRESS, 0x59, true);
+	kvfree(field_buf); field_buf = NULL;
 	if (rc)
 		goto error;
 
 	/* Green channel (slave 0x5a) */
-	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
-		calibration_data + JBD4040_FLASH_GREEN_GAMMA_OFFSET,
+	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_GREEN_GAMMA_OFFSET,
+				      JBD4040_FLASH_GAMMA_SIZE, &field_buf);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
 		JBD4040_FLASH_GAMMA_SIZE, JBD4040_DDIC_GAMMA_BASE_ADDRESS, 0x5a, false);
+	kvfree(field_buf); field_buf = NULL;
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
-		calibration_data + JBD4040_FLASH_GREEN_DEMURA_OFFSET,
+	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_GREEN_DEMURA_OFFSET,
+				      JBD4040_FLASH_DEMURA_SIZE, &field_buf);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
 		JBD4040_FLASH_DEMURA_SIZE, JBD4040_DDIC_DEMURA_BASE_ADDRESS, 0x5a, false);
+	kvfree(field_buf); field_buf = NULL;
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
-		calibration_data + JBD4040_FLASH_GREEN_OFFSET_OFFSET,
+	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_GREEN_OFFSET_OFFSET,
+				      JBD4040_FLASH_OFFSET_SIZE, &field_buf);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
 		JBD4040_FLASH_OFFSET_SIZE, JBD4040_DDIC_OFFSET_BASE_ADDRESS, 0x5a, true);
+	kvfree(field_buf); field_buf = NULL;
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
-		calibration_data + JBD4040_FLASH_GREEN_FLIP_OFFSET,
+	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_GREEN_FLIP_OFFSET,
+				      JBD4040_FLASH_FLIP_SIZE, &field_buf);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
 		JBD4040_FLASH_FLIP_SIZE, JBD4040_DDIC_FLIP_BASE_ADDRESS, 0x5a, true);
+	kvfree(field_buf); field_buf = NULL;
 	if (rc)
 		goto error;
 
 	/* Blue channel (slave 0x5b) */
-	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
-		calibration_data + JBD4040_FLASH_BLUE_GAMMA_OFFSET,
+	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_BLUE_GAMMA_OFFSET,
+				      JBD4040_FLASH_GAMMA_SIZE, &field_buf);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
 		JBD4040_FLASH_GAMMA_SIZE, JBD4040_DDIC_GAMMA_BASE_ADDRESS, 0x5b, false);
+	kvfree(field_buf); field_buf = NULL;
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
-		calibration_data + JBD4040_FLASH_BLUE_DEMURA_OFFSET,
+	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_BLUE_DEMURA_OFFSET,
+				      JBD4040_FLASH_DEMURA_SIZE, &field_buf);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
 		JBD4040_FLASH_DEMURA_SIZE, JBD4040_DDIC_DEMURA_BASE_ADDRESS, 0x5b, false);
+	kvfree(field_buf); field_buf = NULL;
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
-		calibration_data + JBD4040_FLASH_BLUE_OFFSET_OFFSET,
+	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_BLUE_OFFSET_OFFSET,
+				      JBD4040_FLASH_OFFSET_SIZE, &field_buf);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
 		JBD4040_FLASH_OFFSET_SIZE, JBD4040_DDIC_OFFSET_BASE_ADDRESS, 0x5b, true);
+	kvfree(field_buf); field_buf = NULL;
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
-		calibration_data + JBD4040_FLASH_BLUE_FLIP_OFFSET,
+	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_BLUE_FLIP_OFFSET,
+				      JBD4040_FLASH_FLIP_SIZE, &field_buf);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
 		JBD4040_FLASH_FLIP_SIZE, JBD4040_DDIC_FLIP_BASE_ADDRESS, 0x5b, true);
+	kvfree(field_buf); field_buf = NULL;
 	if (rc)
 		goto error;
 
 	DSI_INFO("calibration cmd set (%d): %u commands\n", cmd_type, total_cmds);
-	goto free_buf;
+	return rc;
 
 error:
+	kvfree(field_buf);
 	for (u32 i = 0; i < cmd_idx; i++) {
 		kfree(cset->cmds[i].data);
 		cset->cmds[i].data = NULL;
@@ -1051,9 +1084,6 @@ error:
 	kfree(cset->cmds);
 	cset->cmds = NULL;
 	cset->count = 0;
-
-free_buf:
-	kvfree(calibration_data);
 	return rc;
 }
 #else
@@ -1107,9 +1137,9 @@ static int dsi_panel_i2c_jbd4040_send_calibration_cmd(struct dsi_panel *panel)
 		return 0;
 
 	if (!cfg->cmd_sets[DSI_PANEL_I2C_CMD_SET_CALIBRATION_LEFT].count &&
-		panel->calib_partition_left) {
+		panel->calibration_mtd_left) {
 		rc = dsi_panel_i2c_jbd4040_init_calibration_cmd(cfg,
-					panel->calib_partition_left,
+					panel->calibration_mtd_left,
 					DSI_PANEL_I2C_CMD_SET_CALIBRATION_LEFT);
 		if (rc) {
 			DSI_ERR("[%s] failed to init left calibration cmd, rc=%d\n",
@@ -1119,9 +1149,9 @@ static int dsi_panel_i2c_jbd4040_send_calibration_cmd(struct dsi_panel *panel)
 	}
 
 	if (!cfg->cmd_sets[DSI_PANEL_I2C_CMD_SET_CALIBRATION_RIGHT].count &&
-		panel->calib_partition_right) {
+		panel->calibration_mtd_right) {
 		rc = dsi_panel_i2c_jbd4040_init_calibration_cmd(cfg,
-					panel->calib_partition_right,
+					panel->calibration_mtd_right,
 					DSI_PANEL_I2C_CMD_SET_CALIBRATION_RIGHT);
 		if (rc) {
 			DSI_ERR("[%s] failed to init right calibration cmd, rc=%d\n",
