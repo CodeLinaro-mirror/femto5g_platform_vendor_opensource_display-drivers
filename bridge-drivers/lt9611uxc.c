@@ -101,6 +101,8 @@ struct lt9611uxc {
 	unsigned int cec_tx_status;
 	struct cec_notifier *cec_notifier;
 
+	bool cont_splash_en;
+
 	/* Dynamic Mode Switch support */
 	struct drm_display_mode curr_mode;
 	bool fix_mode;
@@ -541,8 +543,10 @@ static void lt9611uxc_hpd_work(struct work_struct *work)
 	if (lt9611uxc->connector.dev) {
 		lt9611uxc->connector.status = (lt9611uxc->hdmi_connected) ?
 				connector_status_connected: connector_status_disconnected;
-		if (lt9611uxc->connector.status == connector_status_disconnected)
+		if (lt9611uxc->connector.status == connector_status_disconnected) {
+			lt9611uxc->cont_splash_en = false;
 			lt9611uxc_release_edid(lt9611uxc);
+		}
 		lt9611uxc_helper_hotplug_event(lt9611uxc);
 
 		drm_kms_helper_hotplug_event(lt9611uxc->connector.dev);
@@ -945,11 +949,14 @@ static void lt9611uxc_bridge_pre_enable(struct drm_bridge *bridge)
 
 	lt9611uxc = bridge_to_lt9611uxc(bridge);
 
-	lt9611uxc_reset(lt9611uxc);
-
-	lt9611uxc_lock(lt9611uxc);
-	lt9611uxc_video_setup(lt9611uxc, &lt9611uxc->curr_mode);
-	lt9611uxc_unlock(lt9611uxc);
+	if (!lt9611uxc->cont_splash_en) {
+		lt9611uxc_reset(lt9611uxc);
+		lt9611uxc_lock(lt9611uxc);
+		lt9611uxc_video_setup(lt9611uxc, &lt9611uxc->curr_mode);
+		lt9611uxc_unlock(lt9611uxc);
+	} else {
+		lt9611uxc->cont_splash_en = false;
+	}
 }
 
 static void lt9611uxc_bridge_enable(struct drm_bridge *bridge)
@@ -1012,9 +1019,11 @@ static void lt9611uxc_bridge_mode_set(struct drm_bridge *bridge,
 {
 	struct lt9611uxc *lt9611uxc = bridge_to_lt9611uxc(bridge);
 
-	lt9611uxc_lock(lt9611uxc);
-	lt9611uxc_video_setup(lt9611uxc, mode);
-	lt9611uxc_unlock(lt9611uxc);
+	if (!lt9611uxc->cont_splash_en) {
+		lt9611uxc_lock(lt9611uxc);
+		lt9611uxc_video_setup(lt9611uxc, mode);
+		lt9611uxc_unlock(lt9611uxc);
+	}
 
 	dev_info(lt9611uxc->dev, "hdisplay=%d, vdisplay=%d, clock=%d \n",
 		mode->hdisplay, mode->vdisplay, mode->clock);
@@ -1150,6 +1159,9 @@ static int lt9611uxc_parse_dt(struct device *dev,
 	lt9611uxc->audio_support = of_property_read_bool(dev->of_node, "lt,audio-support");
 	dev_info(lt9611uxc->dev, "audio support = %d\n", lt9611uxc->audio_support);
 
+	lt9611uxc->cont_splash_en = of_property_read_bool(dev->of_node, "lt,cont-splash-en");
+	dev_info(lt9611uxc->dev, "cont_splash_en = %d\n", lt9611uxc->cont_splash_en);
+
 	return 0;
 }
 
@@ -1157,7 +1169,12 @@ static int lt9611uxc_gpio_init(struct lt9611uxc *lt9611uxc)
 {
 	struct device *dev = lt9611uxc->dev;
 
-	lt9611uxc->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
+	if (lt9611uxc->cont_splash_en) {
+		lt9611uxc->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_ASIS);
+	} else {
+		lt9611uxc->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
+	}
+
 	if (IS_ERR(lt9611uxc->reset_gpio)) {
 		dev_err(dev, "failed to acquire reset gpio\n");
 		return PTR_ERR(lt9611uxc->reset_gpio);
@@ -1704,7 +1721,8 @@ static int lt9611uxc_probe(struct i2c_client *client)
 	if (ret)
 		goto err_of_put;
 
-	lt9611uxc_reset(lt9611uxc);
+	if (!lt9611uxc->cont_splash_en)
+		lt9611uxc_reset(lt9611uxc);
 
 	ret = lt9611uxc_read_device_rev(lt9611uxc);
 	if (ret) {
