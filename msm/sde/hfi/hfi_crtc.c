@@ -475,8 +475,8 @@ static int hfi_crtc_populate_custom_kv_setter_props(struct sde_crtc *crtc, u32 d
 			disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
 			hfi_util_kv_helper_get_payload_addr(crtc_hfi->kv_props),
-			kv_count * sizeof(struct hfi_kv_pairs),
-			kv_count);
+			kv_count,
+			kv_count * sizeof(struct hfi_kv_pairs));
 	if (ret) {
 		HFI_ERROR_CRTC(crtc_hfi, "failed to send HFI commands\n");
 		goto end;
