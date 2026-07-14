@@ -385,6 +385,7 @@ int dsi_catalog_phy_setup(struct dsi_phy_hw *phy,
 		dsi_catalog_phy_4_0_init(phy);
 		break;
 	case DSI_PHY_VERSION_5_2:
+	case DSI_PHY_VERSION_5_2_HFI:
 		dsi_catalog_phy_5_0_init(phy);
 		break;
 	case DSI_PHY_VERSION_7_2:
@@ -415,6 +416,7 @@ int dsi_catalog_phy_pll_setup(struct dsi_phy_hw *phy, u32 pll_ver)
 		phy->ops.pll_toggle[MSM_DISP_OP_HWIO] = dsi_pll_5nm_toggle;
 		break;
 	case DSI_PLL_VERSION_4NM:
+	case DSI_PLL_VERSION_4NM_HFI:
 		phy->ops.configure[MSM_DISP_OP_HWIO] = dsi_pll_4nm_configure;
 		phy->ops.pll_toggle[MSM_DISP_OP_HWIO] = dsi_pll_4nm_toggle;
 		break;
