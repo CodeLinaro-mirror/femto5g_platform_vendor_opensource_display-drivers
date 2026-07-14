@@ -676,7 +676,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 				hfi_enc->ps_listener_packet_id[1]);
 	}
 
-	SDE_EVT32(drm_enc->base.id, MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_PANIC_SUBSCRIBE, ret);
+	SDE_EVT32(drm_enc->base.id, MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_PANIC_SUBSCRIBE, enable, ret);
 	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 	if (ret) {
 		SDE_ERROR("failed to send panic subscribe command\n");
@@ -1193,17 +1193,17 @@ static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 		return -EINVAL;
 	}
 
-	ret = hfi_enc_set_panic_events(enc, true);
-	if (ret) {
-		SDE_ERROR("failed to send debug-init command\n");
-		return ret;
-	}
-
 	/* Skip commit done events for clone mode encoders */
 	if (!sde_encoder_in_clone_mode(&enc->base)) {
 		ret = hfi_enc_enable_hw_event(enc, MSM_ENC_COMMIT_DONE, true);
 		if (ret) {
 			SDE_ERROR("failed to send commit wait command\n");
+			return ret;
+		}
+
+		ret = hfi_enc_set_panic_events(enc, true);
+		if (ret) {
+			SDE_ERROR("failed to send debug-init command\n");
 			return ret;
 		}
 	}
@@ -1351,12 +1351,12 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 			SDE_ERROR("failed to send commit wait command\n");
 			return ret;
 		}
-	}
 
-	ret = hfi_enc_set_panic_events(enc, false);
-	if (ret) {
-		SDE_ERROR("failed to send debug-init command\n");
-		return ret;
+		ret = hfi_enc_set_panic_events(enc, false);
+		if (ret) {
+			SDE_ERROR("failed to send debug-init command\n");
+			return ret;
+		}
 	}
 
 	if ((sde_encoder_check_curr_mode(&enc->base, MSM_DISPLAY_CMD_MODE)) ||
