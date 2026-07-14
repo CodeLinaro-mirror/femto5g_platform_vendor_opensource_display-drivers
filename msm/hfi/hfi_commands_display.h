@@ -496,6 +496,134 @@
  */
 #define HFI_COMMAND_DISPLAY_HDCP_FEATURE_SUPPORTED                    0x02000017
 
+/*
+ * HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP - From Host to DCP, this command specifies the
+ *                                                     mapping between hfi_panel_dcs_command_type
+ *                                                     values and custom command types. This command
+ *                                                     tells DCP which hfi_panel_dcs_command_type
+ *                                                     should be replaced with a custom command
+ *                                                     type. OEMs can define custom command types at
+ *                                                     host level which can be used to remap
+ *                                                     hfi_panel_dcs_command_type values.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Validation requirements:
+ *      - count must be > 0 and <= total entries in hfi_panel_dcs_command_type
+ *      - cmd_type must be a valid hfi_panel_dcs_command_type value
+ *      - custom_cmd_type must be a valid custom command type within the custom dcs commands indices
+ *        from HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO or is within the
+ *        hfi_panel_dcs_command_type range, if commands go back to the default.
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in display_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP
+ *     hfi_packet.flags         : HFI_TX_FLAGS_INTR_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_RESPONSE_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload[0]    : count of remapping entries
+ *     hfi_packet.payload[1..]  : struct hfi_cmd_set_remap[count]
+ */
+#define HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP             0x02000018
+
+/*
+ * HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE - From Host to DCP, this command instructs
+ *                                                       DCP to replace the standard DCS command
+ *                                                       metadata for one or more command types with
+ *                                                       user-defined commands. The payload begins
+ *                                                       with a u32 count field followed by an array
+ *                                                       of hfi_dsi_dcs_cmd_set_replace_entry
+ *                                                       structs, one per command type being
+ *                                                       replaced.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Validation requirements:
+ *      - count must be > 0 and <= total entries in hfi_panel_dcs_command_type
+ *      - cmd_type in each entry must be a valid hfi_panel_dcs_command_type value
+ *      - count_cmds in each entry must be > 0
+ *      - dpu_buff_type_offset must be >= the start of the reserved region within the
+ *        DPU-mapped command payload buffer (established during panel init via
+ *        HFI_PROPERTY_PANEL_DPU_ADDRESS), and dpu_buff_type_offset + total size of
+ *        count_cmds commands must not exceed the bounds of that reserved region
+ *      - hfi_buff_struct_offset must be >= the start of the reserved region within the
+ *        DCP-mapped command descriptor buffer (established during panel init via
+ *        HFI_PROPERTY_PANEL_DCP_ADDRESS), and hfi_buff_struct_offset + total size of
+ *        count_cmds command metadata entries must not exceed the bounds of that reserved region
+ *
+ * Data layout:
+ * struct dsi_hfi_dcs_cmd_set_replace_payload {
+ *     u32 count;                                                // Number of replacement entries(N)
+ *     struct hfi_dsi_dcs_cmd_set_replace_entry entries[count]; // Array of replacement entries
+ * };
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in display_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE
+ *     hfi_packet.flags         : HFI_TX_FLAGS_INTR_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_RESPONSE_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : struct dsi_hfi_dcs_cmd_set_replace_payload
+ */
+#define HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE           0x02000019
+
+/*!
+ * HFI_COMMAND_DISPLAY_BATCH_MODE  -  From Host to DCP, this command denotes the start or end of
+ *                                    batch mode for display. HFI_COMMAND_DISPLAY_BATCH_MODE
+ *                                    must be set before this command.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in @ref display_header_data_page)
+ *
+ * Hfi packet layout                      | Value
+ *----------------------------------------|---------------------------------
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                         | HFI_COMMAND_DISPLAY_BATCH_MODE
+ * hfi_packet.flags                       | HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                          | Bits 0:15 carry the display id
+ * hfi_packet.packet_id                   | unique id
+ * hfi_packet.payload                     | struct hfi_batch_mode_info
+ */
+#define HFI_COMMAND_DISPLAY_BATCH_MODE                                0x0200001A
+
+/*!
+ * HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG - Host command sent to DCP to configure the
+ *                                            HFI queue for a subsystem. This command is sent after
+ *                                            enabling the display and before batch mode start
+ *                                            of the use case.
+ *
+ * Host to DCP:
+ *
+ * hfi_header.num_packets             : 1
+ *
+ * Hfi packet layout                  | Value
+ *------------------------------------|------------------------------------------------
+ * hfi_packet.payload_info (type)     | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                     | HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG
+ * hfi_packet.flags                   | HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *                                    | HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                      | Bits 0:15 carry the display id
+ * hfi_packet.packet_id               | unique id
+ * hfi_packet.payload[0]              | enum hfi_subsystem_type
+ * hfi_packet.payload[1..]            | struct hfi_buff
+ */
+#define HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG                      0x0200001B
+
 #define HFI_COMMAND_DISPLAY_END                                       0x02FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_H__

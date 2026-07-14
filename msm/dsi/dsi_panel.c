@@ -66,6 +66,7 @@ static int isl97900_led_event(struct device_node *node, enum isl_function event,
 #define DCS_COMMAND_THRESHOLD_TIME_US 40
 
 #define DSI_PANEL_I2C_MIN_CMD_SIZE 3 /* slave, delay, len */
+#define DSI_PANEL_DEFAULT_GPIO_RELEASE_DELAY_MS  120
 
 static void dsi_dce_prepare_pps_header(char *buf, u32 pps_delay_ms)
 {
@@ -529,6 +530,11 @@ int dsi_panel_power_off(struct dsi_panel *panel)
 {
 	int rc = 0;
 
+	if (!panel) {
+		DSI_ERR("invalid panel\n");
+		return -EINVAL;
+	}
+
 	if (panel->skip_panel_off) {
 		DSI_DEBUG("skip panel power off\n");
 		panel->skip_pwr = true;
@@ -558,6 +564,17 @@ int dsi_panel_power_off(struct dsi_panel *panel)
 		       rc);
 	}
 
+	if (atomic_read(&panel->ssr_in_progress)) {
+		/*
+		 * Due to an abrupt device crash, the proper power-off sequence cannot
+		 * be followed, including sending the sleep-in command to the panel.
+		 * As a result, some panels may remain in a bad state after recoverry
+		 * from crash even after power-on and may require a delay between the
+		 * GPIO reset and panel power shutdown to avoid this.
+		 */
+		msleep(panel->reset_config.gpio_release_delay_ms);
+	}
+
 	rc = dsi_pwr_enable_regulator(&panel->power_info, false);
 	if (rc)
 		DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
@@ -569,6 +586,7 @@ int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 		enum dsi_cmd_set_type type, bool do_peripheral_flush)
 {
 	int rc = 0, i = 0;
+	int idx;
 	ssize_t len;
 	struct dsi_cmd_desc *cmds;
 	u32 count;
@@ -578,12 +596,19 @@ int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 	if (!panel || !panel->cur_mode)
 		return -EINVAL;
 
+	/* Convert enum value to array index */
+	idx = dsi_cmd_type_to_index(type);
+	if (idx < 0 || idx >= DSI_CMD_SET_TOTAL_SIZE) {
+		DSI_ERR("Invalid command type: %u, idx: %d\n", type, idx);
+		return -EINVAL;
+	}
+
 	mode = panel->cur_mode;
 
-	cmds = mode->priv_info->cmd_sets[type].cmds;
-	count = mode->priv_info->cmd_sets[type].count;
-	state = mode->priv_info->cmd_sets[type].state;
-	SDE_EVT32(type, state, count);
+	cmds = mode->priv_info->cmd_sets[idx].cmds;
+	count = mode->priv_info->cmd_sets[idx].count;
+	state = mode->priv_info->cmd_sets[idx].state;
+	SDE_EVT32(type, state, count, idx);
 
 	if (count == 0) {
 		DSI_DEBUG("[%s] No commands to be sent for state(%d)\n",
@@ -2526,6 +2551,19 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-custom-on-command",
 };
 
+/**
+ * custom_cmd_set_prop_map - DSI custom command set property map
+ *
+ * Maps custom command set types to their corresponding device tree property names.
+ * This array provides the DT property strings for custom command sets, allowing
+ * OEMs to define custom commands beyond the standard command set types.
+ *
+ * Each entry corresponds to a custom command set type defined in dsi_custom_cmd_set_type.
+ */
+const char *custom_cmd_set_prop_map[DSI_CUSTOM_CMD_SET_COUNT] = {
+	"qcom,mdss-dsi-custom-command-1",
+};
+
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-pre-on-command-state",
 	"qcom,mdss-dsi-on-command-state",
@@ -2572,6 +2610,19 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"Privacy layer not parsed from DTSI, generated dynamically",
 	"Brightness not parsed from DTSI, generated dynamically",
 	"qcom,mdss-dsi-custom-on-command-state",
+};
+
+/**
+ * custom_cmd_set_state_map - DSI custom command set state map
+ *
+ * Maps custom command set types to their corresponding device tree state property names.
+ * This array provides the DT property strings for custom command sets, allowing OEMs to
+ * control the transmission mode for their custom commands.
+ *
+ * Each entry corresponds to a custom command set type defined in dsi_custom_cmd_set_type.
+ */
+const char *custom_cmd_set_state_map[DSI_CUSTOM_CMD_SET_COUNT] = {
+	"qcom,mdss-dsi-custom-command-state-1",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -2694,16 +2745,33 @@ static int dsi_panel_parse_cmd_sets_sub(struct dsi_panel_cmd_set *cmd,
 	const char *data;
 	const char *state;
 	u32 packet_count = 0;
+	const char *prop_name;
+	const char *state_name;
 
-	data = utils->get_property(utils->data, cmd_set_prop_map[type],
-			&length);
+	/* Determine which property map to use based on command type */
+	if (type >= DSI_CUSTOM_CMD_SET_START_IDX && type < (u32)DSI_CUSTOM_CMD_SET_MAX) {
+		/* Custom command set */
+		int custom_idx = type - DSI_CUSTOM_CMD_SET_START_IDX;
+
+		prop_name = custom_cmd_set_prop_map[custom_idx];
+		state_name = custom_cmd_set_state_map[custom_idx];
+	} else if (type >= 0 && type < DSI_CMD_SET_MAX) {
+		/* Standard command set */
+		prop_name = cmd_set_prop_map[type];
+		state_name = cmd_set_state_map[type];
+	} else {
+		DSI_ERR("Invalid command type %d\n", type);
+		return -EINVAL;
+	}
+
+	data = utils->get_property(utils->data, prop_name, &length);
 	if (!data) {
-		DSI_DEBUG("%s commands not defined\n", cmd_set_prop_map[type]);
+		DSI_DEBUG("%s commands not defined\n", prop_name);
 		rc = -ENOTSUPP;
 		goto error;
 	}
 
-	DSI_DEBUG("type=%d, name=%s, length=%d\n", type, cmd_set_prop_map[type], length);
+	DSI_DEBUG("type=%d, name=%s, length=%d, state=%s\n", type, prop_name, length, state_name);
 
 	print_hex_dump_debug("", DUMP_PREFIX_NONE, 8, 1, data, length, false);
 
@@ -2712,7 +2780,7 @@ static int dsi_panel_parse_cmd_sets_sub(struct dsi_panel_cmd_set *cmd,
 		DSI_ERR("commands failed, rc=%d\n", rc);
 		goto error;
 	}
-	DSI_DEBUG("[%s] packet-count=%d, %d\n", cmd_set_prop_map[type],
+	DSI_DEBUG("[%s] packet-count=%d, %d\n", prop_name,
 		packet_count, length);
 
 	rc = dsi_panel_alloc_cmd_packets(cmd, packet_count);
@@ -2728,14 +2796,14 @@ static int dsi_panel_parse_cmd_sets_sub(struct dsi_panel_cmd_set *cmd,
 		goto error_free_mem;
 	}
 
-	state = utils->get_property(utils->data, cmd_set_state_map[type], NULL);
+	state = utils->get_property(utils->data, state_name, NULL);
 	if (!state || !strcmp(state, "dsi_lp_mode")) {
 		cmd->state = DSI_CMD_SET_STATE_LP;
 	} else if (!strcmp(state, "dsi_hs_mode")) {
 		cmd->state = DSI_CMD_SET_STATE_HS;
 	} else {
 		DSI_ERR("[%s] command state unrecognized-%s\n",
-		       cmd_set_state_map[type], state);
+		       state_name, state);
 		goto error_free_mem;
 	}
 
@@ -2749,18 +2817,21 @@ error:
 }
 
 static int dsi_panel_parse_cmd_sets(
+		struct dsi_panel *panel,
 		struct dsi_display_mode_priv_info *priv_info,
 		struct dsi_parser_utils *utils)
 {
 	int rc = 0;
 	struct dsi_panel_cmd_set *set;
 	u32 i;
+	int idx;
 
 	if (!priv_info) {
 		DSI_ERR("invalid mode priv info\n");
 		return -EINVAL;
 	}
 
+	/* Parse standard command sets */
 	for (i = DSI_CMD_SET_PRE_ON; i < DSI_CMD_SET_MAX; i++) {
 		set = &priv_info->cmd_sets[i];
 		set->type = i;
@@ -2772,11 +2843,30 @@ static int dsi_panel_parse_cmd_sets(
 				DSI_ERR("failed to allocate cmd set %d, rc = %d\n",
 					i, rc);
 			set->state = DSI_CMD_SET_STATE_LP;
+		} else if (i == DSI_CMD_SET_BRIGHTNESS) {
+			rc = dsi_panel_set_brightness_prepare_dcs_cmds(panel, set, 0x00);
+			if (rc)
+				DSI_ERR("failed to allocate cmd set %d, rc = %d\n", i, rc);
 		} else {
 			rc = dsi_panel_parse_cmd_sets_sub(set, i, utils);
 			if (rc)
 				DSI_DEBUG("failed to parse set %d\n", i);
 		}
+	}
+
+	/* Parse custom command sets */
+	for (i = DSI_CUSTOM_CMD_SET_START_IDX; i < DSI_CUSTOM_CMD_SET_MAX; i++) {
+		idx = dsi_cmd_type_to_index(i);
+		if (idx < 0 || idx >= DSI_CMD_SET_TOTAL_SIZE)
+			continue;
+
+		set = &priv_info->cmd_sets[idx];
+		set->type = i;
+		set->count = 0;
+
+		rc = dsi_panel_parse_cmd_sets_sub(set, i, utils);
+		if (rc)
+			DSI_DEBUG("failed to parse custom set %d\n", i);
 	}
 
 	rc = 0;
@@ -2794,6 +2884,20 @@ static int dsi_panel_parse_reset_sequence(struct dsi_panel *panel)
 	const u32 *arr;
 	struct dsi_parser_utils *utils = &panel->utils;
 	struct dsi_reset_seq *seq;
+	u32 gpio_release_delay_ms;
+
+	/*
+	 * Parse the delay required in milliseconds after GPIO release and before
+	 * shutting down the power rails when the sleep-in command is not sent,
+	 * such as during an abrupt device crash.
+	 */
+	rc = utils->read_u32(utils->data, "qcom,platform-reset-gpio-release-delay",
+				&gpio_release_delay_ms);
+	if (rc) {
+		gpio_release_delay_ms = DSI_PANEL_DEFAULT_GPIO_RELEASE_DELAY_MS;
+		rc = 0;
+	}
+	panel->reset_config.gpio_release_delay_ms = gpio_release_delay_ms;
 
 	if (panel->host_config.ext_bridge_mode)
 		return 0;
@@ -2826,7 +2930,7 @@ static int dsi_panel_parse_reset_sequence(struct dsi_panel *panel)
 	rc = utils->read_u32_array(utils->data, "qcom,mdss-dsi-reset-sequence",
 					arr_32, length);
 	if (rc) {
-		DSI_ERR("[%s] cannot read dso-reset-seqience\n", panel->name);
+		DSI_ERR("[%s] cannot read dsi-reset-seqience\n", panel->name);
 		goto error_free_arr_32;
 	}
 
@@ -4947,6 +5051,8 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	}
 
 	panel->power_mode = SDE_MODE_DPMS_OFF;
+	atomic_set(&panel->esd_recovery_pending, 0);
+	atomic_set(&panel->ssr_in_progress, 0);
 	drm_panel_init(&panel->drm_panel, &panel->mipi_device.dev,
 			NULL, DRM_MODE_CONNECTOR_DSI);
 	panel->mipi_device.dev.of_node = of_node;
@@ -5235,7 +5341,7 @@ void dsi_panel_put_mode(struct dsi_display_mode *mode)
 	if (!mode->priv_info)
 		return;
 
-	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
+	for (i = 0; i < DSI_CMD_SET_TOTAL_SIZE; i++) {
 		dsi_panel_destroy_cmd_packets(&mode->priv_info->cmd_sets[i]);
 		dsi_panel_dealloc_cmd_packets(&mode->priv_info->cmd_sets[i]);
 	}
@@ -5539,7 +5645,7 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 			goto parse_fail;
 		}
 
-		rc = dsi_panel_parse_cmd_sets(prv_info, utils);
+		rc = dsi_panel_parse_cmd_sets(panel, prv_info, utils);
 		if (rc) {
 			DSI_ERR("failed to parse command sets, rc=%d\n", rc);
 			goto parse_fail;
@@ -6799,7 +6905,7 @@ exit:
 	return rc;
 }
 
-static int dsi_panel_set_brightness_prepare_dcs_cmds(struct dsi_panel *panel,
+int dsi_panel_set_brightness_prepare_dcs_cmds(struct dsi_panel *panel,
 		struct dsi_panel_cmd_set *set, u32 bl_lvl)
 {
 	u8 *tx = NULL;
@@ -6988,14 +7094,22 @@ static int dsi_panel_prepare_cmd(struct dsi_panel *panel,
 	struct dsi_panel_cmd_set *set;
 	struct dsi_display_mode_priv_info *priv_info;
 	int rc = 0;
+	int idx;
 
 	if (!panel || !panel->cur_mode) {
 		DSI_ERR("Invalid params\n");
 		return -EINVAL;
 	}
 
+	/* Convert enum value to array index */
+	idx = dsi_cmd_type_to_index(type);
+	if (idx < 0 || idx >= DSI_CMD_SET_TOTAL_SIZE) {
+		DSI_ERR("Invalid command type: %u, idx: %d\n", type, idx);
+		return -EINVAL;
+	}
+
 	priv_info = panel->cur_mode->priv_info;
-	set = &priv_info->cmd_sets[type];
+	set = &priv_info->cmd_sets[idx];
 
 	// Prepare the privacy buffer content dynamically.
 	if (type == DSI_CMD_SET_PRIVACY_LAYER) {
@@ -7035,7 +7149,7 @@ int dsi_panel_send_cmd(struct dsi_panel *panel,
 	int rc = 0;
 	bool peripheral_flush = false;
 
-	if (!panel) {
+	if (!panel || !params) {
 		DSI_ERR("invalid params panel NULL\n");
 		return -EINVAL;
 	}

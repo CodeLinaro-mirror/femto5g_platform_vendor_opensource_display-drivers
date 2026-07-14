@@ -24,5 +24,6 @@ def define_shikra():
                     "CONFIG_THERMAL_OF",
                     "CONFIG_DRM_LT9611UXD",
                     "CONFIG_MSM_EXT_DISPLAY",
+                    "CONFIG_SMMU_PROXY",
                 ],
            )

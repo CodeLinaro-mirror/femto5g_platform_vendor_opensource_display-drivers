@@ -188,11 +188,13 @@ static ssize_t debugfs_reg_dump_read(struct file *file,
 	clk_info.clk_type = DSI_CORE_CLK;
 	clk_info.clk_state = DSI_CLK_ON;
 
-	rc = dsi_ctrl->clk_cb.dsi_clk_cb(dsi_ctrl->clk_cb.priv, clk_info);
-	if (rc) {
-		DSI_CTRL_ERR(dsi_ctrl, "failed to enable DSI core clocks\n");
-		kfree(buf);
-		return rc;
+	if (dsi_ctrl->clk_cb.dsi_clk_cb) {
+		rc = dsi_ctrl->clk_cb.dsi_clk_cb(dsi_ctrl->clk_cb.priv, clk_info);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl, "failed to enable DSI core clocks\n");
+			kfree(buf);
+			return rc;
+		}
 	}
 
 	if (dsi_ctrl->hw.ops.reg_dump_to_buffer[dsi_ctrl->disp_op])
@@ -200,11 +202,14 @@ static ssize_t debugfs_reg_dump_read(struct file *file,
 				buf, SZ_4K);
 
 	clk_info.clk_state = DSI_CLK_OFF;
-	rc = dsi_ctrl->clk_cb.dsi_clk_cb(dsi_ctrl->clk_cb.priv, clk_info);
-	if (rc) {
-		DSI_CTRL_ERR(dsi_ctrl, "failed to disable DSI core clocks\n");
-		kfree(buf);
-		return rc;
+
+	if (dsi_ctrl->clk_cb.dsi_clk_cb) {
+		rc = dsi_ctrl->clk_cb.dsi_clk_cb(dsi_ctrl->clk_cb.priv, clk_info);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl, "failed to disable DSI core clocks\n");
+			kfree(buf);
+			return rc;
+		}
 	}
 
 	if (len > count)
@@ -318,15 +323,17 @@ static int dsi_ctrl_debugfs_init(struct dsi_ctrl *dsi_ctrl,
 		goto error_remove_dir;
 	}
 
-	reg_dump = debugfs_create_file("reg_dump",
-				       0444,
-				       dir,
-				       dsi_ctrl,
-				       &reg_dump_fops);
-	if (IS_ERR_OR_NULL(reg_dump)) {
-		rc = PTR_ERR(reg_dump);
-		DSI_CTRL_ERR(dsi_ctrl, "reg dump file failed, rc=%d\n", rc);
-		goto error_remove_dir;
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HWIO) {
+		reg_dump = debugfs_create_file("reg_dump",
+					       0444,
+					       dir,
+					       dsi_ctrl,
+					       &reg_dump_fops);
+		if (IS_ERR_OR_NULL(reg_dump)) {
+			rc = PTR_ERR(reg_dump);
+			DSI_CTRL_ERR(dsi_ctrl, "reg dump file failed, rc=%d\n", rc);
+			goto error_remove_dir;
+		}
 	}
 
 	debugfs_create_bool("enable_cmd_dma_stats", 0600, dir, &dsi_ctrl->enable_cmd_dma_stats);
@@ -1810,11 +1817,11 @@ static int dsi_parse_long_read_resp(const struct mipi_dsi_msg *msg,
 static int dsi_message_rx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd_desc, u32 flags)
 {
 	int rc = 0;
-	u32 rd_pkt_size, total_read_len, hw_read_cnt;
+	u32 rd_pkt_size, total_read_len, hw_read_cnt = 0;
 	u32 current_read_len = 0, total_bytes_read = 0;
 	bool short_resp = false;
 	bool read_done = false;
-	u32 dlen, diff, rlen;
+	u32 dlen = 0, diff, rlen;
 	unsigned char *buff = NULL;
 	char cmd;
 	const struct mipi_dsi_msg *msg;

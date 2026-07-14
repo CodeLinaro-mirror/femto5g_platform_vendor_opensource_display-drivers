@@ -187,6 +187,7 @@ struct dsi_panel_reset_config {
 	int oled_en_gpio;
 	int lcd_mode_sel_gpio;
 	u32 mode_sel_state;
+	u32 gpio_release_delay_ms;
 };
 
 enum esd_check_status_mode {
@@ -408,6 +409,7 @@ struct dsi_panel {
 	bool reset_gpio_always_on;
 	bool privacy_feature_enabled;
 	atomic_t esd_recovery_pending;
+	atomic_t ssr_in_progress;
 
 	bool skip_panel_off;
 	bool skip_pwr;
@@ -616,6 +618,9 @@ int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel);
 
 int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 		enum dsi_cmd_set_type type, bool do_peripheral_flush);
+
+int dsi_panel_set_brightness_prepare_dcs_cmds(struct dsi_panel *panel,
+		struct dsi_panel_cmd_set *set, u32 bl_lvl);
 
 int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel);
 #endif /* _DSI_PANEL_H_ */

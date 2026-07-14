@@ -503,8 +503,11 @@
  *                                 From host to DCP, this command provides EDID data
  *                                 that will be used for subsequent hotplug events.
  *
+ * The target display is identified by hfi_header.object_id
+ *
  * Host to DCP:
  * hfi_header.num_packets                 : 1
+ * hfi_header.object_id                   : HFI display object ID of the target display
  *
  *     Hfi Packet layout        : Value
  *     hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
@@ -767,6 +770,48 @@
  */
 
 #define HFI_COMMAND_DEBUG_DP_READ_BW_CODE                              0xFF00050B
+
+/*
+ * HFI_COMMAND_DEBUG_DP_MST_CONFIG - This command configures MST (Multi-Stream Transport) mode.
+ *                                 From host to DCP, this command enables or disables MST mode
+ *                                 and sets the number of MST streams.
+ *
+ *                                 On receipt, DCP calls dp_sim_mst_enable() and updates the
+ *                                 following DPCD registers in the simulation:
+ *                                   - DP_MSTM_CAP (0x021): set to 1 if MST enabled, 0 if SST
+ *                                   - DP_SINK_COUNT: set to num_streams if MST enabled, 1 if SST
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Data Contents:
+ *  struct hfi_dp_mst_config {
+ *      u32 mst_enable;    // 1 = MST enabled, 0 = SST only
+ *      u32 num_streams;   // Number of MST streams (1 to DP_SIM_MAX_STREAMS); ignored when
+ *                         // mst_enable = 0
+ *  }
+ *
+ * Hfi Packet layout                      | Value
+ *----------------------------------------|-------------------------------------
+ * hfi_packet.payload_info (size)         | sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                         | HFI_COMMAND_DEBUG_DP_MST_CONFIG
+ * hfi_packet.flags (Host to DCP)         | HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                          | DP instance id
+ * hfi_packet.packet_id                   | unique id
+ * hfi_packet.payload                     | struct hfi_dp_mst_config
+ *
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi Packet layout                      | Value
+ *----------------------------------------|-------------------------------------
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_NONE
+ * hfi_packet.cmd                         | HFI_COMMAND_DEBUG_DP_MST_CONFIG
+ * hfi_packet.flags (DCP to Host)         | HFI_RX_FLAGS_SUCCESS
+ */
+#define HFI_COMMAND_DEBUG_DP_MST_CONFIG                                0xFF00050C
 
 #define HFI_COMMAND_DEBUG_DP_END                                       0xFF0005FF
 

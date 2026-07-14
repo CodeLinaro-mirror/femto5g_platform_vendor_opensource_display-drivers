@@ -28,11 +28,13 @@
 static void _hfi_wb_get_out_resolution(struct sde_connector_state *cstate,
 		u32 *out_width, u32 *out_height, struct sde_io_res *dnsc_blur_res)
 {
-	const struct drm_display_mode *mode = cstate->msm_mode.base;
+	const struct drm_display_mode *mode;
 	enum sde_wb_rot_type rotation_type;
 
 	if (!cstate || !dnsc_blur_res || !out_width || !out_height)
 		return;
+
+	mode = cstate->msm_mode.base;
 
 	sde_connector_get_dnsc_blur_io_res(&cstate->base, dnsc_blur_res);
 	rotation_type = sde_connector_get_property(&cstate->base, CONNECTOR_PROP_WB_ROT_TYPE);

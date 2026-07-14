@@ -112,7 +112,7 @@ struct dsi_display *_sde_connector_get_display(struct sde_connector *c_conn)
 	struct shd_display *shd_display;
 
 	if (!c_conn || (c_conn->connector_type != DRM_MODE_CONNECTOR_DSI))
-		return 0;
+		return NULL;
 
 	if (c_conn->shared) {
 		shd_display = c_conn->display;
@@ -1374,6 +1374,7 @@ static int _sde_connector_update_dirty_properties(
 	bool is_roi_dirty = false;
 	bool is_lp_dirty = false;
 	bool is_qsync_dirty = false;
+	bool is_vsync_offset_dirty = false;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1412,6 +1413,10 @@ static int _sde_connector_update_dirty_properties(
 				c_conn->bl_dirty_change = true;
 				break;
 			}
+			if (disp_op == MSM_DISP_OP_HFI) {
+				c_conn->b_lvl = b_lvl;
+				c_conn->bl_dirty_change = true;
+			}
 			backlight_device_set_brightness(c_conn->bl_device, b_lvl);
 			break;
 		case CONNECTOR_PROP_ROI_V1:
@@ -1419,6 +1424,11 @@ static int _sde_connector_update_dirty_properties(
 			break;
 		case CONNECTOR_PROP_QSYNC_MODE:
 			is_qsync_dirty = true;
+			break;
+		case CONNECTOR_PROP_VSYNC_OFFSET:
+			if ((sde_connector_get_property(connector->state,
+					CONNECTOR_PROP_VSYNC_OFFSET)) > 0)
+				is_vsync_offset_dirty = true;
 			break;
 		default:
 			/* nothing to do for most properties */
@@ -1431,6 +1441,10 @@ static int _sde_connector_update_dirty_properties(
 		msm_property_set_dirty(&c_conn->property_info,
 			&c_state->property_state, CONNECTOR_PROP_ROI_V1);
 	}
+
+	if ((disp_op == MSM_DISP_OP_HFI) && c_conn->bl_dirty_change)
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_BRIGHTNESS);
 
 	/* If HFI mode and LP property is dirty - add to the dirty list */
 	if ((disp_op == MSM_DISP_OP_HFI) && is_lp_dirty)
@@ -1456,6 +1470,10 @@ static int _sde_connector_update_dirty_properties(
 		_sde_connector_update_bl_scale(c_conn);
 		c_conn->bl_scale_dirty = false;
 	}
+
+	if ((disp_op == MSM_DISP_OP_HFI) && is_vsync_offset_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_VSYNC_OFFSET);
 
 	return 0;
 }
@@ -1493,7 +1511,7 @@ static int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	struct sde_connector_state *c_state;
 	struct msm_freq_step_pattern *freq_pattern;
 	struct sde_encoder_virt *sde_enc;
-	enum sde_crtc_vm_req vm_req;
+	enum sde_crtc_vm_req vm_req = VM_REQ_NONE;
 	u64 cmd_bit_mask = 0;
 	int rc = 0;
 
@@ -1506,11 +1524,12 @@ static int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	c_state = to_sde_connector_state(connector->state);
 	sde_enc = to_sde_encoder_virt(c_conn->encoder);
 
-	if (sde_enc)
+	if (sde_enc) {
 		sde_enc->vrr_info.vhm_cmd_in_progress = SDE_NO_CMD_SCHEDULED;
-
-	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+		vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
 			CRTC_PROP_VM_REQ_STATE);
+	}
+
 	if (vm_req == VM_REQ_RELEASE)
 		return 0;
 
@@ -2175,6 +2194,23 @@ static void sde_connector_atomic_destroy_state(struct drm_connector *connector,
 	if (c_state->out_fb)
 		_sde_connector_destroy_fb(c_conn, c_state);
 
+	sde_wb_lsr_reset_out_fb_list(c_state);
+
+	if (c_state->pose_fb)
+		drm_framebuffer_put(c_state->pose_fb);
+
+	/* Release reproj opaque-config gem objects owned by this state. */
+	if (c_state->reproj_sparse_grid.buf)
+		drm_gem_object_put(c_state->reproj_sparse_grid.buf);
+	if (c_state->reproj_radial_dis_grid.buf)
+		drm_gem_object_put(c_state->reproj_radial_dis_grid.buf);
+	if (c_state->reproj_display_gamma.buf)
+		drm_gem_object_put(c_state->reproj_display_gamma.buf);
+	if (c_state->reproj_gcx_session_config.buf)
+		drm_gem_object_put(c_state->reproj_gcx_session_config.buf);
+	if (c_state->reproj_gcx_session_config_data.buf)
+		drm_gem_object_put(c_state->reproj_gcx_session_config_data.buf);
+
 	__drm_atomic_helper_connector_destroy_state(&c_state->base);
 
 	if (!c_conn) {
@@ -2261,6 +2297,12 @@ sde_connector_atomic_duplicate_state(struct drm_connector *connector)
 	if (c_state->out_fb)
 		drm_framebuffer_get(c_state->out_fb);
 
+	/* Each state owns a reference to its LSR out-buffer FBs */
+	sde_wb_lsr_get_view_fbs(c_state);
+
+	if (c_state->pose_fb)
+		drm_framebuffer_get(c_state->pose_fb);
+
 	/* clear dynamic HDR metadata from prev state */
 	if (c_state->dyn_hdr_meta.dynamic_hdr_update) {
 		c_state->dyn_hdr_meta.dynamic_hdr_update = false;
@@ -2269,6 +2311,18 @@ sde_connector_atomic_duplicate_state(struct drm_connector *connector)
 
 	/* Clear privacy layer info from prev state */
 	c_state->privacy_layer_updated = false;
+
+	/* Increment refcount so each state owns its reference */
+	if (c_state->reproj_sparse_grid.buf)
+		drm_gem_object_get(c_state->reproj_sparse_grid.buf);
+	if (c_state->reproj_radial_dis_grid.buf)
+		drm_gem_object_get(c_state->reproj_radial_dis_grid.buf);
+	if (c_state->reproj_display_gamma.buf)
+		drm_gem_object_get(c_state->reproj_display_gamma.buf);
+	if (c_state->reproj_gcx_session_config.buf)
+		drm_gem_object_get(c_state->reproj_gcx_session_config.buf);
+	if (c_state->reproj_gcx_session_config_data.buf)
+		drm_gem_object_get(c_state->reproj_gcx_session_config_data.buf);
 
 	sde_wb_connector_reset_reproj_state(c_state);
 
@@ -2840,6 +2894,7 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 	case CONNECTOR_PROP_AVR_STEP_STATE:
 	case CONNECTOR_PROP_EPT_FPS:
 	case CONNECTOR_PROP_EPT:
+	case CONNECTOR_PROP_VSYNC_OFFSET:
 		msm_property_set_dirty(&c_conn->property_info,
 				&c_state->property_state, idx);
 		break;
@@ -3733,6 +3788,98 @@ static const struct file_operations conn_esd_status_interval_fops = {
 	.write =    _sde_debugfs_conn_esd_status_interval_write,
 };
 
+static int _sde_debugfs_custom_wd_te_open(struct inode *inode, struct file *file)
+{
+	/* non-seekable */
+	file->private_data = inode->i_private;
+	return nonseekable_open(inode, file);
+}
+
+static ssize_t _sde_debugfs_custom_wd_te_read(struct file *file,
+		char __user *buf, size_t count, loff_t *ppos)
+{
+	struct drm_connector *connector = file->private_data;
+	struct sde_connector *c_conn;
+	char buffer[64];
+	int len;
+
+	if (*ppos)
+		return 0;
+
+	if (!connector) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+
+	len = scnprintf(buffer, sizeof(buffer), "enabled: %u, fps: %u\n",
+			c_conn->custom_wd_te_enabled, c_conn->custom_wd_te_fps);
+
+	if (len < 0 || len >= sizeof(buffer))
+		return -EINVAL;
+
+	if (copy_to_user(buf, buffer, len))
+		return -EFAULT;
+
+	*ppos += len;
+	return len;
+}
+
+static ssize_t _sde_debugfs_custom_wd_te_write(struct file *file,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct drm_connector *connector = file->private_data;
+	struct sde_connector *c_conn;
+	char buf[32];
+	int enable, fps;
+	int ret;
+
+	if (*ppos || !connector)
+		return -EINVAL;
+
+	c_conn = to_sde_connector(connector);
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+
+	/* Parse "enable fps" format, e.g., "1 60" */
+	ret = sscanf(buf, "%d %d", &enable, &fps);
+	if (ret != 2) {
+		SDE_ERROR("invalid format, expected: <enable> <fps>\n");
+		return -EINVAL;
+	}
+
+	if (enable != 0 && enable != 1) {
+		SDE_ERROR("enable must be 0 or 1\n");
+		return -EINVAL;
+	}
+
+	if (fps < 1 || fps > SDE_CONNECTOR_CUSTOM_WD_TE_FPS_MAX) {
+		SDE_ERROR("fps value must be non-negative and less than %d\n",
+			SDE_CONNECTOR_CUSTOM_WD_TE_FPS_MAX);
+		return -EINVAL;
+	}
+
+	/* Call the update function */
+	sde_connector_update_custom_wd_te(c_conn, fps, enable ? true : false);
+	SDE_DEBUG("custom WD TE updated: enable=%d, fps=%d\n", enable, fps);
+	SDE_EVT32(enable, fps, c_conn->custom_wd_updated);
+
+	return count;
+}
+
+static const struct file_operations custom_wd_te_fops = {
+	.open =  _sde_debugfs_custom_wd_te_open,
+	.read =  _sde_debugfs_custom_wd_te_read,
+	.write = _sde_debugfs_custom_wd_te_write,
+};
+
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 /**
  * sde_connector_init_debugfs - initialize connector debugfs
@@ -3796,6 +3943,13 @@ static int sde_connector_init_debugfs(struct drm_connector *connector)
 				&sde_connector->num_bl_frames);
 		debugfs_create_bool("disable_cont_dimming", 0600, connector->debugfs_entry,
 				&sde_connector->disable_cont_dimming);
+
+		/* Custom WD TE configuration */
+		if (!debugfs_create_file("custom_wd_te_config", 0600,
+				connector->debugfs_entry, connector, &custom_wd_te_fops)) {
+			SDE_ERROR("failed to create custom_wd_te_config\n");
+			return -ENOMEM;
+		}
 	}
 
 	return 0;
@@ -4462,6 +4616,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 
 	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
 		dsi_display = _sde_connector_get_display(c_conn);
+
 		if (dsi_display && dsi_display->panel) {
 			msm_property_install_blob(&c_conn->property_info,
 				"dimming_bl_lut", DRM_MODE_PROP_BLOB,
@@ -4471,36 +4626,33 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			msm_property_install_range(&c_conn->property_info, "dimming_min_bl",
 					0x0, 0, dsi_display->panel->bl_config.brightness_max_level, 0,
 					CONNECTOR_PROP_DIMMING_MIN_BL);
+
+			if (dsi_display->panel->hdr_props.hdr_enabled == true) {
+				msm_property_install_blob(&c_conn->property_info,
+					"hdr_properties",
+					DRM_MODE_PROP_IMMUTABLE,
+					CONNECTOR_PROP_HDR_INFO);
+
+				msm_property_set_blob(&c_conn->property_info,
+					&c_conn->blob_hdr,
+					&dsi_display->panel->hdr_props,
+					sizeof(dsi_display->panel->hdr_props),
+					CONNECTOR_PROP_HDR_INFO);
+			}
+
+			if (dsi_display->panel->privacy_feature_enabled) {
+				msm_property_install_volatile_range(
+					&c_conn->property_info, "privacy_layers_v1", 0x0,
+					0, ~0, 0, CONNECTOR_PROP_PRIVACY_LAYER_V1);
+				msm_property_install_volatile_range(
+					&c_conn->property_info, "privacy_layers_v2", 0x0,
+					0, ~0, 0, CONNECTOR_PROP_PRIVACY_LAYER_V2);
+			}
+
+			if (dsi_display->panel->dyn_clk_caps.dyn_clk_support)
+				msm_property_install_range(&c_conn->property_info, "dyn_bit_clk",
+						0x0, 0, ~0, 0, CONNECTOR_PROP_DYN_BIT_CLK);
 		}
-
-		if (dsi_display && dsi_display->panel &&
-			dsi_display->panel->hdr_props.hdr_enabled == true) {
-			msm_property_install_blob(&c_conn->property_info,
-				"hdr_properties",
-				DRM_MODE_PROP_IMMUTABLE,
-				CONNECTOR_PROP_HDR_INFO);
-
-			msm_property_set_blob(&c_conn->property_info,
-				&c_conn->blob_hdr,
-				&dsi_display->panel->hdr_props,
-				sizeof(dsi_display->panel->hdr_props),
-				CONNECTOR_PROP_HDR_INFO);
-		}
-
-		if (dsi_display && dsi_display->panel->privacy_feature_enabled) {
-			msm_property_install_volatile_range(
-				&c_conn->property_info, "privacy_layers_v1", 0x0,
-				0, ~0, 0, CONNECTOR_PROP_PRIVACY_LAYER_V1);
-			msm_property_install_volatile_range(
-				&c_conn->property_info, "privacy_layers_v2", 0x0,
-				0, ~0, 0, CONNECTOR_PROP_PRIVACY_LAYER_V2);
-		}
-
-		if (dsi_display && dsi_display->panel &&
-				dsi_display->panel->dyn_clk_caps.dyn_clk_support)
-			msm_property_install_range(&c_conn->property_info, "dyn_bit_clk",
-					0x0, 0, ~0, 0, CONNECTOR_PROP_DYN_BIT_CLK);
-
 		msm_property_install_range(&c_conn->property_info, "dyn_transfer_time",
 				 0x0, 0, 1000000, 0, CONNECTOR_PROP_DYN_TRANSFER_TIME);
 
@@ -4509,6 +4661,9 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 						dev->mode_config.max_width,
 						dev->mode_config.max_height);
 		mutex_unlock(&c_conn->base.dev->mode_config.mutex);
+
+		msm_property_install_range(&c_conn->property_info, "vsync_offset",
+			0x0, 0, U64_MAX, 0, CONNECTOR_PROP_VSYNC_OFFSET);
 	}
 
 	msm_property_install_volatile_range(
@@ -4652,6 +4807,13 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			CONNECTOR_PROP_BRIGHTNESS);
 		}
 	}
+
+	if (connector_type == DRM_MODE_CONNECTOR_DSI &&
+			display_info->display_type == SDE_CONNECTOR_PRIMARY &&
+			test_bit(SDE_FEATURE_GMU_REPROJ, sde_kms->catalog->features))
+		msm_property_install_range(&c_conn->property_info,
+			"gmu_dcp_intf_mem", 0x0, 0, U32_MAX, 0,
+			CONN_PROP_GMU_DCP_INTF_MEM);
 
 	return 0;
 }
@@ -5242,11 +5404,13 @@ u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
 	struct sde_connector *sde_conn;
 	struct drm_encoder *encoder;
 	struct drm_crtc *crtc;
+	struct sde_crtc *sde_crtc;
 	struct drm_encoder *other_enc = NULL;
 	struct drm_connector *other_conn = NULL;
 	struct sde_connector *other_sde_conn = NULL;
 	struct drm_connector_list_iter conn_iter;
 	u32 conn_id = U32_MAX;
+	u32 enc_mask;
 
 	if (!conn) {
 		SDE_ERROR("invalid connector\n");
@@ -5280,8 +5444,12 @@ u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
 		return conn_id;
 	}
 
+	sde_crtc =  to_sde_crtc(crtc);
+	enc_mask = crtc->state->encoder_mask ?
+		crtc->state->encoder_mask : sde_crtc->cached_encoder_mask;
+
 	/* Find another encoder attached to this CRTC */
-	drm_for_each_encoder_mask(other_enc, crtc->dev, crtc->state->encoder_mask) {
+	drm_for_each_encoder_mask(other_enc, crtc->dev, enc_mask) {
 		/* Skip the current encoder */
 		if (other_enc == encoder)
 			continue;
@@ -5308,4 +5476,38 @@ u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
 	}
 
 	return conn_id;
+}
+
+void sde_connector_update_custom_wd_te(struct sde_connector *sde_conn,
+	u32 frame_rate, u32 enable_wd_te)
+{
+	bool cache_update = false;
+
+	if (!sde_conn)
+		return;
+
+	if (enable_wd_te && (frame_rate < 1 ||
+		frame_rate > SDE_CONNECTOR_CUSTOM_WD_TE_FPS_MAX)) {
+		SDE_ERROR(
+			"invalid custom wd te params conn_id: %u fps: %u enable_wd_te: %d\n",
+			sde_conn->conn_id, frame_rate, enable_wd_te);
+		return;
+	}
+
+	if (sde_conn->custom_wd_te_enabled == enable_wd_te &&
+		sde_conn->custom_wd_te_fps == frame_rate) {
+		SDE_DEBUG("WD TE params are not changed\n");
+		return;
+	}
+
+	/* set updated to true if any param is changed */
+	if (sde_conn->custom_wd_te_enabled != enable_wd_te ||
+		sde_conn->custom_wd_te_fps != frame_rate)
+		cache_update = true;
+
+	/* Update the values */
+	sde_conn->custom_wd_te_enabled = enable_wd_te;
+	sde_conn->custom_wd_te_fps = frame_rate;
+	sde_conn->custom_wd_updated = cache_update;
+	SDE_EVT32(sde_conn->conn_id, enable_wd_te, frame_rate, sde_conn->custom_wd_updated);
 }

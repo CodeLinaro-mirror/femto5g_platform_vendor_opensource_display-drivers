@@ -282,6 +282,7 @@ enum {
  * SDE_SYS_CACHE_DISP: System cache for static display read/write path use case
  * SDE_SYS_CACHE_DISP_1: System cache for static display write path use case
  * SDE_SYS_CACHE_DISP_WB: System cache for IWE use case
+ * SDE_SYS_CACHE_LSR_MODE: System cache for LSR render-mode input planes (LLCC_DCP)
  * SDE_SYS_CACHE_MAX:  Maximum number of system cache users
  * SDE_SYS_CACHE_NONE: System cache not used
  */
@@ -289,6 +290,7 @@ enum sde_sys_cache_type {
 	SDE_SYS_CACHE_DISP,
 	SDE_SYS_CACHE_DISP_1,
 	SDE_SYS_CACHE_DISP_WB,
+	SDE_SYS_CACHE_LSR_MODE,
 	SDE_SYS_CACHE_MAX,
 	SDE_SYS_CACHE_NONE = SDE_SYS_CACHE_MAX
 };
@@ -1014,6 +1016,8 @@ enum sde_mdss_features {
 	SDE_FEATURE_QRTC,
 	SDE_FEATURE_A10_Y10,
 	SDE_FEATURE_ALLOW_SEC_CAM_CONCURRENCY,
+	SDE_FEATURE_BATCH_COMMIT,
+	SDE_FEATURE_GMU_REPROJ,
 	SDE_FEATURE_MAX
 };
 
