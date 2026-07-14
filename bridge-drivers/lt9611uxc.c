@@ -595,7 +595,9 @@ static void lt9611uxc_assert_5v(struct lt9611uxc *lt9611uxc)
 
 static int lt9611uxc_regulator_init(struct lt9611uxc *lt9611uxc)
 {
+	struct device_node *vcc_supply;
 	int ret;
+	u32 vcc_min, vcc_max;
 
 	lt9611uxc->supplies[0].supply = "vdd";
 	lt9611uxc->supplies[1].supply = "vcc";
@@ -604,7 +606,31 @@ static int lt9611uxc_regulator_init(struct lt9611uxc *lt9611uxc)
 	if (ret < 0)
 		return ret;
 
-	ret = regulator_set_voltage(lt9611uxc->supplies[1].consumer, 3300000, 3500000);
+	vcc_supply = of_parse_phandle(lt9611uxc->dev->of_node, "vcc-supply", 0);
+	if (!vcc_supply) {
+		dev_err(lt9611uxc->dev, "%s:failed to get vcc-supply phandle\n",
+				__func__);
+		return -ENODEV;
+	}
+
+	ret = of_property_read_u32(vcc_supply, "regulator-min-microvolt", &vcc_min);
+	if (ret) {
+		dev_err(lt9611uxc->dev, "%s:failed to read regulator-min-microvolt %d\n",
+				__func__, ret);
+		of_node_put(vcc_supply);
+		return ret;
+	}
+
+	ret = of_property_read_u32(vcc_supply, "regulator-max-microvolt", &vcc_max);
+	if (ret) {
+		dev_err(lt9611uxc->dev, "%s:failed to read regulator-max-microvolt %d\n",
+				__func__, ret);
+		of_node_put(vcc_supply);
+		return ret;
+	}
+
+	ret = regulator_set_voltage(lt9611uxc->supplies[1].consumer, vcc_min, vcc_max);
+	of_node_put(vcc_supply);
 	if (ret) {
 		dev_err(lt9611uxc->dev, "%s:regulator set voltage failed %d\n",
 				__func__, ret);
@@ -1177,6 +1203,8 @@ static int lt9611uxc_parse_dt(struct device *dev,
 static int lt9611uxc_gpio_init(struct lt9611uxc *lt9611uxc)
 {
 	struct device *dev = lt9611uxc->dev;
+	struct gpio_desc *enable_3p3_gpio;
+	struct gpio_desc *enable_1p2_gpio;
 
 	if (lt9611uxc->cont_splash_en) {
 		lt9611uxc->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_ASIS);
@@ -1196,6 +1224,18 @@ static int lt9611uxc_gpio_init(struct lt9611uxc *lt9611uxc)
 	if (IS_ERR(lt9611uxc->enable_gpio)) {
 		dev_err(dev, "failed to acquire enable gpio\n");
 		return PTR_ERR(lt9611uxc->enable_gpio);
+	}
+
+	enable_3p3_gpio = devm_gpiod_get_optional(dev, "enable-3p3", GPIOD_OUT_HIGH);
+	if (IS_ERR(enable_3p3_gpio)) {
+		dev_err(dev, "failed to acquire enable 3p3 gpio\n");
+		return PTR_ERR(enable_3p3_gpio);
+	}
+
+	enable_1p2_gpio = devm_gpiod_get_optional(dev, "enable-1p2", GPIOD_OUT_HIGH);
+	if (IS_ERR(enable_1p2_gpio)) {
+		dev_err(dev, "failed to acquire enable 1p2 gpio\n");
+		return PTR_ERR(enable_1p2_gpio);
 	}
 
 	return 0;
