@@ -2301,6 +2301,7 @@ static void _sde_encoder_phys_wb_setup_prog_line(struct sde_encoder_phys *phys_e
 static void sde_encoder_phys_wb_setup(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct drm_display_mode mode = phys_enc->cached_mode;
 	struct drm_connector_state *conn_state = phys_enc->connector->state;
 	struct drm_crtc_state *crtc_state = wb_enc->crtc->state;
@@ -2314,6 +2315,10 @@ static void sde_encoder_phys_wb_setup(struct sde_encoder_phys *phys_enc)
 	memset(wb_roi, 0, sizeof(struct sde_rect));
 
 	/* clear writeback framebuffer - will be updated in setup_fb */
+	if (sde_enc->hfi_encoder && wb_enc->wb_fb && wb_enc->wb_aspace) {
+		msm_framebuffer_cleanup(wb_enc->wb_fb, wb_enc->wb_aspace);
+		drm_framebuffer_put(wb_enc->wb_fb);
+	}
 	wb_enc->wb_fb = NULL;
 	wb_enc->wb_aspace = NULL;
 
@@ -2721,6 +2726,13 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 		drm_framebuffer_put(wb_enc->wb_fb);
 		wb_enc->wb_fb = NULL;
 		wb_enc->wb_aspace = NULL;
+	}
+
+	if (wb_enc->old_fb && wb_enc->old_aspace) {
+		msm_framebuffer_cleanup(wb_enc->old_fb, wb_enc->old_aspace);
+		drm_framebuffer_put(wb_enc->old_fb);
+		wb_enc->old_fb = NULL;
+		wb_enc->old_aspace = NULL;
 	}
 
 	sde_crtc = to_sde_crtc(sde_enc->crtc);
