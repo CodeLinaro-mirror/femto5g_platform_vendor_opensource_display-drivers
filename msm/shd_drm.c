@@ -331,11 +331,12 @@ static int shd_crtc_atomic_check(struct drm_crtc *crtc, struct drm_atomic_state 
 {
 	struct drm_crtc_state *state = drm_atomic_get_new_crtc_state(atomic_state, crtc);
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct sde_crtc_state *cstate = to_sde_crtc_state(state);
 	struct shd_crtc *shd_crtc = sde_crtc->priv_handle;
-	int rc;
 	struct drm_crtc_state *base_drm_crtc_state = NULL;
 	struct sde_crtc_state *base_sde_cstate;
 	struct sde_crtc *base_sde_crtc;
+	int rc;
 
 	base_drm_crtc_state =
 		drm_atomic_get_existing_crtc_state(state->state,
@@ -346,9 +347,13 @@ static int shd_crtc_atomic_check(struct drm_crtc *crtc, struct drm_atomic_state 
 	base_sde_cstate = to_sde_crtc_state(base_drm_crtc_state);
 	base_sde_crtc = to_sde_crtc(base_drm_crtc_state->crtc);
 
+	if (base_sde_crtc->base_reset)
+		cstate->num_mixers = 0;
+
 	/* update topology name */
-	if (sde_crtc->num_mixers == SDE_RM_TOPOLOGY_NONE || base_sde_crtc->num_mixers == 0)
-		sde_crtc->num_mixers = base_sde_crtc->num_mixers;
+	if (cstate->num_mixers == SDE_RM_TOPOLOGY_NONE)
+		sde_crtc_state_set_topology_name(state,
+			base_sde_cstate->topology_name);
 
 	rc = shd_crtc->orig_helper_funcs->atomic_check(crtc, atomic_state);
 	if (rc)
@@ -791,6 +796,7 @@ static int shd_connector_get_modes(struct drm_connector *connector, void *data,
 	struct drm_display_mode *m, *base_mode = NULL;
 	struct sde_connector *sde_conn;
 	int count;
+	int base_vfresh;
 	int rc;
 	u32 edid_size;
 	struct edid edid;
@@ -912,6 +918,9 @@ static int shd_connector_get_modes(struct drm_connector *connector, void *data,
 	if (!m)
 		return 0;
 
+	/* duplicate refresh rate from base */
+	base_vfresh = drm_mode_vrefresh(m);
+
 	/* update roi size */
 	if (disp->full_screen) {
 		disp->src.w = base_mode->hdisplay;
@@ -927,6 +936,8 @@ static int shd_connector_get_modes(struct drm_connector *connector, void *data,
 		m->vsync_start = m->vdisplay;
 		m->vsync_end = m->vsync_start;
 		m->vtotal = m->vsync_end;
+		/* update shd clock in KHZ */
+		m->clock = m->vtotal * m->htotal * base_vfresh / 1000;
 		drm_mode_set_name(m);
 	}
 
@@ -1081,6 +1092,29 @@ static int shd_drm_obj_init(struct shd_display *display)
 		goto end;
 	}
 
+	/* search plane that doesn't belong to any crtc */
+	primary = NULL;
+	for (i = 0; i < priv->num_planes; i++) {
+		bool found = false;
+		drm_for_each_crtc(crtc, dev) {
+			if (crtc->primary == priv->planes[i]) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			primary = priv->planes[i];
+			primary->type = DRM_PLANE_TYPE_PRIMARY;
+			break;
+		}
+	}
+	if (!primary) {
+		SDE_ERROR("failed to find primary plane\n");
+		rc = -ENOENT;
+		goto end;
+	}
+	SDE_DEBUG("find primary plane %d\n", DRMID(primary));
+
 	memset(&info, 0x0, sizeof(info));
 	rc = shd_connector_get_info(NULL, &info, display);
 	if (rc) {
@@ -1124,15 +1158,6 @@ static int shd_drm_obj_init(struct shd_display *display)
 		shd_display_create_backlight(connector);
 
 	SDE_DEBUG("create connector %d\n", DRMID(connector));
-
-	/* create primary plane for crtc */
-	primary = sde_plane_init(dev, SSPP_DMA0, true, 0, 0);
-
-	if (IS_ERR(primary))
-		return -ENOMEM;
-
-	SDE_DEBUG("created primary plane %d\n", DRMID(primary));
-	priv->planes[priv->num_planes++] = primary;
 
 	crtc = sde_crtc_init(dev, primary);
 	if (IS_ERR(crtc)) {
