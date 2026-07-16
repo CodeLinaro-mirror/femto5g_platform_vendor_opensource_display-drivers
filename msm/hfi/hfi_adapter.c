@@ -1264,12 +1264,14 @@ static void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 
 	mutex_lock(&ctx->lock);
 
-	buff_arr[i++] = &cmd_buf->buf;
+	if (!cmd_buf->is_released && cmd_buf->buf.pbuf_vaddr)
+		buff_arr[i++] = &cmd_buf->buf;
 
 	if (!list_empty(&cmd_buf->cmd_buf_chain)) {
 		list_for_each_prev_safe(pos, updated_pos, &cmd_buf->cmd_buf_chain) {
 			buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
-			buff_arr[i++] = &buf_entry->buf;
+			if (!buf_entry->is_released && buf_entry->buf.pbuf_vaddr)
+				buff_arr[i++] = &buf_entry->buf;
 			if (buf_entry->pool)
 				_hfi_clear_buffer(buf_entry);
 			list_del_init(pos);
@@ -1284,7 +1286,7 @@ static void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 	if (atomic_read(&host->ssr_in_progress))
 		cmd_buf->is_released = true;
 
-	if (!cmd_buf->is_released)
+	if (!cmd_buf->is_released && i)
 		hfi_core_release_tx_buffer(cmd_buf->ctx->host->session, buff_arr, i);
 
 	list_del_init(&cmd_buf->node);
@@ -1315,9 +1317,6 @@ int hfi_adapter_set_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_b
 	if (!host)
 		return -EINVAL;
 
-	if (atomic_read(&host->ssr_in_progress))
-		goto exit;
-
 	/* Append the number of chained buffers */
 	struct list_head *pos;
 	list_for_each(pos, &cmd_buf->cmd_buf_chain)
@@ -1332,27 +1331,41 @@ int hfi_adapter_set_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_b
 
 	HFI_AD_DEBUG("from %pS\n", __builtin_return_address(0));
 
+	u32 host_flags = HFI_CORE_SET_FLAGS_TRIGGER_IPC;
+
+	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
+
+	if (atomic_read(&host->ssr_in_progress) || cmd_buf->is_released ||
+			!cmd_buf->buf.pbuf_vaddr) {
+		HFI_AD_WARN("skip send, ssr:%d released:%d pbuf_vaddr:%pK\n",
+			atomic_read(&host->ssr_in_progress), cmd_buf->is_released,
+			cmd_buf->buf.pbuf_vaddr);
+		mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+		goto exit;
+	}
+
 	buff_arr[0] = &cmd_buf->buf;
 
 	list_for_each(pos, &cmd_buf->cmd_buf_chain) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
-		if (buf_entry)
+		if (buf_entry && buf_entry->buf.pbuf_vaddr)
 			buff_arr[i++] = &buf_entry->buf;
-	}
-
-	u32 host_flags = HFI_CORE_SET_FLAGS_TRIGGER_IPC;
-
-	if (!atomic_read(&host->ssr_in_progress)) {
-		rc = hfi_core_cmds_tx_buf_send(cmd_buf->ctx->host->session,
-				buff_arr, num_buffers, host_flags);
-		if (rc) {
-			HFI_AD_ERROR("failed to send tx buffer. error code = %d\n", rc);
-		} else {
-			mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
-			cmd_buf->is_released = true;
+		else {
+			SDE_EVT32(cmd_buf->obj_id, cmd_buf->unique_id,
+				SDE_EVTLOG_ERROR);
 			mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+			goto exit;
 		}
 	}
+
+	rc = hfi_core_cmds_tx_buf_send(cmd_buf->ctx->host->session,
+			buff_arr, num_buffers, host_flags);
+	if (rc) {
+		HFI_AD_ERROR("failed to send tx buffer. error code = %d\n", rc);
+		SDE_EVT32(cmd_buf->obj_id, rc, SDE_EVTLOG_ERROR);
+	} else
+		cmd_buf->is_released = true;
+	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 
 exit:
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
@@ -1388,11 +1401,6 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_client_t *ctx, struct hfi_cmdbuf
 	if (!host)
 		return -EINVAL;
 
-	if (atomic_read(&host->ssr_in_progress)) {
-		HFI_AD_DEBUG("SSR in progress\n");
-		goto exit;
-	}
-
 	/* Append the number of chained buffers */
 	list_for_each(pos, &cmd_buf->cmd_buf_chain)
 		num_buffers++;
@@ -1406,29 +1414,46 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_client_t *ctx, struct hfi_cmdbuf
 
 	HFI_AD_DEBUG("from %pS\n", __builtin_return_address(0));
 
+	u32 host_flags = HFI_CORE_SET_FLAGS_TRIGGER_IPC;
+
+	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
+
+	if (atomic_read(&host->ssr_in_progress) || cmd_buf->is_released ||
+			!cmd_buf->buf.pbuf_vaddr) {
+		HFI_AD_WARN("skip send, ssr:%d released:%d pbuf_vaddr:%pK\n",
+			atomic_read(&host->ssr_in_progress), cmd_buf->is_released,
+			cmd_buf->buf.pbuf_vaddr);
+		mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+		goto exit;
+	}
+
 	buff_arr[i++] = &cmd_buf->buf;
 	list_for_each(pos, &cmd_buf->cmd_buf_chain) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
-		if (buf_entry)
+		if (buf_entry && buf_entry->buf.pbuf_vaddr) {
 			buff_arr[i++] = &buf_entry->buf;
-	}
-
-	u32 host_flags = HFI_CORE_SET_FLAGS_TRIGGER_IPC;
-
-	if (!atomic_read(&host->ssr_in_progress)) {
-		rc = hfi_core_cmds_tx_buf_send(cmd_buf->ctx->host->session,
-				buff_arr, num_buffers, host_flags);
-		HFI_AD_DEBUG("from %pS: host_flags:0x%x\n",
-			__builtin_return_address(0), host_flags);
-		if (rc) {
-			HFI_AD_ERROR("failed to send tx buffer. error code = %d\n", rc);
-			return rc;
 		} else {
-			mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
-			cmd_buf->is_released = true;
+			SDE_EVT32(cmd_buf->obj_id, cmd_buf->unique_id,
+				SDE_EVTLOG_ERROR);
 			mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+			goto exit;
 		}
 	}
+
+	rc = hfi_core_cmds_tx_buf_send(cmd_buf->ctx->host->session,
+			buff_arr, num_buffers, host_flags);
+	HFI_AD_DEBUG("from %pS: host_flags:0x%x\n",
+		__builtin_return_address(0), host_flags);
+	if (rc) {
+		HFI_AD_ERROR("failed to send tx buffer. error code = %d\n", rc);
+		SDE_EVT32(cmd_buf->obj_id, rc, SDE_EVTLOG_ERROR);
+		mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+		goto exit;
+	} else {
+		cmd_buf->is_released = true;
+
+	}
+	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 
 	HFI_AD_DEBUG("[info] tx buffer sent\n");
 
