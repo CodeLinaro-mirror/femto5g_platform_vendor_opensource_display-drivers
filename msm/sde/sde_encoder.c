@@ -413,11 +413,13 @@ void sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
 	if (!cpu_mask)
 		return;
 
+	mutex_lock(&sde_enc->pm_qos_lock);
 	for_each_cpu(cpu, cpu_mask) {
 		cpu_dev = get_cpu_device(cpu);
 		if (!cpu_dev) {
 			SDE_ERROR("%s: failed to get cpu%d device\n", __func__,
 					cpu);
+			mutex_unlock(&sde_enc->pm_qos_lock);
 			return;
 		}
 		cpumask_set_cpu(cpu, &sde_enc->valid_cpu_mask);
@@ -430,6 +432,7 @@ void sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
 					DEV_PM_QOS_RESUME_LATENCY, cpu_dma_latency);
 		SDE_EVT32_VERBOSE(DRMID(drm_enc), cpu_dma_latency, cpu);
 	}
+	mutex_unlock(&sde_enc->pm_qos_lock);
 }
 
 void sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
@@ -438,6 +441,7 @@ void sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
 	struct device *cpu_dev;
 	int cpu = 0;
 
+	mutex_lock(&sde_enc->pm_qos_lock);
 	for_each_cpu(cpu, &sde_enc->valid_cpu_mask) {
 		cpu_dev = get_cpu_device(cpu);
 		if (!cpu_dev) {
@@ -451,6 +455,7 @@ void sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
 		SDE_EVT32_VERBOSE(DRMID(drm_enc), cpu);
 	}
 	cpumask_clear(&sde_enc->valid_cpu_mask);
+	mutex_unlock(&sde_enc->pm_qos_lock);
 }
 
 static bool _sde_encoder_is_autorefresh_enabled(
@@ -9056,6 +9061,7 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 
 	mutex_init(&sde_enc->off_work_lock);
 	mutex_init(&sde_enc->rc_lock);
+	mutex_init(&sde_enc->pm_qos_lock);
 	sde_enc->vblank_enabled = false;
 	sde_enc->qdss_status = false;
 

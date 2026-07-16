@@ -674,6 +674,7 @@ struct sde_encoder_virt {
 	bool elevated_ahb_vote;
 	struct dev_pm_qos_request pm_qos_cpu_req[NR_CPUS];
 	struct cpumask valid_cpu_mask;
+	struct mutex pm_qos_lock;
 	struct msm_mode_info mode_info;
 	struct sde_encoder_vrr_info vrr_info;
 	bool delay_kickoff;
