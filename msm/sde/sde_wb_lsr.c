@@ -158,7 +158,7 @@ static void _sde_wb_lsr_set_reproj_matrix(struct sde_connector *c_conn,
 	}
 
 	if (!usr_ptr) {
-		SDE_ERROR("reproj_matrix isn't set\n");
+		SDE_DEBUG("reproj_matrix isn't set\n");
 		return;
 	}
 
@@ -253,7 +253,7 @@ static void _sde_wb_lsr_set_optical_axis_offset(struct sde_connector *c_conn,
 	}
 
 	if (!usr_ptr) {
-		SDE_ERROR("optical_axis_offset isn't set\n");
+		SDE_DEBUG("optical_axis_offset isn't set\n");
 		return;
 	}
 
@@ -280,9 +280,14 @@ static int _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 	int npages;
 	int ret = 0;
 
-	if (!connector || !cstate || !val) {
-		SDE_ERROR("invalid args\n");
+	if (!connector || !cstate) {
+		SDE_ERROR("Invalid args\n");
 		return -EINVAL;
+	}
+
+	if (!val) {
+		SDE_DEBUG("Invalid FB id\n");
+		return ret;
 	}
 
 	sde_kms = sde_connector_get_kms(connector);
@@ -399,7 +404,7 @@ int _sde_wb_lsr_set_reproj_info(
 				&c_state->property_state, &sz, idx);
 
 	if (opq_blob == NULL) {
-		SDE_WARN("opq_blob is NULL\n");
+		SDE_DEBUG("opq_blob is NULL\n");
 		return 0;
 	}
 
