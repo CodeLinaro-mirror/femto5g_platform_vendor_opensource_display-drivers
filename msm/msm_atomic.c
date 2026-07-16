@@ -169,7 +169,8 @@ static void commit_destroy(struct msm_commit *c)
 	wake_up_all_locked(&priv->pending_crtcs_event);
 	spin_unlock(&priv->pending_crtcs_event.lock);
 
-	kfree(c);
+	if (c->nonblock)
+		kfree(c);
 }
 
 static void msm_atomic_wait_for_commit_done(
@@ -782,11 +783,15 @@ static void msm_atomic_commit_dispatch(struct drm_device *dev,
 		 * ensure that SW and HW state don't get out of sync.
 		 */
 		complete_commit(commit);
+		if (!nonblock)
+			kfree(commit);
 		return;
 	}
 
-	if (!nonblock)
+	if (!nonblock) {
 		kthread_flush_work(&commit->commit_work);
+		kfree(commit);
+	}
 }
 
 /**
