@@ -2303,11 +2303,27 @@ static void sde_encoder_phys_wb_setup(struct sde_encoder_phys *phys_enc)
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct drm_display_mode mode = phys_enc->cached_mode;
-	struct drm_connector_state *conn_state = phys_enc->connector->state;
-	struct drm_crtc_state *crtc_state = wb_enc->crtc->state;
+	struct drm_connector_state *conn_state;
+	struct drm_crtc_state *crtc_state;
 	struct drm_framebuffer *fb;
 	struct sde_rect *wb_roi = &wb_enc->wb_roi;
 	u32 out_width = 0, out_height = 0, num_lm;
+
+	if (!phys_enc->connector || !wb_enc->crtc) {
+		SDE_ERROR("[enc:%d wb:%d] invalid connector:%pK crtc:%pK, skip setup\n",
+				DRMID(phys_enc->parent), WBID(wb_enc),
+				phys_enc->connector, wb_enc->crtc);
+		return;
+	}
+
+	conn_state = phys_enc->connector->state;
+	crtc_state = wb_enc->crtc->state;
+
+	if (!conn_state || !crtc_state) {
+		SDE_ERROR("[enc:%d wb:%d] invalid connector state:%pK crtc state:%pK, skip setup\n",
+			DRMID(phys_enc->parent), WBID(wb_enc), conn_state, crtc_state);
+		return;
+	}
 
 	SDE_DEBUG("[enc:%d wb:%d] mode_set:\"%s\",%d,%d]\n", DRMID(phys_enc->parent),
 			WBID(wb_enc), mode.name, mode.hdisplay, mode.vdisplay);
