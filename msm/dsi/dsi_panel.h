@@ -12,7 +12,6 @@
 #include <linux/bitops.h>
 #include <linux/errno.h>
 #include <linux/backlight.h>
-#include <linux/i2c.h>
 #include <drm/drm_panel.h>
 #include <drm/msm_drm.h>
 #include <drm/msm_drm_pp.h>
@@ -21,6 +20,7 @@
 #include "dsi_ctrl_hw.h"
 #include "dsi_clk.h"
 #include "dsi_pwr.h"
+#include "dsi_panel_i2c.h"
 #include "dsi_parser.h"
 #include "msm_drv.h"
 
@@ -325,25 +325,6 @@ enum PrivacyRegionMode {
 enum AreaModeValid {
 	R0_VALID,
 	R1_VALID,
-};
-
-struct dsi_panel_i2c_cmd {
-	const u8 *data;
-	u32 len;
-	u32 post_wait_ms;
-	u8 slave_addr;
-};
-
-struct dsi_panel_i2c_cmd_set {
-	struct dsi_panel_i2c_cmd *cmds;
-	u32 count;
-};
-
-struct dsi_panel_i2c_config {
-	bool i2c_support;
-	struct i2c_adapter *left_adapter;
-	struct i2c_adapter *right_adapter;
-	struct dsi_panel_i2c_cmd_set cmd_set;
 };
 
 struct dsi_panel;

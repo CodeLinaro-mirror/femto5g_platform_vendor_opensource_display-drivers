@@ -20,6 +20,7 @@ def define_seraph():
                     "CONFIG_MDSS_HFI_ADAPTER",
                     "CONFIG_MDSS_HFI",
                     "CONFIG_DSI_PARSER",
+                    "CONFIG_DSI_PANEL_I2C",
                     "CONFIG_DRM_SDE_WB",
                     "CONFIG_DRM_MSM_REGISTER_LOGGING",
                     "CONFIG_QCOM_MDSS_PLL",
