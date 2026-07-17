@@ -1389,6 +1389,10 @@ int dsi_hfi_tx_cmd_set(struct dsi_display *display,
 		tx_local_ptr     += cmd->msg.tx_len;
 		tx_remote_offset += cmd->msg.tx_len;
 	}
+	cmd_desc_set->seq_no = (u32)atomic_inc_return(&display->cmd_seq_no);
+
+	SDE_EVT32(cmd_desc_set->seq_no, cmd_desc_set->size, cmd_desc_set->type,
+			cmd_desc_set->count, cmd_desc_set->state);
 
 	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client,
 			HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET, display->display_type,
@@ -1495,6 +1499,7 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	dsi_cmd_desc->last_command = cmd->last_command;
 	dsi_cmd_desc->post_wait_ms = cmd->post_wait_ms;
 	dsi_cmd_desc->ctrl_flags = cmd->ctrl_flags;
+	dsi_cmd_desc->seq_no = (u32)atomic_inc_return(&display->cmd_seq_no);
 
 	if (non_embedded) {
 		dsi_cmd_desc->tx_buff_addr_lsb = HFI_VAL_L32((u64)display->cmd_buffer_iova_non_embedded);
@@ -1514,6 +1519,11 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 		dsi_cmd_desc->rx_buff_addr_lsb = HFI_VAL_L32((u64)rx_cmd_buf_map->remote_addr);
 		dsi_cmd_desc->rx_buff_addr_msb = HFI_VAL_H32((u64)rx_cmd_buf_map->remote_addr);
 	}
+
+	SDE_EVT32(dsi_cmd_desc->seq_no, dsi_cmd_desc->size, dsi_cmd_desc->type,
+			dsi_cmd_desc->flags, dsi_cmd_desc->tx_len, dsi_cmd_desc->rx_len,
+			dsi_cmd_desc->ctrl_idx, dsi_cmd_desc->ctrl_flags,
+			dsi_cmd_desc->last_command);
 
 	rc = dsi_display_hfi_send_cmd_buf_with_header_flags(display, hfi_client, hfi_cmd,
 			display->display_type, HFI_PAYLOAD_TYPE_U32_ARRAY, dsi_cmd_desc,

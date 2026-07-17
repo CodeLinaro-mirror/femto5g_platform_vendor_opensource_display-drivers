@@ -6552,6 +6552,7 @@ static int dsi_display_bind(struct device *dev,
 	}
 
 	atomic_set(&display->clkrate_change_pending, 0);
+	atomic_set(&display->cmd_seq_no, 0);
 	display->cached_clk_rate = 0;
 
 	memset(&info, 0x0, sizeof(info));

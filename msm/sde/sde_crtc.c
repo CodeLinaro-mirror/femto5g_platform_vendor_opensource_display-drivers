@@ -6907,8 +6907,10 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	drm_for_each_encoder_mask(encoder, crtc->dev, encoder_mask) {
 		sde_encoder_register_frame_event_callback(encoder, NULL, NULL);
 
-		if (IS_DISP_OP_HFI(priv->disp_op))
+		if (IS_DISP_OP_HFI(priv->disp_op)) {
 			sde_encoder_register_panel_dead_event_callback(encoder, false);
+			sde_encoder_register_dcs_cmd_error_event_callback(encoder, false);
+		}
 
 		cstate->rsc_client = NULL;
 		cstate->rsc_update = false;
@@ -7189,8 +7191,10 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 			sde_encoder_register_display_power_event_callback(encoder,
 					sde_crtc_power_event_cb, crtc);
 
-		if (IS_DISP_OP_HFI(priv->disp_op))
+		if (IS_DISP_OP_HFI(priv->disp_op)) {
 			sde_encoder_register_panel_dead_event_callback(encoder, true);
+			sde_encoder_register_dcs_cmd_error_event_callback(encoder, true);
+		}
 
 		sde_crtc_static_img_control(crtc, CACHE_STATE_NORMAL,
 				sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE));
