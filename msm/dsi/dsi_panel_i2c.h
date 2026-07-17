@@ -57,10 +57,15 @@ struct dsi_panel_i2c_config {
 	bool i2c_support;
 	struct i2c_adapter *left_adapter;
 	struct i2c_adapter *right_adapter;
+	/*
+	 * Slave addresses on the left/right I2C adapters.
+	 * Populated from qcom,panel-i2c-left-slave-addr /
+	 * qcom,panel-i2c-right-slave-addr; used by the ISL97900 brightness
+	 * path.  Zero means no slave address configured for that side.
+	 */
+	u8 left_slave_addr;
+	u8 right_slave_addr;
 	struct dsi_panel_i2c_cmd_set cmd_sets[DSI_PANEL_I2C_CMD_SET_MAX];
-	/* ISL97900 RGB LED device-tree nodes (ISL97900 subtype only) */
-	struct device_node *rgb_left_led_node;
-	struct device_node *rgb_right_led_node;
 };
 
 #if IS_ENABLED(CONFIG_DSI_PANEL_I2C)
