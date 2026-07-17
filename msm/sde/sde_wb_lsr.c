@@ -368,7 +368,7 @@ static int _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 			HFI_CORE_IOMMU_MAP_SIZE_ALIGNMENT);
 
 	ret = hfi_core_map_sg_table(&addr_map.alloc_info, msm_obj->sgt, addr_map.aligned_size,
-		HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+		HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE | HFI_CORE_MMAP_CACHE);
 	if (ret) {
 		SDE_ERROR("failed to map sg table to iova, ret:%d\n", ret);
 		return ret;
