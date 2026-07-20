@@ -2642,6 +2642,12 @@ exit:
 static void virtio_kms_vsync(struct virtio_kms *kms, uint32_t scanout)
 {
 	struct drm_crtc *crtc = kms->outputs[scanout].crtc;
+
+	if (!crtc) {
+		pr_err("virtio: crtc is NULL for scanout %d\n", scanout);
+		return;
+	}
+
 	msm_hyp_crtc_vblank_done(crtc);
 
 	if (kms->outputs[scanout].vblank_enabled) {
