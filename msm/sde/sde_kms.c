@@ -2836,10 +2836,10 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 	int ret = 0;
 	int wb_idx = 0, csc_wb_idx = 0, repro_wb_idx = 0;
 	int dsi_idx = 0;
-	enum wb_opmode opmode;
+	enum wb_opmode opmode = WB_DPU;
 	int dp_idx = 0;
 
-	if (!sde_kms) {
+	if (!sde_kms || !sde_kms->hfi_kms) {
 		SDE_ERROR("invalid arguments\n");
 		return -EINVAL;
 	}
@@ -2847,8 +2847,7 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 	dev = sde_kms->dev;
 	priv = dev->dev_private;
 
-	if (sde_kms->hfi_kms)
-		hfi_catalog = sde_kms->hfi_kms->catalog;
+	hfi_catalog = sde_kms->hfi_kms->catalog;
 
 	drm_connector_list_iter_begin(dev, &conn_iter);
 	drm_for_each_connector_iter(conn, &conn_iter) {
@@ -2876,7 +2875,7 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 			c_conn->ops.ctl_pre_transition(c_conn->display);
 		} else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DisplayPort) {
 			sde_connector_setup_obj_id(conn,
-					sde_kms->hfi_kms->catalog->dp_indices[dp_idx++]);
+					hfi_catalog->dp_indices[dp_idx++]);
 
 			c_conn = to_sde_connector(conn);
 			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);

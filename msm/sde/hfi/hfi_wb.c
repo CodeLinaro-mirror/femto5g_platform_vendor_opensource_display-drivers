@@ -58,7 +58,7 @@ static int _hfi_wb_add_roi_prop(struct sde_wb_device *wb_dev,
 	u32 prop_id;
 	const struct drm_display_mode *mode = cstate->msm_mode.base;
 	struct hfi_display_roi src_roi, dst_roi;
-	struct sde_rect roi;
+	struct sde_rect roi = {0};
 	struct sde_io_res dnsc_blur_res = {0, };
 	u32 out_width = 0, out_height = 0;
 	int ret = 0;

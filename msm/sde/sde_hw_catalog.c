@@ -4635,13 +4635,13 @@ static int sde_vbif_parse_dt(struct device_node *np,
 	if (rc)
 		goto end;
 
-	sde_cfg->vbif_count = off_count;
-
 	if (off_count > MAX_BLOCKS) {
 		SDE_ERROR("invalid vbif count %d\n", off_count);
 		rc = -EINVAL;
 		goto end;
 	}
+
+	sde_cfg->vbif_count = off_count;
 
 	rc = _read_dt_entry(np, vbif_prop, ARRAY_SIZE(vbif_prop), prop_count,
 		prop_exists, prop_value);

@@ -1636,6 +1636,8 @@ static int lt9611uxd_read_edid(struct lt9611uxd *pdata)
 	}
 
 	edid_size = (get_edid_size_ret[4] << 8) | get_edid_size_ret[5];
+	if (edid_size > EDID_SEG_SIZE)
+		edid_size = EDID_SEG_SIZE;
 	pdata->edid_with_ext_blk = (edid_size > EDID_LENGTH) ? true : false;
 
 	memset(buf, 0, EDID_SEG_SIZE);
@@ -1724,7 +1726,7 @@ static void lt9611uxd_choose_best_mode(struct drm_connector *connector)
 static void lt9611uxd_set_preferred_mode(struct drm_connector *connector)
 {
 	struct lt9611uxd *pdata = connector_to_lt9611(connector);
-	struct drm_display_mode *mode, *last_mode;
+	struct drm_display_mode *mode, *last_mode = NULL;
 	const char *string;
 
 	if (pdata->fix_mode) {
@@ -1752,7 +1754,8 @@ static void lt9611uxd_set_preferred_mode(struct drm_connector *connector)
 					mode->type &= ~DRM_MODE_TYPE_PREFERRED;
 					last_mode = mode;
 				}
-				last_mode->type |= DRM_MODE_TYPE_PREFERRED;
+				if (last_mode)
+					last_mode->type |= DRM_MODE_TYPE_PREFERRED;
 			}
 		}
 	}
