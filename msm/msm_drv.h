@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1637,5 +1637,24 @@ int msm_drm_unregister_component(struct drm_device *dev,
  */
 int msm_drm_notify_components(struct drm_device *dev,
 		enum msm_component_event event);
+
+/**
+ * vmemdup - duplicate region of non-contiguous (vmalloc) memory
+ *
+ * @src: memory region to duplicate
+ * @len: memory region length
+ *
+ * Return: newly allocated copy of @src or %NULL in case of error
+ */
+static inline void *vmemdup(const void *src, size_t len)
+{
+	void *p;
+
+	p = vmalloc(len);
+
+	if (p)
+		memcpy(p, src, len);
+	return p;
+}
 
 #endif /* __MSM_DRV_H__ */
