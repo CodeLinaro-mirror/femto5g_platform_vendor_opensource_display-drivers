@@ -298,8 +298,12 @@ static int dp_pm_prepare(struct device *dev)
 
 	dp = dev_get_drvdata(dev);
 
+	/*
+	 * It is possible for the DP driver to be registered without an active DP client.
+	 * Therefore, avoid treating this as a failure.
+	 */
 	if (!dp || !dp->client || !dp->client->base_connector || !dp->client->pm_prepare)
-		return -EINVAL;
+		return 0;
 
 	return dp->client->pm_prepare(dp->client);
 }
