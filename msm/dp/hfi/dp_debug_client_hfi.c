@@ -23,6 +23,7 @@
 #include "dp_debug_client_hfi.h"
 #include "hfi_commands_device.h"
 #include "hfi_commands_debug.h"
+#include "hfi_defs_device.h"
 #include "sde_connector.h"
 #include "hfi_adapter.h"
 #include "dp_mgr.h"
@@ -31,6 +32,40 @@
 #include "dp_altmode.h"
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
+
+/* Response handling for HFI commands */
+struct dp_hfi_response_data {
+	u32 state;
+	u32 bw_code;
+	u8 dpcd_data[256];
+	u32 dpcd_size;
+	struct hfi_dp_crc_info crc_data;
+	u32 misr_values[8];
+	bool connected;
+	bool response_received;
+	enum {
+		HFI_RESPONSE_NONE,
+		HFI_RESPONSE_BW_CODE,
+		HFI_RESPONSE_DPCD,
+		HFI_RESPONSE_CRC,
+		HFI_RESPONSE_MISR
+	} response_type;
+	struct completion response_complete;
+	struct mutex response_lock;
+};
+
+struct dp_debug_client_hfi_priv {
+	struct device *dev;
+	struct hfi_client_t *hfi_client;
+	struct dp_hfi_response_data response_data;
+	struct hfi_prop_listener hfi_cb_obj;  /* HFI callback listener object */
+	u32 hpd_pin_config;              /* Cached HPD pin config */
+	u32 hpd_orientation;             /* Cached HPD orientation */
+	struct hfi_shared_addr_map *dpcd_addr_map;
+	struct hfi_shared_addr_map *edid_addr_map[MAX_DP_MST_STREAMS];
+	struct hfi_shared_addr_map *info_addr_map;
+	struct drm_connector *mst_conn;
+};
 
 /* Helper function to check buffer overflow */
 static int dp_debug_client_hfi_check_buffer_overflow(int rc, int *max_size, int *len)
@@ -69,8 +104,7 @@ static int dp_debug_client_hfi_print_hdr_params_to_buf(struct drm_connector *con
 	if (dp_debug_client_hfi_check_buffer_overflow(rc, &max_size, &len))
 		goto error;
 
-	rc = scnprintf(buf + len, max_size, "eotf = %d\n",
-		c_conn->hdr_eotf);
+	rc = scnprintf(buf + len, max_size, "eotf = %d\n", c_conn->hdr_eotf);
 	if (dp_debug_client_hfi_check_buffer_overflow(rc, &max_size, &len))
 		goto error;
 
@@ -80,7 +114,7 @@ static int dp_debug_client_hfi_print_hdr_params_to_buf(struct drm_connector *con
 		goto error;
 
 	rc = scnprintf(buf + len, max_size, "hdr_plus_app_ver = %d\n",
-			c_conn->hdr_plus_app_ver);
+		c_conn->hdr_plus_app_ver);
 	if (dp_debug_client_hfi_check_buffer_overflow(rc, &max_size, &len))
 		goto error;
 
@@ -108,8 +142,7 @@ static int dp_debug_client_hfi_print_hdr_params_to_buf(struct drm_connector *con
 	if (dp_debug_client_hfi_check_buffer_overflow(rc, &max_size, &len))
 		goto error;
 
-	rc = scnprintf(buf + len, max_size, "hdr_supported = %d\n",
-			hdr->hdr_supported);
+	rc = scnprintf(buf + len, max_size, "hdr_supported = %d\n", hdr->hdr_supported);
 	if (dp_debug_client_hfi_check_buffer_overflow(rc, &max_size, &len))
 		goto error;
 
@@ -161,26 +194,21 @@ static int dp_debug_client_hfi_print_hdr_params_to_buf(struct drm_connector *con
 
 	if (hdr->hdr_plus_payload && hdr->hdr_plus_payload_size) {
 		u32 rowsize = 16, rem;
-		struct sde_connector_dyn_hdr_metadata *dhdr =
-				&c_state->dyn_hdr_meta;
+		struct sde_connector_dyn_hdr_metadata *dhdr = &c_state->dyn_hdr_meta;
 
 		for (i = 0; i < dhdr->dynamic_hdr_payload_size; i += rowsize) {
 			rc = scnprintf(buf + len, max_size, "DHDR: ");
-			if (dp_debug_client_hfi_check_buffer_overflow(rc, &max_size,
-					&len))
+			if (dp_debug_client_hfi_check_buffer_overflow(rc, &max_size, &len))
 				goto error;
 
 			rem = dhdr->dynamic_hdr_payload_size - i;
 			rc = hex_dump_to_buffer(&dhdr->dynamic_hdr_payload[i],
-				min(rowsize, rem), rowsize, 1, buf + len,
-				max_size, false);
-			if (dp_debug_client_hfi_check_buffer_overflow(rc, &max_size,
-					&len))
+				min(rowsize, rem), rowsize, 1, buf + len, max_size, false);
+			if (dp_debug_client_hfi_check_buffer_overflow(rc, &max_size, &len))
 				goto error;
 
 			rc = scnprintf(buf + len, max_size, "\n");
-			if (dp_debug_client_hfi_check_buffer_overflow(rc, &max_size,
-					&len))
+			if (dp_debug_client_hfi_check_buffer_overflow(rc, &max_size, &len))
 				goto error;
 		}
 	}
@@ -202,40 +230,59 @@ static struct dp_drv *dp_debug_hfi_get_dp_drv(struct dp_debug_client_hfi_priv *p
 	return platform_get_drvdata(pdev);
 }
 
+/**
+ * dp_debug_hfi_hex_to_bytes - decode a hex-encoded ASCII string into bytes
+ * @hex:   input buffer of hex digit pairs (2 chars per byte)
+ * @out:   output byte buffer (must hold at least @count bytes)
+ * @count: number of bytes to decode
+ *
+ * Returns 0 on success, -EINVAL on any malformed hex pair.
+ */
+static int dp_debug_hfi_hex_to_bytes(const u8 *hex, u8 *out, size_t count)
+{
+	size_t i;
+	char t[3];
+	int d;
+
+	for (i = 0; i < count; i++) {
+		memcpy(t, hex + i * 2, 2);
+		t[2] = '\0';
+		if (kstrtoint(t, 16, &d)) {
+			DP_ERR("kstrtoint error\n");
+			return -EINVAL;
+		}
+		out[i] = d;
+	}
+	return 0;
+}
+
+/*
+ * Helper: return the HFI display obj_id of the base (SST) DP connector.
+ * Used as the default obj_id for commands that are not MST-port-specific.
+ */
+static u32 dp_debug_hfi_get_base_obj_id(struct dp_debug_client_hfi_priv *priv)
+{
+	struct dp_drv *dp_drv = dp_debug_hfi_get_dp_drv(priv);
+
+	if (dp_drv && dp_drv->client && dp_drv->client->base_connector)
+		return sde_conn_get_display_obj_id(dp_drv->client->base_connector);
+
+	DP_WARN("Base connector not available, using fallback obj_id=2\n");
+	return 2;
+}
+
 /* Helper function to send HFI command for simulation mode - doesn't need dp_client */
 static int dp_debug_hfi_send_cmd(struct dp_debug_client_hfi_priv *priv,
 		struct hfi_client_t *hfi_client, u32 hfi_cmd,
-		u32 hfi_payload_type, void *payload, u32 payload_size, u32 flags)
+		u32 hfi_payload_type, void *payload, u32 payload_size, u32 flags, u32 obj_id)
 {
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
 	enum hfi_cmdbuf_type cmd_buf_type = HFI_CMDBUF_TYPE_GET_DEBUG_DATA;
 	int rc = 0;
-	u32 obj_id;
-	struct platform_device *pdev;
-	struct dp_drv *dp_drv;
-	struct drm_connector *connector = NULL;
-	const u32 fallback_obj_id = 2; /* Fallback obj_id if connector not available */
 
 	if (!priv || !hfi_client) {
 		DP_ERR("Invalid priv or hfi_client\n");
 		return -EINVAL;
-	}
-
-	/* Get obj_id from connector using sde_conn_get_display_obj_id() */
-	if (priv->dev) {
-		pdev = to_platform_device(priv->dev);
-		dp_drv = platform_get_drvdata(pdev);
-		if (dp_drv && dp_drv->client && dp_drv->client->base_connector) {
-			connector = dp_drv->client->base_connector;
-			obj_id = sde_conn_get_display_obj_id(connector);
-		} else {
-			obj_id = fallback_obj_id;
-			DP_WARN("Connector not available, using fallback obj_id=%d\n",
-					fallback_obj_id);
-		}
-	} else {
-		obj_id = fallback_obj_id;
-		DP_WARN("Device not available, using fallback obj_id=%d\n", fallback_obj_id);
 	}
 
 	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id, cmd_buf_type);
@@ -248,6 +295,7 @@ static int dp_debug_hfi_send_cmd(struct dp_debug_client_hfi_priv *priv,
 			obj_id, hfi_payload_type, payload, payload_size, flags);
 	if (rc) {
 		DP_ERR("Could not set property for hfi_cmd 0x%x, rc=%d\n", hfi_cmd, rc);
+		hfi_adapter_release_cmd_buf(hfi_client, cmd_buf);
 		return rc;
 	}
 
@@ -255,13 +303,12 @@ static int dp_debug_hfi_send_cmd(struct dp_debug_client_hfi_priv *priv,
 		hfi_cmd, obj_id, payload_size);
 
 	rc = hfi_adapter_set_cmd_buf_blocking(hfi_client, cmd_buf);
-	if (rc) {
+	if (rc)
 		DP_ERR("Failed to send hfi_cmd 0x%x, rc=%d\n", hfi_cmd, rc);
-		return rc;
-	}
+	else
+		DP_DEBUG("Successfully sent HFI command 0x%x to DCP\n", hfi_cmd);
 
-	DP_DEBUG("Successfully sent HFI command 0x%x to DCP\n", hfi_cmd);
-	return 0;
+	return rc;
 }
 
 /* Get existing HFI client and only create new if doesn't exist */
@@ -393,7 +440,6 @@ static void dp_debug_hfi_destroy_client(struct dp_debug_client_hfi_priv *priv)
 	priv->hfi_client = NULL;
 }
 
-
 /* HFI response handler for DP simulation read commands */
 static void dp_debug_hfi_response_handler(u32 obj_id, u32 cmd_id, void *payload,
 		u32 payload_size, struct hfi_prop_listener *listener)
@@ -442,9 +488,9 @@ static void dp_debug_hfi_response_handler(u32 obj_id, u32 cmd_id, void *payload,
 	case HFI_COMMAND_DEBUG_DP_READ_DPCD:
 		if (payload && payload_size > 0) {
 			priv->response_data.dpcd_size = min_t(u32, payload_size,
-				      sizeof(priv->response_data.dpcd_data));
+					sizeof(priv->response_data.dpcd_data));
 			memcpy(priv->response_data.dpcd_data, payload,
-			       priv->response_data.dpcd_size);
+					priv->response_data.dpcd_size);
 			priv->response_data.response_type = HFI_RESPONSE_DPCD;
 			DP_DEBUG("Received DPCD response: size=%u\n",
 					priv->response_data.dpcd_size);
@@ -513,7 +559,7 @@ static void dp_debug_hfi_response_handler(u32 obj_id, u32 cmd_id, void *payload,
 	mutex_unlock(&priv->response_data.response_lock);
 }
 
-/* Send HFI command and wait for response */
+/* Send an HFI get-property command and block until the response arrives */
 static int dp_debug_hfi_send_cmd_with_response(struct dp_debug_client_hfi_priv *priv,
 		struct hfi_client_t *hfi_client, u32 hfi_cmd,
 		u32 hfi_payload_type, void *payload, u32 payload_size, u32 flags,
@@ -524,26 +570,11 @@ static int dp_debug_hfi_send_cmd_with_response(struct dp_debug_client_hfi_priv *
 	int rc;
 	/* unsigned long timeout_jiffies = msecs_to_jiffies(timeout_ms); */
 	u32 obj_id, packet_id = 0;
-	struct platform_device *pdev;
-	struct dp_drv *dp_drv;
-	struct drm_connector *connector = NULL;
 
 	if (!priv || !hfi_client)
 		return -EINVAL;
 
-	/* Get obj_id from connector */
-	if (priv->dev) {
-		pdev = to_platform_device(priv->dev);
-		dp_drv = platform_get_drvdata(pdev);
-		if (dp_drv && dp_drv->client && dp_drv->client->base_connector) {
-			connector = dp_drv->client->base_connector;
-			obj_id = sde_conn_get_display_obj_id(connector);
-		} else {
-			obj_id = 2; /* Fallback */
-		}
-	} else {
-		obj_id = 2; /* Fallback */
-	}
+	obj_id = dp_debug_hfi_get_base_obj_id(priv);
 
 	/* Get command buffer */
 	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id, cmd_buf_type);
@@ -603,7 +634,57 @@ static int _alloc_addr_map(struct hfi_client_t *hfi_client, struct hfi_shared_ad
 	return 0;
 }
 
-/* Read operations */
+/* Helper function to get dp_mgr_hfi_priv from debug client */
+static struct dp_mgr_hfi_priv *_get_mgr_hfi(struct dp_debug_client_hfi_priv *priv)
+{
+	struct platform_device *pdev;
+	struct dp_drv *dp_drv;
+
+	if (!priv || !priv->dev)
+		return NULL;
+
+	pdev = to_platform_device(priv->dev);
+	dp_drv = platform_get_drvdata(pdev);
+
+	if (!dp_drv || !dp_drv->client)
+		return NULL;
+
+	/* dp_drv->client is actually dp_mgr_hfi_priv.client, so we can get the container */
+	return container_of(dp_drv->client, struct dp_mgr_hfi_priv, client);
+}
+
+/*
+ * _get_connector - look up a statically-created HFI connector
+ * by DRM object ID.
+ *
+ * In HFI mode connectors are created once at boot and never removed, so we
+ * can simply walk hfi_priv->hfi[i]->connector without taking a reference.
+ *
+ * Returns the matching drm_connector, or NULL if not found.
+ */
+static struct drm_connector *_get_connector(struct dp_mgr_hfi_priv *mgr_priv,
+		u32 con_id)
+{
+	int i;
+
+	if (!mgr_priv)
+		return NULL;
+
+	for (i = 0; i < mgr_priv->max_streams; i++) {
+		if (mgr_priv->hfi[i] && mgr_priv->hfi[i]->connector &&
+				mgr_priv->hfi[i]->connector->base.id == con_id)
+			return mgr_priv->hfi[i]->connector;
+	}
+
+	return NULL;
+}
+
+/* -------------------------------------------------------------------------
+ * Read operations
+ * -------------------------------------------------------------------------
+ */
+
+/* Read DPCD registers from DCP via a shared memory buffer */
 static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 		u8 *dpcd, u32 size, u32 offset)
 {
@@ -646,7 +727,8 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 	rc = dp_debug_hfi_send_cmd(priv, hfi_client,
 			HFI_COMMAND_DEBUG_DP_READ_DPCD,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &dpcd_request, sizeof(dpcd_request),
-			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE,
+			dp_debug_hfi_get_base_obj_id(priv));
 	if (rc) {
 		DP_ERR("Failed to send READ_DPCD command to DCP, rc=%d\n", rc);
 		return rc;
@@ -664,6 +746,7 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 	return actual_size;
 }
 
+/* Read frame CRC values from DCP (source and sink R/G/B components) */
 static int dp_debug_client_hfi_read_crc(struct dp_debug_client *client,
 		char *buf, u32 size)
 {
@@ -710,7 +793,8 @@ static int dp_debug_client_hfi_read_crc(struct dp_debug_client *client,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
 			&misr_setup, sizeof(misr_setup),
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED |
-			HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_NON_DISCARDABLE,
+			dp_debug_hfi_get_base_obj_id(priv));
 
 	misr_setup.module_type = HFI_DEBUG_MISR_DP_CTRL;
 	dp_debug_hfi_send_cmd(priv, hfi_client,
@@ -718,7 +802,8 @@ static int dp_debug_client_hfi_read_crc(struct dp_debug_client *client,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
 			&misr_setup, sizeof(misr_setup),
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED |
-			HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_NON_DISCARDABLE,
+			dp_debug_hfi_get_base_obj_id(priv));
 
 misr_done:
 	/* Send HFI command and wait for response from DCP */
@@ -793,6 +878,7 @@ misr_done:
 	return len;
 }
 
+/* Report current hotplug/connection state (1 = connected, 0 = disconnected) */
 static int dp_debug_client_hfi_read_connected(struct dp_debug_client *client,
 		char *buf, u32 size)
 {
@@ -807,6 +893,7 @@ static int dp_debug_client_hfi_read_connected(struct dp_debug_client *client,
 	return scnprintf(buf, size, "%d\n", connected);
 }
 
+/* Read DP link info (state, rate, lanes, resolution, bpp, etc.) from DCP */
 static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 		char *buf, u32 size)
 {
@@ -852,7 +939,8 @@ static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 	rc = dp_debug_hfi_send_cmd(priv, hfi_client,
 			HFI_COMMAND_DEBUG_DP_READ_INFO,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &cmd_payload, sizeof(cmd_payload),
-			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE,
+			dp_debug_hfi_get_base_obj_id(priv));
 	if (rc) {
 		DP_ERR("Failed to send READ_INFO command to DCP, rc=%d\n", rc);
 		return rc;
@@ -913,6 +1001,7 @@ static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 	return len;
 }
 
+/* Read maximum bandwidth code from DCP */
 static int dp_debug_client_hfi_read_bw_code(struct dp_debug_client *client,
 		char *buf, u32 size)
 {
@@ -951,6 +1040,7 @@ static int dp_debug_client_hfi_read_bw_code(struct dp_debug_client *client,
 	return scnprintf(buf, size, "max_bw_code = %u\n", bw_code);
 }
 
+/* Return the current test pattern generator (TPG) pattern index */
 static int dp_debug_client_hfi_read_tpg(struct dp_debug_client *client,
 		char *buf, u32 size)
 {
@@ -960,6 +1050,7 @@ static int dp_debug_client_hfi_read_tpg(struct dp_debug_client *client,
 	return scnprintf(buf, size, "%d\n", client->tpg_pattern);
 }
 
+/* Stub: register dump is not implemented for HFI mode */
 static int dp_debug_client_hfi_read_dump(struct dp_debug_client *client,
 		char *buf, u32 size, const char *reg_name)
 {
@@ -969,12 +1060,34 @@ static int dp_debug_client_hfi_read_dump(struct dp_debug_client *client,
 	return 0;
 }
 
+/* Report MST mode (enabled/disabled) and current MST state from dp_mgr_hfi_priv */
 static int dp_debug_client_hfi_read_mst_mode(struct dp_debug_client *client,
 		char *buf, u32 size)
 {
-	return scnprintf(buf, size, "mst_mode = %u, mst_state = %u\n", 0, 0);
+	struct dp_debug_client_hfi_priv *priv;
+	struct dp_mgr_hfi_priv *mgr_priv;
+	u32 mst_mode = 0;
+	u32 mst_state = 0;
+
+	if (!client || !buf)
+		return -EINVAL;
+
+	priv = client->priv;
+	mgr_priv = _get_mgr_hfi(priv);
+
+	if (!mgr_priv) {
+		DP_ERR("Could not access dp_mgr_hfi_priv\n");
+		goto exit;
+	}
+
+	mst_mode = mgr_priv->mst_en;
+	mst_state = mgr_priv->mst_st;
+
+exit:
+	return scnprintf(buf, size, "mst_mode = %u, mst_state = %u\n", mst_mode, mst_state);
 }
 
+/* Report the maximum pixel clock in kHz */
 static int dp_debug_client_hfi_read_max_pclk_khz(struct dp_debug_client *client,
 		char *buf, u32 size)
 {
@@ -985,6 +1098,7 @@ static int dp_debug_client_hfi_read_max_pclk_khz(struct dp_debug_client *client,
 			client->max_pclk_khz, client->max_pclk_khz);
 }
 
+/* Return the HDCP status string cached in the client */
 static int dp_debug_client_hfi_read_hdcp(struct dp_debug_client *client,
 		char *buf, u32 size)
 {
@@ -1001,45 +1115,31 @@ static int dp_debug_client_hfi_read_hdcp(struct dp_debug_client *client,
 	return len;
 }
 
+/* Read HDR metadata for the given panel (0=SST, >0=MST connector by mst_con_id) */
 static int dp_debug_client_hfi_read_hdr(struct dp_debug_client *client,
 		char *buf, u32 size, int panel_id)
 {
-	struct drm_connector_list_iter conn_iter;
 	struct drm_connector *connector = NULL;
 	struct dp_debug_client_hfi_priv *priv;
 	struct dp_drv *dp_drv;
-	bool in_list = false;
 	int len = 0;
+	struct dp_mgr_hfi_priv *mgr_priv;
 
 	if (!client || !buf)
 		return -EINVAL;
 
 	priv = client->priv;
+	mgr_priv = _get_mgr_hfi(priv);
 
-	/* Get connector from device */
 	dp_drv = dp_debug_hfi_get_dp_drv(priv);
 	if (!dp_drv || !dp_drv->client || !dp_drv->client->base_connector)
 		return -ENODEV;
 
-	/* For panel_id == 0, use the base connector */
-	if (panel_id == 0) {
+	/* panel_id == 0: SST base connector; > 0: MST connector identified by mst_con_id */
+	if (panel_id == 0)
 		connector = dp_drv->client->base_connector;
-	} else {
-		/* For MST panels, find the connector by mst_con_id */
-		drm_connector_list_iter_begin(dp_drv->client->base_connector->dev, &conn_iter);
-		drm_for_each_connector_iter(connector, &conn_iter) {
-			if (connector->base.id == client->mst_con_id) {
-				in_list = true;
-				break;
-			}
-		}
-		drm_connector_list_iter_end(&conn_iter);
-
-		if (!in_list) {
-			DP_ERR("connector %u not in mst list\n", client->mst_con_id);
-			return -EINVAL;
-		}
-	}
+	else
+		connector = priv->mst_conn;
 
 	if (!connector) {
 		DP_ERR("connector is NULL\n");
@@ -1047,14 +1147,13 @@ static int dp_debug_client_hfi_read_hdr(struct dp_debug_client *client,
 	}
 
 	len = dp_debug_client_hfi_print_hdr_params_to_buf(connector, buf, size);
-	if (len == -EOVERFLOW) {
+	if (len == -EOVERFLOW)
 		DP_ERR("HDR buffer overflow\n");
-		return len;
-	}
 
 	return len;
 }
 
+/* List display modes available on the base (SST) connector */
 static int dp_debug_client_hfi_read_edid_modes(struct dp_debug_client *client,
 		char *buf, u32 size)
 {
@@ -1083,15 +1182,9 @@ static int dp_debug_client_hfi_read_edid_modes(struct dp_debug_client *client,
 
 	mutex_lock(&connector->dev->mode_config.mutex);
 	list_for_each_entry(mode, &connector->modes, head) {
-		ret = scnprintf(buf + len, max_size,
-			"%s %d %d %d %d %d 0x%x\n",
-			mode->name,
-			drm_mode_vrefresh(mode),
-			mode->picture_aspect_ratio,
-			mode->htotal,
-			mode->vtotal,
-			mode->clock,
-			mode->flags);
+		ret = scnprintf(buf + len, max_size, "%s %d %d %d %d %d 0x%x\n",
+			mode->name, drm_mode_vrefresh(mode), mode->picture_aspect_ratio,
+			mode->htotal, mode->vtotal, mode->clock, mode->flags);
 		if (dp_debug_client_hfi_check_buffer_overflow(ret, &max_size, &len))
 			break;
 	}
@@ -1100,97 +1193,107 @@ static int dp_debug_client_hfi_read_edid_modes(struct dp_debug_client *client,
 	return len;
 }
 
+/* List display modes for MST connectors. */
 static int dp_debug_client_hfi_read_edid_modes_mst(struct dp_debug_client *client,
 		char *buf, u32 size)
 {
 	struct dp_debug_client_hfi_priv *priv;
-	struct dp_drv *dp_drv;
-	struct drm_connector_list_iter conn_iter;
+	struct dp_mgr_hfi_priv *mgr_priv;
 	struct drm_connector *connector = NULL;
 	struct drm_display_mode *mode;
 	u32 len = 0, ret = 0, max_size = size;
-	bool found = false;
-	struct platform_device *pdev;
+	int i;
 
 	if (!client || !buf)
 		return -EINVAL;
 
 	priv = client->priv;
 
-	if (!priv->dev)
+	mgr_priv = _get_mgr_hfi(priv);
+	if (!mgr_priv)
 		return -ENODEV;
 
-	/* Get base dp_drv / base connector (equivalent to legacy client->connector) */
-	pdev = to_platform_device(priv->dev);
-	dp_drv = platform_get_drvdata(pdev);
-	if (!dp_drv || !dp_drv->client || !dp_drv->client->base_connector)
-		return -ENODEV;
+	if (client->mst_con_id) {
+		/* Specific connector requested via mst_con_id */
+		connector = priv->mst_conn;
+		if (!connector) {
+			DP_ERR("MST connector %u not found for read_edid_modes_mst\n",
+				client->mst_con_id);
+			return 0;
+		}
 
-	/* Find MST connector by client->mst_con_id */
-	drm_connector_list_iter_begin(dp_drv->client->base_connector->dev, &conn_iter);
-	drm_for_each_connector_iter(connector, &conn_iter) {
-		if (connector->base.id == client->mst_con_id) {
-			found = true;
-			break;
+		mutex_lock(&connector->dev->mode_config.mutex);
+		list_for_each_entry(mode, &connector->modes, head) {
+			ret = scnprintf(buf + len, max_size, "%s %d %d %d %d %d 0x%x\n",
+				mode->name, drm_mode_vrefresh(mode), mode->picture_aspect_ratio,
+				mode->htotal, mode->vtotal, mode->clock, mode->flags);
+			if (dp_debug_client_hfi_check_buffer_overflow(ret, &max_size, &len))
+				break;
+		}
+		mutex_unlock(&connector->dev->mode_config.mutex);
+	} else {
+		/*
+		 * mst_con_id not set: enumerate all MST stream connectors
+		 * directly from hfi_priv->hfi[i]->connector (statically created
+		 * in HFI mode, no reference counting needed).
+		 */
+		for (i = 0; i < mgr_priv->max_streams; i++) {
+			if (!mgr_priv->hfi[i] || !mgr_priv->hfi[i]->connector)
+				continue;
+
+			connector = mgr_priv->hfi[i]->connector;
+
+			ret = scnprintf(buf + len, max_size, "connector_id=%u:\n",
+					connector->base.id);
+			if (dp_debug_client_hfi_check_buffer_overflow(ret, &max_size, &len))
+				break;
+
+			mutex_lock(&connector->dev->mode_config.mutex);
+			list_for_each_entry(mode, &connector->modes, head) {
+				ret = scnprintf(buf + len, max_size, "%s %d %d %d %d %d 0x%x\n",
+					mode->name, drm_mode_vrefresh(mode),
+					mode->picture_aspect_ratio, mode->htotal, mode->vtotal,
+					mode->clock, mode->flags);
+				if (dp_debug_client_hfi_check_buffer_overflow(ret, &max_size, &len))
+					break;
+			}
+			mutex_unlock(&connector->dev->mode_config.mutex);
+
+			if (max_size <= 0)
+				break;
 		}
 	}
-	drm_connector_list_iter_end(&conn_iter);
-
-	if (!found || !connector) {
-		DP_ERR("MST connector %u not found for read_edid_modes_mst\n", client->mst_con_id);
-		return -EINVAL;
-	}
-
-	mutex_lock(&connector->dev->mode_config.mutex);
-	list_for_each_entry(mode, &connector->modes, head) {
-		ret = scnprintf(buf + len, max_size,
-			"%s %d %d %d %d %d 0x%x\n",
-			mode->name,
-			drm_mode_vrefresh(mode),
-			mode->picture_aspect_ratio,
-			mode->htotal,
-			mode->vtotal,
-			mode->clock,
-			mode->flags);
-		if (dp_debug_client_hfi_check_buffer_overflow(ret, &max_size, &len))
-			break;
-	}
-	mutex_unlock(&connector->dev->mode_config.mutex);
 
 	return len;
 }
 
+/* List all MST connectors belonging to this DP instance. */
 static int dp_debug_client_hfi_read_mst_conn_info(struct dp_debug_client *client,
 		char *buf, u32 size)
 {
-	struct drm_connector_list_iter conn_iter;
-	struct drm_connector *connector;
-	struct sde_connector *sde_conn;
-	struct dp_drv *drv;
 	struct dp_debug_client_hfi_priv *priv;
-	struct platform_device *pdev;
+	struct dp_mgr_hfi_priv *mgr_priv;
 	struct dp_drv *dp_drv;
+	struct drm_connector *connector;
 	u32 len = 0, ret = 0, max_size = size;
+	int i;
 
 	if (!client || !buf)
 		return -EINVAL;
 
 	priv = client->priv;
 
-	if (!priv->dev)
+	mgr_priv = _get_mgr_hfi(priv);
+	if (!mgr_priv)
 		return -ENODEV;
 
-	pdev = to_platform_device(priv->dev);
-	dp_drv = platform_get_drvdata(pdev);
+	dp_drv = dp_debug_hfi_get_dp_drv(priv);
 	if (!dp_drv || !dp_drv->client || !dp_drv->client->base_connector)
 		return -ENODEV;
 
-	drm_connector_list_iter_begin(dp_drv->client->base_connector->dev, &conn_iter);
-	drm_for_each_connector_iter(connector, &conn_iter) {
-		sde_conn = to_sde_connector(connector);
-		drv = sde_conn->display;
-		if (!sde_conn->mst_port ||
-				drv->client->base_connector != dp_drv->client->base_connector)
+	for (i = 0; i < mgr_priv->max_streams; i++) {
+		connector = dp_drv->client->connectors[i];
+		if (!connector)
 			continue;
 		ret = scnprintf(buf + len, max_size,
 				"conn name:%s, conn id:%d state:%d\n",
@@ -1199,102 +1302,119 @@ static int dp_debug_client_hfi_read_mst_conn_info(struct dp_debug_client *client
 		if (dp_debug_client_hfi_check_buffer_overflow(ret, &max_size, &len))
 			break;
 	}
-	drm_connector_list_iter_end(&conn_iter);
 
 	return len;
 }
 
-/* Write operations */
+/* -------------------------------------------------------------------------
+ * Write operations
+ * -------------------------------------------------------------------------
+ */
+
 static int dp_debug_client_hfi_write_edid(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
 	struct dp_debug_client_hfi_priv *priv;
-	u8 *buf_t = NULL, *edid = NULL;
-	const int char_to_nib = 2;
-	size_t edid_size = 0;
-	size_t size = 0, edid_buf_index = 0;
-	int rc = count;
-	u32 hfi_cmd;
+	struct dp_mgr_hfi_priv *mgr_priv;
 	struct hfi_client_t *hfi_client;
 	struct hfi_shared_addr_map *edid_addr_map = NULL;
 	struct hfi_buff edid_request;
+	u8 *edid;
+	size_t size, edid_buf_index = 0;
+	u32 display_obj_id = 2;
+	bool is_mst_mode = false;
+	int rc = count;
+	int i;
 
 	if (!client || !buf)
 		return -EINVAL;
 
 	priv = client->priv;
 
+	mgr_priv = _get_mgr_hfi(priv);
+	if (mgr_priv) {
+		is_mst_mode = mgr_priv->client.is_mst_supported;
+		DP_DEBUG("MST mode: %d, mst_edid_idx: %d, max_streams: %d\n", is_mst_mode,
+				client->mst_edid_idx, mgr_priv->max_streams);
+	}
+
+	if (client->mst_edid_idx >= mgr_priv->max_streams) {
+		DP_ERR("mst edid idx %d out of bounds for %d max streams\n", client->mst_edid_idx,
+				mgr_priv->max_streams);
+		rc = -EINVAL;
+		goto bail;
+	}
+
 	hfi_client = dp_debug_hfi_get_client(priv);
 	if (!hfi_client) {
-		DP_ERR("HFI client not available\n");
-		return -ENODEV;
+		rc = -ENODEV;
+		goto bail;
 	}
 
-	/* Allocate shared buffer for DCP to populate with DPCD data */
-	rc = _alloc_addr_map(hfi_client, &priv->edid_addr_map, SZ_1K);
-	if (rc)
-		return rc;
+	for (i = 0; i < mgr_priv->max_streams; i++) {
+		rc = _alloc_addr_map(hfi_client, &priv->edid_addr_map[i], SZ_1K);
+		if (rc) {
+			DP_ERR("failed to alloc edid_addr_map for stream %d\n", i);
+			goto bail;
+		}
+	}
 
-	edid_addr_map = priv->edid_addr_map;
-	DP_INFO("Allocated EDID buffer: local=%pK, remote=0x%llx, size=%u\n",
-		edid_addr_map->local_addr, (u64) edid_addr_map->remote_addr,
-		edid_addr_map->size);
+	edid_addr_map = priv->edid_addr_map[client->mst_edid_idx];
 
 	size = min_t(size_t, count, SZ_1K);
+	edid_buf_index = size / 2;  /* char_to_nib = 2 */
+	edid = (u8 *)edid_addr_map->local_addr;
 
-	memcpy(edid_addr_map->local_addr, buf, size);
+	rc = dp_debug_hfi_hex_to_bytes((u8 *)buf, edid, edid_buf_index);
+	if (rc)
+		goto bail;
 
-	edid_size = size / char_to_nib;
-	buf_t = (u8 *) buf;
-	size = edid_size;
+	/*
+	 * Determine display obj_id from the connector stored in hfi[stream_id].
+	 * SST: hfi[0]->connector
+	 * MST: hfi[mst_edid_idx]->connector
+	 * The obj_id is set both in the HFI command header (via dp_debug_hfi_send_cmd)
+	 * and in the payload display_id field so DCP can route the EDID correctly.
+	 */
+	if (mgr_priv) {
+		struct drm_connector *edid_connector = NULL;
+		u32 stream_id = is_mst_mode ? client->mst_edid_idx : 0;
 
-	edid = (u8 *) edid_addr_map->local_addr;
+		if (stream_id < DP_STREAMS_MAX && mgr_priv->hfi[stream_id])
+			edid_connector = mgr_priv->hfi[stream_id]->connector;
 
-	while (size--) {
-		char t[3];
-		int d;
-
-		memcpy(t, buf_t, char_to_nib);
-		t[char_to_nib] = '\0';
-
-		if (kstrtoint(t, 16, &d)) {
-			DP_ERR("kstrtoint error\n");
-			rc = -EINVAL;
-			goto bail;
+		if (edid_connector) {
+			display_obj_id = sde_conn_get_display_obj_id(edid_connector);
+			DP_INFO("Writing EDID for %s (stream=%u, display_obj_id=%u, size=%zu)\n",
+				is_mst_mode ? "MST" : "SST",
+				stream_id, display_obj_id, edid_buf_index);
+		} else {
+			DP_WARN("No connector for stream %u, using default obj_id=%u\n",
+				stream_id, display_obj_id);
 		}
-
-		edid[edid_buf_index++] = d;
-		buf_t += char_to_nib;
 	}
 
-	/* Choose command based on MST mode */
-	if (client->mst_edid_idx > 0) {
-		/* MST mode: Use MST_WRITE_PORT_EDID command */
-		rc = 0;
-	} else {
-		/* SST mode: Use regular WRITE_EDID command */
-		hfi_cmd = HFI_COMMAND_DEBUG_DP_SET_EDID;
+	edid_request.size = edid_buf_index;
+	edid_request.addr_l = HFI_VAL_L32(edid_addr_map->remote_addr);
+	edid_request.addr_h = HFI_VAL_H32(edid_addr_map->remote_addr);
 
-		DP_INFO("Writing EDID for SST mode (size=%zu)\n", edid_buf_index);
-		edid_request.size = edid_size;
-		edid_request.addr_l = HFI_VAL_L32(edid_addr_map->remote_addr);
-		edid_request.addr_h = HFI_VAL_H32(edid_addr_map->remote_addr);
-
-		rc = dp_debug_hfi_send_cmd(priv, hfi_client, hfi_cmd,
-				HFI_PAYLOAD_TYPE_U32_ARRAY, &edid_request,
-				sizeof(edid_request),
-				HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE);
-		if (rc) {
-			DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_SET_EDID, rc=%d\n", rc);
-			goto bail;
-		}
-		rc = count;
+	rc = dp_debug_hfi_send_cmd(priv, hfi_client,
+			HFI_COMMAND_DEBUG_DP_SET_EDID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &edid_request, sizeof(edid_request),
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE,
+			display_obj_id);
+	if (rc) {
+		DP_ERR("Failed to send SET_EDID (display_obj_id=%u), rc=%d\n",
+			display_obj_id, rc);
+		goto bail;
 	}
+	rc = count;
 
 bail:
 	return rc;
 }
 
+/* Write DPCD register(s) to DCP; input is hex-encoded offset + data */
 static int dp_debug_client_hfi_write_dpcd(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
@@ -1388,7 +1508,8 @@ static int dp_debug_client_hfi_write_dpcd(struct dp_debug_client *client,
 			HFI_COMMAND_DEBUG_DP_SET_DPCD,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &cmd_data,
 			sizeof(cmd_data.offset) + sizeof(cmd_data.size) + cmd_data.size,
-			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE,
+			dp_debug_hfi_get_base_obj_id(priv));
 	if (rc) {
 		DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_SET_DPCD, rc=%d\n", rc);
 		goto bail;
@@ -1399,25 +1520,6 @@ bail:
 	kfree(input_buf);
 	kfree(dpcd);
 	return rc;
-}
-
-/* Helper function to get dp_mgr_hfi_priv from debug client */
-static struct dp_mgr_hfi_priv *dp_debug_hfi_get_mgr_priv(struct dp_debug_client_hfi_priv *priv)
-{
-	struct platform_device *pdev;
-	struct dp_drv *dp_drv;
-
-	if (!priv || !priv->dev)
-		return NULL;
-
-	pdev = to_platform_device(priv->dev);
-	dp_drv = platform_get_drvdata(pdev);
-
-	if (!dp_drv || !dp_drv->client)
-		return NULL;
-
-	/* dp_drv->client is actually dp_mgr_hfi_priv.client, so we can get the container */
-	return container_of(dp_drv->client, struct dp_mgr_hfi_priv, client);
 }
 
 static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
@@ -1442,7 +1544,7 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 	DP_INFO("%s\n", client->hotplug ? "[CONNECT]" : "[DISCONNECT]");
 
 	/* Get dp_mgr_hfi_priv to call the HPD configure callback */
-	mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
+	mgr_priv = _get_mgr_hfi(priv);
 	if (!mgr_priv) {
 		DP_ERR("Could not access dp_mgr_hfi_priv\n");
 		return -ENODEV;
@@ -1506,7 +1608,7 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 		 */
 		rc = dp_mgr_hfi_hpd_disconnect_cb(mgr_priv);
 		if (rc) {
-			DP_ERR("disonnect cb failed with rc=%d\n", rc);
+			DP_ERR("HPD disconnect cb failed with rc=%d\n", rc);
 		} else if (!wait_for_completion_timeout(&mgr_priv->hpd_comp, HZ)) {
 			DP_ERR("wait for hpd disconnect processing timeout\n");
 			rc = -ETIMEDOUT;
@@ -1518,6 +1620,7 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 	return rc ? rc : count;
 }
 
+/* Set a display mode override for SST; clears override if input is invalid */
 static int dp_debug_client_hfi_write_edid_modes(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
@@ -1532,7 +1635,7 @@ static int dp_debug_client_hfi_write_edid_modes(struct dp_debug_client *client,
 	priv = client->priv;
 
 	/* Get dp_mgr_hfi_priv */
-	mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
+	mgr_priv = _get_mgr_hfi(priv);
 	if (!mgr_priv) {
 		DP_ERR("Could not access dp_mgr_hfi_priv\n");
 		return -ENODEV;
@@ -1565,32 +1668,30 @@ clear:
 	return count;
 }
 
+/* Set per-connector display mode overrides for MST topology */
 static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *client,
 		const char *buf)
 {
 	struct dp_debug_client_hfi_priv *priv;
-	struct platform_device *pdev;
 	struct dp_drv *dp_drv;
 	struct drm_connector *connector;
+	struct sde_connector *sde_conn;
 	int con_id = 0, offset = 0, debug_en = 0;
 	int hdisplay, vdisplay, vrefresh, aspect_ratio;
 	struct dp_hfi *hfi;
 	struct dp_mgr_hfi_priv *mgr_priv;
+	u32 stream_id;
 
 	if (!client || !buf)
 		return -EINVAL;
 
 	priv = client->priv;
 
-	if (!priv->dev)
-		return -ENODEV;
-
-	pdev = to_platform_device(priv->dev);
-	dp_drv = platform_get_drvdata(pdev);
+	dp_drv = dp_debug_hfi_get_dp_drv(priv);
 	if (!dp_drv || !dp_drv->client || !dp_drv->client->base_connector)
 		return -ENODEV;
 
-	mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
+	mgr_priv = _get_mgr_hfi(priv);
 	if (!mgr_priv) {
 		DP_ERR("Could not access dp_mgr_hfi_priv for MST override\n");
 		return -ENODEV;
@@ -1602,21 +1703,35 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 		      &debug_en, &con_id,
 		      &hdisplay, &vdisplay, &vrefresh, &aspect_ratio,
 		      &offset) == 6) {
-
 		DP_DEBUG("MST EDID modes: debug_en=%d, con_id=%d, %dx%d@%dHz, aspect=%d\n",
 			 debug_en, con_id, hdisplay, vdisplay, vrefresh, aspect_ratio);
 
-		connector = drm_connector_lookup(dp_drv->client->base_connector->dev,
-				NULL, con_id);
+		connector = _get_connector(mgr_priv, con_id);
 		if (!connector) {
 			DP_ERR("invalid connector id %d\n", con_id);
 			buf += offset;
 			continue;
 		}
 
+		/*
+		 * In HFI mode panel_id == stream_id (set in dp_connector_post_init).
+		 * Use it to address the correct per-stream hfi->mode_ovr, which is
+		 * what dp_mgr_hfi_validate_mode() and dp_mgr_hfi_get_modes() read.
+		 */
+		sde_conn = to_sde_connector(connector);
+		stream_id = sde_conn->panel_id;
+
+		if (stream_id >= mgr_priv->max_streams || !hfi) {
+			DP_ERR("Invalid stream_id %u for con_id=%d\n", stream_id, con_id);
+			buf += offset;
+			continue;
+		}
+
 		if (!debug_en || !hdisplay || !vdisplay || !vrefresh) {
-			DP_DEBUG("clearing MST override (con_id=%d)\n", con_id);
-			memset(&hfi->mode_ovr, 0, sizeof(hfi->mode_ovr));
+			DP_DEBUG("clearing MST override (con_id=%d, stream_id=%u)\n",
+				con_id, stream_id);
+			memset(&hfi->mode_ovr, 0,
+				sizeof(hfi->mode_ovr));
 		} else {
 			hfi->mode_ovr.enabled = true;
 			hfi->mode_ovr.h_active = hdisplay;
@@ -1624,35 +1739,263 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 			hfi->mode_ovr.refresh_rate = vrefresh;
 			hfi->mode_ovr.aspect_ratio = aspect_ratio;
 
-			DP_DEBUG("Set MST override: %dx%d@%dHz, aspect=%d (con_id=%d)\n",
-				 hdisplay, vdisplay, vrefresh, aspect_ratio, con_id);
+			DP_DEBUG("MST override: %dx%d@%dHz aspect=%d (con_id=%d stream_id=%u)\n",
+				 hdisplay, vdisplay, vrefresh, aspect_ratio, con_id, stream_id);
 		}
 
-		drm_connector_put(connector);
 		buf += offset;
 	}
 
 	return 0;
 }
 
+/* Configure MST sideband mode and stream count; sends HFI_COMMAND_DEBUG_DP_MST_CONFIG */
+static int dp_debug_client_hfi_write_mst_sideband_mode(struct dp_debug_client *client,
+		int mst_sideband_mode, u32 mst_port_cnt)
+{
+	struct dp_debug_client_hfi_priv *priv;
+	struct dp_mgr_hfi_priv *mgr_priv;
+	struct hfi_client_t *hfi_client;
+	struct {
+		u32 mst_enable;
+		u32 num_streams;
+	} mst_config;
+	int rc;
+
+	if (!client)
+		return -EINVAL;
+
+	priv = client->priv;
+
+	DP_DEBUG("MST sideband mode: %d, port count: %u\n", mst_sideband_mode, mst_port_cnt);
+
+	/* Reset MST EDID index */
+	client->mst_edid_idx = 0;
+
+	/* Synchronize kernel "mst_mode" reporting with DPSIM semantics: */
+	mgr_priv = _get_mgr_hfi(priv);
+	if (mgr_priv) {
+		mgr_priv->client.is_mst_supported = !mst_sideband_mode;
+		DP_INFO("HFI DPSIM: is_mst_supported=%d (mst_sideband_mode=%d)\n",
+			mgr_priv->client.is_mst_supported, mst_sideband_mode);
+	}
+
+	/* Get HFI client */
+	hfi_client = dp_debug_hfi_get_client(priv);
+	if (!hfi_client) {
+		DP_ERR("HFI client not available for MST sideband mode\n");
+		return -ENODEV;
+	}
+
+	/* Send MST configuration command to DCP with port count
+	 * DCP will handle writing the DPCD DP_MSTM_CAP register (0x021) internally
+	 */
+	mst_config.mst_enable = !mst_sideband_mode;
+	mst_config.num_streams = mst_port_cnt;
+
+	rc = dp_debug_hfi_send_cmd(priv, hfi_client,
+			HFI_COMMAND_DEBUG_DP_MST_CONFIG,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &mst_config, sizeof(mst_config),
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE,
+			dp_debug_hfi_get_base_obj_id(priv));
+	if (rc) {
+		DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_MST_CONFIG, rc=%d\n", rc);
+		return rc;
+	}
+
+	if (mgr_priv) {
+		mgr_priv->intf_info.stream_cnt = mst_port_cnt;
+		DP_INFO("Set stream_cnt=%u for HPD event registration\n", mst_port_cnt);
+	}
+
+	DP_INFO("Sent MST config to DCP: mst_enable=%u, num_streams=%u (DCP will update DPCD)\n",
+			mst_config.mst_enable, mst_config.num_streams);
+
+	return 0;
+}
+
+/*
+ * Set the active MST connector ID used by read_hdr / read_edid_modes_mst,
+ * and also used to simulate a plug/unplug event on that connector.
+ *
+ * In HFI mode we validate that the requested connector is one of the streams in
+ * client->connectors[0..mgr_priv->max_streams-1], store the ID, and — when a
+ * definite status is requested — update hfi[stream_id]->connected so that
+ * dp_mgr_hfi_hpd_detect() returns the new state, then fire a hotplug event
+ * so that userspace re-queries the connector.
+ *
+ * dp_mgr_hfi_hpd_detect() returns hfi[stream_id]->connected, so updating
+ * that field is the only way to make per-stream plug/unplug visible to the
+ * DRM core without going through a full DCP firmware HPD cycle.
+ */
 static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 		int con_id, int status)
 {
+	struct dp_debug_client_hfi_priv *priv;
+	struct dp_mgr_hfi_priv *mgr_priv;
+	struct drm_connector *connector;
+	struct sde_connector *sde_conn;
+	struct dp_hfi *hfi;
+	u32 stream_id;
+	int rc = 0;
+
+	if (!client)
+		return -EINVAL;
+
+	if (!con_id) {
+		DP_DEBUG("clearing mst_con_id\n");
+		client->mst_con_id = 0;
+		return 0;
+	}
+
+	priv = client->priv;
+	mgr_priv = _get_mgr_hfi(priv);
+	if (!mgr_priv)
+		return -ENODEV;
+
+	/* Look up the connector directly from HFI stream connectors */
+	connector = _get_connector(mgr_priv, con_id);
+	if (!connector) {
+		DP_ERR("invalid connector id %u\n", con_id);
+		return -EINVAL;
+	}
+
+	/*
+	 * Store the DRM connector and ID for operations such as read_hdr,
+	 * read_edid_modes_mst, etc., can be applied on MST displays.
+	 * Note: mst_con_id is intentionally NOT used to derive the HFI
+	 * display obj_id in write_edid — mst_edid_idx is used there instead.
+	 */
+	client->mst_con_id = con_id;
+	priv->mst_conn = connector;
+
+	if (status == connector_status_unknown) {
+		DP_DEBUG("mst_con_id set to %d (status query only)\n", con_id);
+		return 0;
+	}
+
+	if (status == connector_status_connected)
+		DP_INFO("plug mst connector %d\n", con_id);
+	else if (status == connector_status_disconnected)
+		DP_INFO("unplug mst connector %d\n", con_id);
+
+	/*
+	 * In HFI mode panel_id == stream_id (set in dp_connector_post_init),
+	 * so sde_conn->panel_id gives us the correct hfi[] index.
+	 */
+	sde_conn = to_sde_connector(connector);
+	stream_id = sde_conn->panel_id;
+	hfi = mgr_priv->hfi[stream_id];
+
+	/*
+	 * If connecting and the HFI infrastructure was fully torn down
+	 * (configured=false, which happens when active_streams reaches 0
+	 * during dp_mgr_hfi_unprepare/hpd_cleanup after the last stream
+	 * disconnects), we must re-initialize via the HPD configure callback
+	 * before the DRM core tries to enable the stream.
+	 *
+	 * DCP responds asynchronously with an EDID info event, which
+	 * dp_mgr_hfi_handle_dp_info() handles by setting hfi->connected=true
+	 * and firing a uevent to notify the DRM core.  We therefore return
+	 * here without setting hfi->connected or firing drm_kms_helper_hotplug_event
+	 * ourselves — DCP drives the rest of the connect sequence.
+	 */
+	if (status == connector_status_connected && mgr_priv->active_streams < 2)
+		dp_debug_client_hfi_write_mst_sideband_mode(client, 0,
+				mgr_priv->active_streams + 1);
+	else if (status == connector_status_disconnected && mgr_priv->active_streams > 0)
+		dp_debug_client_hfi_write_mst_sideband_mode(client, 0,
+				mgr_priv->active_streams - 1);
+	if (status == connector_status_connected && mgr_priv && !mgr_priv->configured) {
+		DP_INFO("HFI not configured (teardown), re-init via HPD configure for stream %u\n",
+				stream_id);
+		mgr_priv->soft_unplug = false;
+		/*
+		 * hfi_priv->connected is still true from the original HPD connect —
+		 * dp_mgr_hfi_hpd_cleanup() resets configured but NOT connected.
+		 * dp_mgr_hfi_hpd_configure_cb() only sends the plug when
+		 * hpd_high && !connected, so we must clear connected here.
+		 */
+		mgr_priv->connected = false;
+		if (mgr_priv->hpd) {
+			/*
+			 * Restore simulation pin/orientation values so DCP
+			 * accepts the plug (same logic as write_hpd connect).
+			 */
+			if (client->sim_enable)
+				mgr_priv->hpd->pin_config = 5;
+			if (mgr_priv->hpd->orientation == ORIENTATION_NONE)
+				mgr_priv->hpd->orientation = ORIENTATION_CC1;
+			mgr_priv->hpd->hpd_high = true;
+			mgr_priv->hpd->hpd_irq = false;
+		}
+		rc = dp_mgr_hfi_hpd_configure_cb(mgr_priv);
+		if (rc) {
+			DP_ERR("HPD configure failed for stream %u reconnect, rc=%d\n",
+					stream_id, rc);
+		}
+		return rc;
+	}
+
+	/*
+	 * When disconnecting a physical display, set soft_unplug before updating
+	 * the connected flag so that any attention callbacks that fire during
+	 * or after the DRM disable sequence are suppressed. The physical DP link
+	 * remains active. When reconnecting, clear soft_unplug first so that the
+	 * attention callback and EDID info handler are re-enabled before the
+	 * hotplug event is fired.
+	 */
+	if (status == connector_status_disconnected) {
+		/*
+		 * Send an HPD IRQ to DCP before marking the stream as
+		 * soft-unplugged.  The attention callback is gated on
+		 * soft_unplug==false, so the IRQ must be dispatched first.
+		 * This notifies DCP of the MST topology change (monitor
+		 * removed from port) while the physical DP link stays up.
+		 */
+		if (mgr_priv->hpd) {
+			if (mgr_priv->active_streams > 1 && mgr_priv->hpd_cb.attention) {
+				mgr_priv->hpd->hpd_high = true;
+				mgr_priv->hpd->hpd_irq = true;
+				DP_INFO("Sending HPD IRQ for MST unplug (con_id=%d)\n", con_id);
+				mgr_priv->hpd_cb.attention(mgr_priv);
+				mgr_priv->hpd->hpd_irq = false;
+			} else  if (mgr_priv->hpd_cb.disconnect) {
+				mgr_priv->hpd->hpd_high = false;
+				mgr_priv->hpd->hpd_irq = false;
+				mgr_priv->hpd_cb.disconnect(mgr_priv);
+			}
+		}
+		mgr_priv->soft_unplug = true;
+		DP_DEBUG("Set soft_unplug=true for con_id=%d\n", con_id);
+	} else if (status == connector_status_connected) {
+		mgr_priv->soft_unplug = false;
+		DP_DEBUG("Cleared soft_unplug for con_id=%d\n", con_id);
+	}
+
+	/*
+	 * HFI is configured (other streams still active, or disconnecting):
+	 * update the per-stream connected flag and fire a hotplug event so
+	 * the DRM core re-queries the connector via dp_mgr_hfi_hpd_detect().
+	 */
+	if (mgr_priv && stream_id < mgr_priv->max_streams && hfi) {
+		hfi->connected = (status == connector_status_connected);
+		DP_DEBUG("Set hfi[%u]->connected = %d for con_id=%d\n", stream_id, hfi->connected,
+				con_id);
+	} else {
+		DP_WARN("Could not update hfi[%u]->connected (mgr_priv=%p)\n", stream_id, mgr_priv);
+	}
+
+	/*
+	 * Fire a hotplug event so userspace re-queries the connector.
+	 * hpd_detect() will now return the updated hfi->connected state.
+	 */
+	drm_kms_helper_hotplug_event(connector->dev);
+
 	return 0;
 }
 
-static int dp_debug_client_hfi_write_mst_con_add(struct dp_debug_client *client,
-		const char *buf, size_t count)
-{
-	return 0;
-}
-
-static int dp_debug_client_hfi_write_mst_con_remove(struct dp_debug_client *client,
-		int con_id)
-{
-	return 0;
-}
-
+/* Send a bandwidth code override to DCP */
 static int dp_debug_client_hfi_write_bw_code(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
@@ -1680,7 +2023,8 @@ static int dp_debug_client_hfi_write_bw_code(struct dp_debug_client *client,
 	rc = dp_debug_hfi_send_cmd(priv, hfi_client,
 			HFI_COMMAND_DEBUG_DP_SET_BW_CODE,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &max_bw_code, sizeof(max_bw_code),
-			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE,
+			dp_debug_hfi_get_base_obj_id(priv));
 	if (rc) {
 		DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_SET_BW_CODE, rc=%d\n", rc);
 		return rc;
@@ -1689,12 +2033,36 @@ static int dp_debug_client_hfi_write_bw_code(struct dp_debug_client *client,
 	return count;
 }
 
+/* Enable or disable MST mode in dp_mgr_hfi_priv parser config */
 static int dp_debug_client_hfi_write_mst_mode(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
+	struct dp_debug_client_hfi_priv *priv;
+	struct dp_mgr_hfi_priv *mgr_priv;
+	u32 mst_mode = 0;
+
+	if (!client || !buf)
+		return -EINVAL;
+
+	if (kstrtoint(buf, 10, &mst_mode) != 0)
+		return -EINVAL;
+
+	priv = client->priv;
+
+	/* Get dp_mgr_hfi_priv to configure MST mode */
+	mgr_priv = _get_mgr_hfi(priv);
+	if (!mgr_priv) {
+		DP_ERR("Could not access dp_mgr_hfi_priv for MST mode configuration\n");
+		return -ENODEV;
+	}
+
+	mgr_priv->client.is_mst_supported = mst_mode ? true : false;
+	DP_DEBUG("mst_enable: %d\n", mst_mode);
+
 	return count;
 }
 
+/* Stub: max pixel clock is managed by DCP firmware in HFI mode */
 static int dp_debug_client_hfi_write_max_pclk_khz(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
@@ -1711,12 +2079,7 @@ static int dp_debug_client_hfi_write_max_pclk_khz(struct dp_debug_client *client
 	return count;
 }
 
-static int dp_debug_client_hfi_write_mst_sideband_mode(struct dp_debug_client *client,
-		int mst_sideband_mode, u32 mst_port_cnt)
-{
-	return 0;
-}
-
+/* Set the test pattern generator (TPG) pattern on DCP */
 static int dp_debug_client_hfi_write_tpg(struct dp_debug_client *client, u32 tpg_pattern)
 {
 	struct dp_debug_client_hfi_priv *priv;
@@ -1736,7 +2099,8 @@ static int dp_debug_client_hfi_write_tpg(struct dp_debug_client *client, u32 tpg
 	rc = dp_debug_hfi_send_cmd(priv, hfi_client,
 			HFI_COMMAND_DEBUG_DP_SET_TPG,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &tpg_pattern, sizeof(tpg_pattern),
-			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE,
+			dp_debug_hfi_get_base_obj_id(priv));
 	if (rc)
 		DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_SET_TPG, rc=%d\n", rc);
 
@@ -1745,12 +2109,14 @@ static int dp_debug_client_hfi_write_tpg(struct dp_debug_client *client, u32 tpg
 	return rc;
 }
 
+/* Stub: execution mode selection is not applicable in HFI mode */
 static int dp_debug_client_hfi_write_exe_mode(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
 	return count;
 }
 
+/* Enable or disable HDCP on DCP via HFI_COMMAND_DEBUG_DP_HDCP_CONTROL */
 static int dp_debug_client_hfi_write_hdcp(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
@@ -1776,7 +2142,8 @@ static int dp_debug_client_hfi_write_hdcp(struct dp_debug_client *client,
 	rc = dp_debug_hfi_send_cmd(priv, hfi_client,
 			HFI_COMMAND_DEBUG_DP_HDCP_CONTROL,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &hdcp, sizeof(hdcp),
-			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE,
+			dp_debug_hfi_get_base_obj_id(priv));
 	if (rc) {
 		DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_HDCP_CONTROL, rc=%d\n", rc);
 		return rc;
@@ -1785,6 +2152,7 @@ static int dp_debug_client_hfi_write_hdcp(struct dp_debug_client *client,
 	return count;
 }
 
+/* Toggle simulation mode on/off by delegating to write_sim_mode */
 static int dp_debug_client_hfi_write_sim(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
@@ -1802,6 +2170,7 @@ static int dp_debug_client_hfi_write_sim(struct dp_debug_client *client,
 	return count;
 }
 
+/* Trigger a simulated attention event with the given VDO value */
 static int dp_debug_client_hfi_write_attention(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
@@ -1822,6 +2191,7 @@ static int dp_debug_client_hfi_write_attention(struct dp_debug_client *client,
 	return count;
 }
 
+/* Stub: register dump trigger (rejects qfprom_physical, accepts others) */
 static int dp_debug_client_hfi_write_dump(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
@@ -1834,6 +2204,7 @@ static int dp_debug_client_hfi_write_dump(struct dp_debug_client *client,
 	return count;
 }
 
+/* Enable/disable DP simulation mode; sends HFI_COMMAND_DEBUG_DP_SIMULATION_CONTROL */
 static int dp_debug_client_hfi_write_sim_mode(struct dp_debug_client *client, bool sim)
 {
 	struct dp_debug_client_hfi_priv *priv;
@@ -1857,7 +2228,7 @@ static int dp_debug_client_hfi_write_sim_mode(struct dp_debug_client *client, bo
 		return -ENODEV;
 
 	/* Get dp_mgr_hfi_priv */
-	mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
+	mgr_priv = _get_mgr_hfi(priv);
 	if (!mgr_priv) {
 		DP_ERR("Could not access dp_mgr_hfi_priv\n");
 		return -ENODEV;
@@ -1866,41 +2237,28 @@ static int dp_debug_client_hfi_write_sim_mode(struct dp_debug_client *client, bo
 	hfi = mgr_priv->hfi[DP_STREAM_0];
 	/* clear mode override */
 	hfi->mode_ovr.enabled = false;
-	if (sim) {
-		/* Send SIM_ENABLE command */
-		rc = dp_debug_hfi_send_cmd(priv, hfi_client,
-				HFI_COMMAND_DEBUG_DP_SIMULATION_CONTROL,
-				HFI_PAYLOAD_TYPE_U32_ARRAY, &sim_enable, sizeof(sim_enable),
-				HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
-		if (rc) {
-			DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_SIMULATION_CONTROL, rc=%d\n",
-					rc);
-			return rc;
-		}
-	} else {
-		/* Disable simulation: perform cleanup like legacy implementation */
 
-		/* Disconnect hotplug if connected */
+	/* Cleanup state when disabling simulation */
+	if (!sim) {
 		if (client->hotplug) {
 			DP_WARN("sim mode off before hotplug disconnect\n");
 			client->hotplug = false;
 		}
-
-		/* Reset MST EDID index like legacy */
 		client->mst_edid_idx = 0;
-
-		rc = dp_debug_hfi_send_cmd(priv, hfi_client,
-				HFI_COMMAND_DEBUG_DP_SIMULATION_CONTROL,
-				HFI_PAYLOAD_TYPE_U32_ARRAY, &sim_enable, sizeof(sim_enable),
-				HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
-		if (rc)
-			DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_SIMULATION_CONTROL, rc=%d\n",
-					rc);
 	}
+
+	rc = dp_debug_hfi_send_cmd(priv, hfi_client,
+			HFI_COMMAND_DEBUG_DP_SIMULATION_CONTROL,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &sim_enable, sizeof(sim_enable),
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE,
+			dp_debug_hfi_get_base_obj_id(priv));
+	if (rc)
+		DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_SIMULATION_CONTROL, rc=%d\n", rc);
 
 	return rc;
 }
 
+/* Send a simulated attention event to DCP via HFI_COMMAND_DEBUG_DP_SET_ATTENTION */
 static int dp_debug_client_hfi_simulate_attention(struct dp_debug_client *client, int vdo)
 {
 	struct dp_debug_client_hfi_priv *priv;
@@ -1918,13 +2276,15 @@ static int dp_debug_client_hfi_simulate_attention(struct dp_debug_client *client
 	rc = dp_debug_hfi_send_cmd(priv, hfi_client,
 			HFI_COMMAND_DEBUG_DP_SET_ATTENTION,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &vdo, sizeof(vdo),
-			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE,
+			dp_debug_hfi_get_base_obj_id(priv));
 	if (rc)
 		DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_SET_ATTENTION, rc=%d\n", rc);
 
 	return rc;
 }
 
+/* Abort simulation: force hotplug low and disable sim mode */
 static void dp_debug_client_hfi_abort(struct dp_debug_client *client)
 {
 	if (!client)
@@ -1935,6 +2295,12 @@ static void dp_debug_client_hfi_abort(struct dp_debug_client *client)
 		client->write_sim_mode(client, false);
 }
 
+/*
+ * dp_debug_client_hfi_get - Initialise the HFI debug client.
+ *
+ * Allocates priv state, wires up all function pointers, and defers HFI
+ * client creation until the first debugfs operation.
+ */
 int dp_debug_client_hfi_get(struct dp_debug_client *client)
 {
 	struct dp_debug_client_hfi_priv *priv;
@@ -1978,9 +2344,7 @@ int dp_debug_client_hfi_get(struct dp_debug_client *client)
 	client->read_dump = dp_debug_client_hfi_read_dump;
 	client->read_max_pclk_khz = dp_debug_client_hfi_read_max_pclk_khz;
 	client->read_hdr = dp_debug_client_hfi_read_hdr;
-	/* NEW: HDR support */
 	client->read_edid_modes = dp_debug_client_hfi_read_edid_modes;
-	/* NEW: Reads from connector */
 	client->read_hdcp = dp_debug_client_hfi_read_hdcp;
 
 	/* Write operations - send HFI commands to DCP */
@@ -1994,26 +2358,17 @@ int dp_debug_client_hfi_get(struct dp_debug_client *client)
 	client->write_max_pclk_khz = dp_debug_client_hfi_write_max_pclk_khz;
 	client->write_tpg = dp_debug_client_hfi_write_tpg;
 	client->write_exe_mode = dp_debug_client_hfi_write_exe_mode;
-	/* Stub - not applicable for HFI */
 	client->write_dump = dp_debug_client_hfi_write_dump;
-	/* Stub - not applicable for HFI */
 
 	/* MST Functions */
 	client->read_mst_mode = dp_debug_client_hfi_read_mst_mode;
 	client->read_edid_modes_mst = dp_debug_client_hfi_read_edid_modes_mst;
-	/* NEW: MST EDID modes */
 	client->read_mst_conn_info = dp_debug_client_hfi_read_mst_conn_info;
-	/* NEW: MST connector info */
 	client->write_mst_mode = dp_debug_client_hfi_write_mst_mode;
-	/* Stub - not used */
 	client->write_edid_modes_mst = dp_debug_client_hfi_write_edid_modes_mst;
-	/* NEW: MST mode override */
 	client->write_mst_con_id = dp_debug_client_hfi_write_mst_con_id;
-	/* NEW: MST connector ID */
-	client->write_mst_con_add = dp_debug_client_hfi_write_mst_con_add;
-	/* NEW: MST connector add */
-	client->write_mst_con_remove = dp_debug_client_hfi_write_mst_con_remove;
-	/* NEW: MST connector remove */
+	client->write_mst_con_add = NULL;
+	client->write_mst_con_remove = NULL;
 	client->write_mst_sideband_mode = dp_debug_client_hfi_write_mst_sideband_mode;
 
 	/* Simulation Functions */
@@ -2032,11 +2387,18 @@ int dp_debug_client_hfi_get(struct dp_debug_client *client)
 	return 0;
 }
 
+/*
+ * dp_debug_client_hfi_put - Tear down the HFI debug client.
+ *
+ * Unregisters all HFI listeners, releases the borrowed HFI client reference,
+ * and frees the priv structure.
+ */
 void dp_debug_client_hfi_put(struct dp_debug_client *client)
 {
 	struct dp_debug_client_hfi_priv *priv;
 	struct hfi_client_t *hfi_client;
 	struct listener_list *listener_entry, *tmp;
+	int stream_index;
 
 	if (!client)
 		return;
@@ -2066,8 +2428,12 @@ void dp_debug_client_hfi_put(struct dp_debug_client *client)
 
 		if (priv->dpcd_addr_map)
 			dp_mgr_hfi_deinit_shared_addr(priv->hfi_client, priv->dpcd_addr_map);
-		if (priv->edid_addr_map)
-			dp_mgr_hfi_deinit_shared_addr(priv->hfi_client, priv->edid_addr_map);
+
+		for (stream_index = 0; stream_index < MAX_DP_MST_STREAMS; stream_index++)
+			if (priv->edid_addr_map[stream_index])
+				dp_mgr_hfi_deinit_shared_addr(priv->hfi_client,
+						priv->edid_addr_map[stream_index]);
+
 		if (priv->info_addr_map)
 			dp_mgr_hfi_deinit_shared_addr(priv->hfi_client, priv->info_addr_map);
 	}

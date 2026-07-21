@@ -25,6 +25,7 @@
 #define TIMELINE_VAL_LENGTH		128
 #define SPEC_FENCE_FLAG_FENCE_ARRAY	0x10
 #define SPEC_FENCE_FLAG_ARRAY_BIND	0x11
+#define DMA_FENCE_SET_DEADLINE		0x12 /* dma_fence_set_deadline has already been invoked */
 #define HW_FENCE_DIR_WRITE_SIZE	0x2
 #define HW_FENCE_DIR_WRITE_MASK	0xFFFFFFFF
 #define HW_FENCE_HFI_MMAP_DPU_BA	0x200000
@@ -1555,3 +1556,21 @@ void sde_debugfs_timeline_dump(struct sde_fence_context *ctx,
 	}
 	spin_unlock(&ctx->list_lock);
 }
+
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
+void sde_fence_set_input_deadline(struct dma_fence *fence, ktime_t deadline)
+{
+	if (!fence || !deadline || test_bit(DMA_FENCE_SET_DEADLINE, &fence->flags) ||
+			(test_bit(SPEC_FENCE_FLAG_FENCE_ARRAY, &fence->flags) &&
+			!test_bit(SPEC_FENCE_FLAG_ARRAY_BIND, &fence->flags)))
+		return;
+
+	dma_fence_set_deadline(fence, deadline);
+	set_bit(DMA_FENCE_SET_DEADLINE, &fence->flags);
+}
+#else
+void sde_fence_set_input_deadline(struct dma_fence *fence, ktime_t deadline)
+{
+	/* do nothing */
+}
+#endif /* (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE) */

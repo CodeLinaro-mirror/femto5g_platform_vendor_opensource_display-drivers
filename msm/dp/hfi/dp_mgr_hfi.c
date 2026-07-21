@@ -73,7 +73,7 @@ struct hfi_shared_addr_map *dp_mgr_hfi_init_shared_addr(struct hfi_client_t *ctx
 
 	rc = hfi_adapter_buffer_alloc(ctx, map);
 	if (rc) {
-		kfree(map);
+		kvfree(map);
 		return NULL;
 	}
 
@@ -86,7 +86,7 @@ void dp_mgr_hfi_deinit_shared_addr(struct hfi_client_t *ctx, struct hfi_shared_a
 		return;
 
 	hfi_adapter_buffer_dealloc(ctx, map);
-	kfree(map);
+	kvfree(map);
 }
 
 void dp_mgr_hfi_init_hfi_buff(struct hfi_buff *buff, struct hfi_shared_addr_map *map)
@@ -310,7 +310,7 @@ static int _hfi_parse_supported_modes(struct dp_hfi *hfi, char *buf_addr, int bu
 	}
 
 	if (mode_count == 0) {
-		DP_WARN("No modes received from DCP\n");
+		DP_WARN("DP%d: No modes received from DCP\n", hfi->stream_id);
 		hfi->mode_count = 0;
 		return 0;
 	}
@@ -327,8 +327,8 @@ static int _hfi_parse_supported_modes(struct dp_hfi *hfi, char *buf_addr, int bu
 		memcpy(&hfi->mode_list[i], mode_info,
 				sizeof(struct hfi_display_mode_extended_info));
 		mode = &hfi->mode_list[i].base;
-		DP_DEBUG("Mode[%d]: %ux%u@%uHz\n", i, mode->h_active, mode->v_active,
-				mode->refresh_rate);
+		DP_DEBUG("DP%d: Mode[%d]: %ux%u@%uHz\n", hfi->stream_id, i, mode->h_active,
+				mode->v_active, mode->refresh_rate);
 		mode_info++;
 	}
 
@@ -500,7 +500,7 @@ static int _send_plug(struct dp_mgr_hfi_priv *hfi_priv, struct hfi_device_hotplu
 
 	hfi = hfi_priv->hfi[0];
 	hfi_client = hfi->hfi_client;
-	if (!hfi_client)
+	if (!hfi_client || !hfi->hpd_events_register)
 		return -EINVAL;
 
 	/*
@@ -558,7 +558,7 @@ static int _send_unplug(struct dp_mgr_hfi_priv *hfi_priv, struct hfi_device_hotp
 
 	hfi = hfi_priv->hfi[0];
 	hfi_client = hfi->hfi_client;
-	if (!hfi_client)
+	if (!hfi_client || !hfi->hpd_events_register)
 		return -EINVAL;
 
 	/*
@@ -917,12 +917,10 @@ static int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
 	if (hfi_priv->configured)
 		goto end;
 
-	hfi_priv->max_streams = (hfi_priv->mst_en ? DP_STREAMS_MAX : 1);
 	for (i = 0; i < hfi_priv->max_streams; i++) {
 		rc = _init_addr_maps(hfi_priv->hfi[i]);
 		if (rc) {
-			while (--i >= 0)
-				_deinit_addr_maps(hfi_priv->hfi[i]);
+			DP_ERR("failed to alloc edid_addr_map\n");
 			goto end;
 		}
 	}
@@ -940,15 +938,18 @@ static int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
 	}
 
 	for (i = 0; i < hfi_priv->max_streams; i++) {
-		rc = _register_hpd_events(hfi_priv, i, true);
-		if (rc) {
-			DP_ERR("failed to register hpd events\n");
-			goto end;
+		hfi = hfi_priv->hfi[i];
+		if (!hfi->hpd_events_register) {
+			rc = _register_hpd_events(hfi_priv, i, true);
+			if (rc)
+				DP_ERR("failed to register hpd events on stream_id=%d\n", i);
+			else
+				hfi->hpd_events_register = true;
 		}
 	}
 
 	hfi_priv->configured = true;
-	DP_INFO("configured\n");
+	DP_INFO("DP_HFI configured\n");
 
 end:
 	if (hfi_priv->hpd->hpd_high && !hfi_priv->connected) {
@@ -1046,10 +1047,15 @@ static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv, u32 stream_i
 	if (!hfi_priv->active_streams)
 		return 0;
 
-	_register_hpd_events(hfi_priv, stream_id, false);
-
-	/* Free shared buffers */
-	_deinit_addr_maps(hfi);
+	if (hfi->hpd_events_register) {
+		rc = _register_hpd_events(hfi_priv, stream_id, false);
+		if (rc) {
+			DP_ERR("failed to register hpd events on stream_id=%d, rc=%d\n",
+									stream_id, rc);
+		} else {
+			hfi->hpd_events_register = false;
+		}
+	}
 
 	hfi_priv->active_streams--;
 	if (hfi_priv->active_streams)
@@ -1059,7 +1065,8 @@ static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv, u32 stream_i
 
 	_hfi_power_deinit(hfi_priv);
 
-	DP_INFO("cleanup\n");
+	DP_INFO("DP_HFI cleanup, stream_id=%d\n", stream_id);
+
 	hfi_priv->configured = false;
 	complete_all(&hfi_priv->hpd_comp);
 end:
@@ -1410,7 +1417,8 @@ static enum drm_mode_status dp_mgr_hfi_validate_mode(struct dp_client *client, i
 	}
 
 	if (hfi->mode_count == 0) {
-		DP_WARN("No modes available from DCP for validation\n");
+		DP_WARN("DP%d: No modes available from DCP for validation\n",
+				hfi->stream_id);
 		return MODE_ERROR;
 	}
 
@@ -1421,8 +1429,9 @@ static enum drm_mode_status dp_mgr_hfi_validate_mode(struct dp_client *client, i
 		if ((hfi_mode->h_active == mode->hdisplay) &&
 		    (hfi_mode->v_active == mode->vdisplay) &&
 		    (hfi_mode->refresh_rate == drm_refresh_rate)) {
-			DP_DEBUG("Mode validated [%dx%d@%d]: matches HFI mode[%d]\n",
-				mode->hdisplay, mode->vdisplay, drm_refresh_rate, i);
+			DP_DEBUG("DP%d: Mode validated [%dx%d@%d]: matches HFI mode[%d]\n",
+				hfi->stream_id, mode->hdisplay, mode->vdisplay, drm_refresh_rate,
+				i);
 			return MODE_OK;
 		}
 	}
@@ -1556,9 +1565,9 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	info = payload;
 	edid_buf = &info->edid_modes_buf;
 
-	DP_INFO("EDID Info received: stream_id=%d size=%u, link_rate=%u, lane_count=%u, bpp=%u\n",
+	DP_INFO("EDID Info: stream_id=%d size=%u, link_rate=%u, lane_count=%u, bpp=%u, flags=%u\n",
 			info->stream_id, edid_buf->size, info->link_rate,
-			info->lane_count, info->bits_per_pixel);
+			info->lane_count, info->bits_per_pixel, info->flags);
 
 	edid_map = hfi->edid_addr_map;
 	if (!edid_map) {
@@ -1578,7 +1587,9 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	if (info->stream_id == 0) {
 		hfi_priv->link_rate = info->link_rate;
 		hfi_priv->lane_count = info->lane_count;
-		hfi_priv->fec_en = info->fec_enabled;
+		hfi_priv->mst_st = info->flags & BIT(HFI_DP_SINK_CAP_MST);
+		hfi_priv->dsc_en = info->flags & BIT(HFI_DP_SINK_CAP_DSC);
+		hfi_priv->fec_en = info->flags & BIT(HFI_DP_SINK_CAP_FEC);
 	}
 
 	hfi->tgt_bpp = info->bits_per_pixel;
@@ -1605,11 +1616,11 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 		DP_ERR("No modes received from DCP\n");
 		goto end;
 	}
-	DP_INFO("Received %u modes from DCP:\n", hfi->mode_count);
+	DP_INFO("DP%d: Received %u modes from DCP:\n", hfi->stream_id, hfi->mode_count);
 	for (i = 0; i < hfi->mode_count; i++) {
 		struct hfi_display_mode_info *mode = &hfi->mode_list[i].base;
 
-		DP_INFO("Mode[%d]: %ux%u@%uHz hb:(%u %u %u) vb:(%u %u %u)\n",
+		DP_INFO("DP%d: Mode[%d]: %ux%u@%uHz hb:(%u %u %u) vb:(%u %u %u)\n", hfi->stream_id,
 				i, mode->h_active, mode->v_active, mode->refresh_rate,
 				mode->h_front_porch, mode->h_sync_width, mode->h_back_porch,
 				mode->v_front_porch, mode->v_sync_width, mode->v_back_porch);
@@ -1639,6 +1650,9 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 	case HFI_DP_EVENT_HPD_UNPLUGGED:
 		DP_DEBUG("HPD_UNPLUGGED: conn:%d\n",
 				(hfi->connector ? hfi->connector->base.id : -1));
+		hfi_priv->mst_st = 0;
+		hfi_priv->fec_en = 0;
+		hfi_priv->dsc_en = 0;
 		hfi->connected = false;
 		_hfi_notify_hpd_user(hfi, false);
 		break;
@@ -2488,6 +2502,7 @@ static int dp_mgr_hfi_prepare(struct dp_client *client, int panel_id)
 {
 	int rc = 0;
 	struct dp_mgr_hfi_priv *hfi_priv;
+	u32 stream_id;
 
 	if (!client) {
 		DP_ERR("Invalid params\n");
@@ -2496,12 +2511,16 @@ static int dp_mgr_hfi_prepare(struct dp_client *client, int panel_id)
 
 	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
 
-	DP_DEBUG("HFI prepare for panel_id: %d\n", panel_id);
+	stream_id = panel_to_stream(hfi_priv, panel_id);
+
+	DP_DEBUG("HFI prepare for stream_id: %d\n", stream_id);
 
 	/* Mode setting will be handled by the set_mode callback when needed */
 	/* For now, just return success as preparation is complete */
 
 	hfi_priv->active_streams++;
+
+	SDE_EVT32_EXTERNAL(stream_id, hfi_priv->connected, hfi_priv->active_streams);
 end:
 	DP_DEBUG("%s: DP core power prepare\n", __func__);
 	return rc;
@@ -2725,8 +2744,23 @@ static int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
 	stream_id = panel_to_stream(hfi_priv, panel_id);
 
 	/* unprepare only when NOT connected */
-	if (!hfi_priv->connected)
+	if (!hfi_priv->connected) {
 		dp_mgr_hfi_hpd_cleanup(hfi_priv, stream_id);
+	} else {
+		/*
+		 * at mst case, there is rare case which dongle mistakenly issue the
+		 * up request sideband connection status notify message with no device
+		 * connected to dongle even there is device connected to dongle physically.
+		 * when this happen, the hfi_priv->connected is still true since dongle has
+		 * not physically disonnected.
+		 * however active_stream need to be decreased here to offset the acttive_stream
+		 * will be increased later.
+		 */
+		if (hfi_priv->active_streams > 0)
+			hfi_priv->active_streams--;
+	}
+
+	SDE_EVT32_EXTERNAL(stream_id, hfi_priv->connected, hfi_priv->active_streams);
 
 end:
 	DP_DEBUG("%s: DP core power unprepare\n", __func__);
@@ -2854,11 +2888,11 @@ static void dp_mgr_hfi_unbind(struct device *dev, struct device *master,
 
 	/* Cleanup EDID control structure */
 	for (i = 0; i < hfi_priv->max_streams; i++) {
-		if (hfi_priv->hfi[i]->edid_ctrl)
-			sde_edid_deinit((void **)&hfi_priv->hfi[i]->edid_ctrl);
-
 		if (!hfi_priv->hfi[i])
 			continue;
+
+		if (hfi_priv->hfi[i]->edid_ctrl)
+			sde_edid_deinit((void **)&hfi_priv->hfi[i]->edid_ctrl);
 
 		hfi_client = hfi_priv->hfi[i]->hfi_client;
 		if (hfi_client) {
@@ -3134,14 +3168,23 @@ static bool dp_mgr_hfi_hpd_detect(struct dp_client *client, int panel_id)
 	if (!hfi_priv->connected)
 		hfi->connected = false;
 
-	if (hfi->connected)
-		DP_DEBUG("conn %d panel %d stream %d status %d\n",
-				(hfi->connector ? hfi->connector->base.id : -1), panel_id,
-				stream_id, hfi->connected);
+	DP_DEBUG("conn %d panel %d stream %d status %d\n",
+			(hfi->connector ? hfi->connector->base.id : -1), panel_id,
+			stream_id, hfi->connected);
 
 	return hfi->connected;
 }
 
+static void _parse_mst(struct dp_mgr_hfi_priv *hfi_priv)
+{
+	hfi_priv->mst_en = false;
+	hfi_priv->max_streams = 1;
+
+	if (of_property_read_bool(hfi_priv->pdev->dev.of_node, "qcom,mst-enable")) {
+		hfi_priv->mst_en = true;
+		hfi_priv->max_streams = DP_STREAMS_MAX;
+	}
+}
 
 struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_client *debug)
 {
@@ -3162,7 +3205,7 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_
 		goto bail;
 	}
 
-	hfi_priv->intf_info.stream_cnt = 2;
+	hfi_priv->intf_info.stream_cnt = DP_STREAMS_MAX;
 
 	hfi_priv->pdev = pdev;
 	hfi_priv->msm_hdcp_dev = dp_hdcp_get_msm_hdcp_dev();
@@ -3210,6 +3253,8 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_
 	client->get_intf_info = dp_mgr_hfi_get_info;
 	client->pm_prepare = dp_mgr_hfi_pm_prepare;
 	client->pm_complete = dp_mgr_hfi_pm_complete;
+
+	_parse_mst(hfi_priv);
 
 	init_completion(&hfi_priv->hpd_comp);
 

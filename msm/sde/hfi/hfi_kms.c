@@ -90,7 +90,7 @@ static int hfi_kms_prepare_commit(struct sde_kms *kms,
 static int hfi_kms_trigger_commit(struct sde_kms *kms,
 		struct drm_atomic_state *state)
 {
-	int i, ret;
+	int i, ret = 0;
 	u32 disp_id;
 	u32 payload = HFI_COMMIT;
 	struct hfi_cmdbuf_t *cmd_buf;
@@ -1429,7 +1429,7 @@ void hfi_kms_resource_vote_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *paylo
 	struct hfi_kms *hfi_kms;
 	u32 bus_id, i, prop_count;
 	struct hfi_kv_pairs *kv_pairs;
-	struct hfi_bw_config bw_config;
+	struct hfi_bw_config bw_config = {0};
 	struct dss_module_power *mp;
 	struct sde_power_handle *phandle;
 	u32 dirty[SDE_POWER_HANDLE_DBUS_ID_MAX] = {0,};

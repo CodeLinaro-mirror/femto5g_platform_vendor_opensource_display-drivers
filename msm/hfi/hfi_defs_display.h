@@ -652,6 +652,18 @@ enum hfi_fence_type {
 };
 
 /*
+ * enum hfi_dp_sink_capability_flags - Bitmask flags describing DP link capabilities.
+ * @HFI_DP_SINK_CAP_MST: Multi-Stream Transport (MST) is supported.
+ * @HFI_DP_SINK_CAP_DSC: Display Stream Compression (DSC) is supported.
+ * @HFI_DP_SINK_CAP_FEC: Forward Error Correction (FEC) is supported.
+ */
+enum hfi_dp_sink_capability_flags {
+	HFI_DP_SINK_CAP_MST,
+	HFI_DP_SINK_CAP_DSC,
+	HFI_DP_SINK_CAP_FEC,
+};
+
+/*
  * DP Event data after HPD.
  *
  * @controller_id:
@@ -664,8 +676,8 @@ enum hfi_fence_type {
  *     Number of lanes from DPCD
  * @bits_per_pixel:
  *     Uncompressed bits per pixel supported for this
- * @fec_enabled:
- *     Forward Error Correction enabled flag
+ * @flags:
+ *     Bitmask of DP link capability flags (see hfi_dp_sink_capability_flags).
  * @edid_modes_buf:
  *     EDID & modes buffer: This buffer is populated by DCP with the raw EDID data and display
  *     modes parsed from the EDID.
@@ -693,7 +705,7 @@ struct hfi_display_event_edid_info {
 	u32 link_rate;
 	u32 lane_count;
 	u32 bits_per_pixel;
-	u32 fec_enabled;
+	u32 flags;
 	struct hfi_buff edid_modes_buf;
 };
 
