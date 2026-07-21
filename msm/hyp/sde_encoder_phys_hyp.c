@@ -22,6 +22,19 @@
 		(e) && (e)->base.hw_intf ? \
 		(e)->base.hw_intf->idx - INTF_0 : -1, ##__VA_ARGS__)
 
+#define SDE_CTL_FLUSH_CTL_LM_MASK  (BIT(17) |        /* CTL       */ \
+					BIT(6)  |        /* LM0       */ \
+					BIT(7)  |        /* LM1       */ \
+					BIT(8)  |        /* LM2       */ \
+					BIT(9)  |        /* LM3       */ \
+					BIT(10) |        /* LM4       */ \
+					BIT(20) |        /* LM5       */ \
+					BIT(21) |        /* LM6       */ \
+					BIT(27) |        /* LM7       */ \
+					BIT(30) |        /* PERIPH    */ \
+					BIT(31))         /* INTF      */
+
+
 #define to_sde_encoder_phys_hyp(x) \
 	container_of(x, struct sde_encoder_phys_hyp, base)
 
@@ -90,12 +103,9 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 	if (hw_ctl->ops.get_flush_complete_register)
 		flush_complete_register = hw_ctl->ops.get_flush_complete_register(hw_ctl);
 
-	if (flush_complete_register & hw_ctl->flush.pending_flush_mask) {
-		SDE_DEBUG("not flushed: flush_complete_reg=0x%x pending_flush_mask=0x%x\n",
-			flush_complete_register,
-			hw_ctl->flush.pending_flush_mask);
+	if (flush_complete_register & hw_ctl->flush.pending_flush_mask
+		& ~SDE_CTL_FLUSH_CTL_LM_MASK)
 		goto not_flushed;
-	}
 
 	/*
 	 * When flush_mask is changed to 0, we need additional vsync
@@ -103,11 +113,6 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 	 */
 	if (flush_complete_register && !hw_ctl->flush.pending_flush_mask
 		&& hw_ctl->flush.previous_flush_mask) {
-		SDE_DEBUG("not flushed: flush_complete_reg=0x%x pending_flush_mask=0x%x "
-			"previous_flush_mask=0x%x\n",
-			flush_complete_register,
-			hw_ctl->flush.pending_flush_mask,
-			hw_ctl->flush.previous_flush_mask);
 		hw_ctl->flush.previous_flush_mask = 0;
 		goto not_flushed;
 	}
