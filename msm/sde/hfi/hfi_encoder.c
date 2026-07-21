@@ -954,6 +954,18 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 			if (event != MSM_ENC_CAPTURE_COMPLETE || !enable)
 				return 0;
 
+			/* Skip deregister and re-register in any event is in flight */
+			if (!enc->cur_master ||
+					atomic_read(&enc->cur_master->pending_kickoff_cnt)) {
+				SDE_DEBUG("enc:%d CAPTURE_COMPLETE in-flight, skip redundant "
+						"deregister\n", DRMID(drm_enc));
+				SDE_EVT32(DRMID(drm_enc), event, enc->cur_master ?
+						atomic_read(&enc->cur_master->pending_kickoff_cnt)
+						: -1,
+						SDE_EVTLOG_FUNC_CASE2);
+				return 0;
+			}
+
 			/* Deregister first so FW clears its packet_id before re-registration */
 			ret = _hfi_enc_register_hw_event(enc, event, false, false);
 			if (ret)
