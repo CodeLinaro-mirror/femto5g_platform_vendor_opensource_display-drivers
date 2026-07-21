@@ -140,6 +140,8 @@ struct dp_mgr_hfi_priv {
 	struct dp_audio *audio;
 	u8 min_enc_level;
 
+	bool stream_manage_inflight;
+
 	u32 active_streams;
 
 	bool aux_params_valid;
