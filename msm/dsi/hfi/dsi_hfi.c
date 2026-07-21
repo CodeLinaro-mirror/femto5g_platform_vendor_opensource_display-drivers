@@ -71,6 +71,9 @@ static int _dsi_display_hfi_process_ssr_start(struct hfi_client_t *hfi_client)
 		return -EINVAL;
 	}
 
+	if (display->panel)
+		atomic_set(&display->panel->ssr_in_progress, 1);
+
 	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi) {
 		DSI_ERR("invalid display hfi handle\n");
@@ -118,6 +121,9 @@ static int _dsi_display_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
 		DSI_ERR("failed to send panel init to DCP: %d", rc);
 		return rc;
 	}
+
+	if (display->panel)
+		atomic_set(&display->panel->ssr_in_progress, 0);
 
 	return rc;
 }
@@ -307,7 +313,7 @@ int dsi_hfi_misr_setup(struct dsi_display *display)
 	return 0;
 }
 
-void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload, u32 size)
+static void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload, u32 size)
 {
 
 }
@@ -376,6 +382,7 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	case HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD:
 	case HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP:
 	case HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE:
+	case HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE:
 		break;
 	case HFI_COMMAND_DEBUG_MISR_READ:
 		dsi_hfi_process_misr_read(display, payload, size);
@@ -1046,9 +1053,9 @@ static int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 	/* Ensure DT DCS command metadata does not overflow the HFI shared buffer */
 	if (dsi_hfi->running_hfi_offset + (sizeof(struct dsi_hfi_panel_cmd_info)
 			* cmd_set->count) > hfi_map_size) {
-		DSI_ERR("over HFI mapped buffer size: needed=%zu, available=%zu\n",
+		DSI_ERR("over HFI mapped buffer size: needed=%zu, available=%zu, total=%zu\n",
 			sizeof(struct dsi_hfi_panel_cmd_info) * cmd_set->count,
-			hfi_map_size - dsi_hfi->running_hfi_offset);
+			hfi_map_size - dsi_hfi->running_hfi_offset, hfi_map_size);
 		return -EINVAL;
 	}
 
@@ -1198,7 +1205,7 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	mem_size = hfi_adapter_get_shared_mem_allocated_size(hfi_client, tx_cmd_buf_map);
 
 	if (!mem_size) {
-		tx_cmd_buf_map->size = SZ_4K;
+		tx_cmd_buf_map->size = DSI_TX_CMD_BUF_SIZE;
 		rc = hfi_adapter_buffer_alloc(hfi_client, tx_cmd_buf_map);
 
 		if (rc || !hfi_adapter_get_shared_mem_allocated_size(hfi_client, tx_cmd_buf_map)) {
@@ -1783,6 +1790,95 @@ unlock_and_cleanup:
 	return rc;
 }
 
+int dsi_hfi_exec_dcs_cmd_type(struct dsi_display *display, u32 cmd_type, bool resp_req)
+{
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	struct dsi_display_mode_priv_info *priv_info;
+	u32 payload[3]; /* [0] = cmd_type, [1] = cmd_flags (reserved), [2] = reserved */
+	u32 hfi_cmd = HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE;
+	u32 flags = HFI_HOST_FLAGS_NON_DISCARDABLE;
+	u32 obj_id;
+	bool is_standard, is_custom;
+	int cmd_idx;
+	int rc = 0;
+
+	if (resp_req)
+		flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
+
+	if (!display || !display->dsi_hfi_info || !display->drm_conn) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	/* Validate panel and mode configuration */
+	if (!display->panel || !display->panel->cur_mode || !display->panel->cur_mode->priv_info) {
+		DSI_ERR("Invalid panel or mode configuration\n");
+		return -EINVAL;
+	}
+
+	priv_info = display->panel->cur_mode->priv_info;
+	obj_id = sde_conn_get_display_obj_id(display->drm_conn);
+
+	SDE_EVT32(obj_id, hfi_cmd, cmd_type, resp_req, SDE_EVTLOG_FUNC_ENTRY);
+
+	/* Validate cmd_type: must be a standard or custom DCS command type */
+	is_standard = (cmd_type < DSI_CMD_SET_MAX);
+	is_custom = (cmd_type >= DSI_CUSTOM_CMD_SET_START_IDX &&
+		     cmd_type < DSI_CUSTOM_CMD_SET_MAX);
+	if (!is_standard && !is_custom) {
+		DSI_ERR("Invalid cmd_type %u: must be < %u (standard) or in [%u, %u) (custom)\n",
+			cmd_type, DSI_CMD_SET_MAX,
+			DSI_CUSTOM_CMD_SET_START_IDX, DSI_CUSTOM_CMD_SET_MAX);
+		return -EINVAL;
+	}
+
+	/* Validate command set at cmd_type exists and is non-empty */
+	cmd_idx = dsi_cmd_type_to_index(cmd_type);
+	if (cmd_idx < 0 || cmd_idx >= DSI_CMD_SET_TOTAL_SIZE) {
+		DSI_ERR("Invalid cmd_idx=%d for cmd_type=%u\n", cmd_idx, cmd_type);
+		return -EINVAL;
+	}
+
+	if (!priv_info->cmd_sets[cmd_idx].count) {
+		DSI_ERR("Empty cmd set at cmd_idx=%d for cmd_type=%u\n", cmd_idx, cmd_type);
+		return -EINVAL;
+	}
+
+	payload[0] = cmd_type;
+	payload[1] = 0; /* reserved */
+	payload[2] = 0; /* reserved */
+
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms) {
+		DSI_ERR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		DSI_ERR("Failed to get hfi_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_client = &hfi_kms->hfi_client;
+
+	SDE_EVT32(obj_id, hfi_cmd, cmd_type, cmd_idx, priv_info->cmd_sets[cmd_idx].count,
+			is_standard, is_custom, resp_req, SDE_EVTLOG_FUNC_CASE1);
+	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client, hfi_cmd,
+					  display->display_type,
+					  HFI_PAYLOAD_TYPE_U32_ARRAY,
+					  payload, sizeof(payload),
+					  flags);
+	if (rc)
+		DSI_ERR("Could not send HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE cmd_type=%u, rc=%d\n",
+			cmd_type, rc);
+
+	SDE_EVT32(obj_id, hfi_cmd, cmd_type, rc, SDE_EVTLOG_FUNC_EXIT);
+	return rc;
+}
+
 static u32 *dsi_hfi_pack_freq_patterns(struct dsi_display *display, u32 *total_size)
 {
 	struct dsi_display_mode_priv_info *priv_info;
@@ -1972,6 +2068,7 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 	u64 rem_prop_val = (u64) addr_map->remote_addr;
 	struct hfi_buff dcs_cmd_tx_buf_dva;
 	struct hfi_buff dcs_cmd_tx_buf_iova;
+	u32 pixel_format = 0;
 
 	if (!display)
 		return -EINVAL;
@@ -1989,6 +2086,24 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi)
 		return -EINVAL;
+
+	/*
+	 * As per DSI HPG, the tx command buffer address needs to be 1024byte aligned.
+	 * start of cmd tx buffer is calculated based on tx_cmd_buf_fill_level.
+	 * Hence tx_cmd_buf_fill_level needs to be 1024byte aligned.
+	 */
+	display_hfi->tx_cmd_buf_fill_level = ALIGN(display_hfi->tx_cmd_buf_fill_level, 1024u);
+
+	if (display_hfi->tx_cmd_buf_fill_level > display->cmd_buffer_size) {
+		DSI_ERR("tx_cmd_buf_fill_level (%u) exceeds cmd_buffer_size (%u) after alignment\n",
+			display_hfi->tx_cmd_buf_fill_level, display->cmd_buffer_size);
+		return -EINVAL;
+	}
+
+	if (display->cmd_buffer_size - display_hfi->tx_cmd_buf_fill_level < SZ_4K)
+		DSI_WARN("available cmd tx buffer size is less than 4KB\n");
+
+	SDE_EVT32(display->cmd_buffer_size, display_hfi->tx_cmd_buf_fill_level);
 
 	panel_init_caps.dcs_cmd_tx_buf_dva =
 			display_hfi->sgt_tx_cmd_buf_map.remote_addr +
@@ -2035,6 +2150,15 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 			(sizeof(dcs_cmd_tx_buf_iova) / sizeof(u32))),
 			(void *)&dcs_cmd_tx_buf_iova);
 	kv_size += sizeof(dcs_cmd_tx_buf_iova);
+
+	if (display->panel && display->panel->host_config.dpu_dma_enabled) {
+		pixel_format = HFI_COLOR_FORMAT_RGB888_BYPASS;
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_COLOR_FORMAT, 0,
+			(sizeof(pixel_format) / sizeof(u32))),
+			&pixel_format);
+		kv_size += sizeof(pixel_format);
+	}
 
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
 

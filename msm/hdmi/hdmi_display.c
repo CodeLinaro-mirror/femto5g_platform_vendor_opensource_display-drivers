@@ -207,6 +207,7 @@ struct hdmi_display_private {
 	 */
 	spinlock_t reg_lock;
 
+	bool core_clks_off;
 };
 
 /* hdmi ctrl helper functions */
@@ -288,9 +289,18 @@ static int hdmi_hpd_enable(struct hdmi_display_private *hdmi)
 {
 	unsigned long flags;
 	uint32_t hpd_ctrl;
+	int rc = 0;
 
 	//TODO: check the seq in power->init
-	hdmi->power->init(hdmi->power);
+	rc = hdmi->power->init(hdmi->power);
+	if (rc) {
+		HDMI_ERR("power init failed rc=%d\n", rc);
+		return rc;
+	}
+
+	mutex_lock(&hdmi->session_lock);
+	hdmi->core_clks_off = false;
+	mutex_unlock(&hdmi->session_lock);
 
 	hdmi_set_mode(hdmi, false);
 	hdmi_phy_reset(hdmi);
@@ -298,6 +308,65 @@ static int hdmi_hpd_enable(struct hdmi_display_private *hdmi)
 
 	hdmi_write(hdmi, HDMI_USEC_REFTIMER, 0x00010013);
 
+
+	/* enable HPD events: */
+	hdmi_write(hdmi, HDMI_HPD_INT_CTRL,
+			HDMI_HPD_INT_CTRL_INT_CONNECT |
+			HDMI_HPD_INT_CTRL_INT_EN);
+
+	/* set timeout to 4.1ms (max) for hardware debounce */
+	spin_lock_irqsave(&hdmi->reg_lock, flags);
+	hpd_ctrl = hdmi_read(hdmi, HDMI_HPD_CTRL);
+	hpd_ctrl |= HDMI_HPD_CTRL_TIMEOUT(0x09C4);
+
+	/* Toggle HPD circuit to trigger HPD sense */
+	hdmi_write(hdmi, HDMI_HPD_CTRL,
+			~HDMI_HPD_CTRL_ENABLE & hpd_ctrl);
+	hdmi_write(hdmi, HDMI_HPD_CTRL,
+			HDMI_HPD_CTRL_ENABLE | hpd_ctrl);
+	spin_unlock_irqrestore(&hdmi->reg_lock, flags);
+
+	hdmi_display_state_add(HDMI_STATE_CONFIGURED);
+
+	return 0;
+}
+
+static int hdmi_hpd_post_init(struct hdmi_display_private *hdmi)
+{
+	unsigned long flags;
+	uint32_t hpd_ctrl;
+	int rc = 0;
+
+	mutex_lock(&hdmi->session_lock);
+	if (!hdmi->core_clks_off) {
+		mutex_unlock(&hdmi->session_lock);
+		return 0;
+	}
+	hdmi->core_clks_off = false;
+	mutex_unlock(&hdmi->session_lock);
+
+	rc = pm_runtime_resume_and_get(hdmi->power->drm_dev->dev);
+	if (rc < 0) {
+		HDMI_ERR("failed to enable power resource %d\n", rc);
+		mutex_lock(&hdmi->session_lock);
+		hdmi->core_clks_off = true;
+		mutex_unlock(&hdmi->session_lock);
+		return rc;
+	}
+
+	rc = hdmi->power->clk_enable(hdmi->power, HDMI_CORE_PM, true);
+	if (rc) {
+		HDMI_ERR("Unable to start core clocks, rc=%d\n", rc);
+		mutex_lock(&hdmi->session_lock);
+		hdmi->core_clks_off = true;
+		mutex_unlock(&hdmi->session_lock);
+		pm_runtime_put_sync(hdmi->power->drm_dev->dev);
+		return rc;
+	}
+
+	hdmi_set_mode(hdmi, true);
+
+	hdmi_write(hdmi, HDMI_USEC_REFTIMER, 0x00010013);
 
 	/* enable HPD events: */
 	hdmi_write(hdmi, HDMI_HPD_INT_CTRL,
@@ -1070,6 +1139,12 @@ static int hdmi_display_prepare(struct hdmi_display *hdmi_display, void *panel)
 	hdmi = container_of(hdmi_display,
 			struct hdmi_display_private, hdmi_display);
 
+	rc = hdmi_hpd_post_init(hdmi);
+	if (rc) {
+		HDMI_ERR("hpd post enable failed rc=%d\n", rc);
+		return rc;
+	}
+
 	rate = hdmi_panel->pinfo.pixel_clk_khz;
 	bpp = hdmi_panel->pinfo.bpp;
 
@@ -1628,20 +1703,72 @@ end:
 #endif
 }
 
-
-static int hdmi_pm_prepare(struct device *dev)
+static int hdmi_pm_suspend(struct device *dev)
 {
-	// pm_prepare
+	struct hdmi_display_private *hdmi;
+	struct platform_device *pdev = to_platform_device(dev);
+
+	hdmi = platform_get_drvdata(pdev);
+	if (!hdmi) {
+		HDMI_ERR("invalid param(s), hdmi %pK\n", hdmi);
+		return -EINVAL;
+	}
+
+	pm_runtime_put_sync(hdmi->power->drm_dev->dev);
 	return 0;
 }
-static void hdmi_pm_complete(struct device *dev)
+
+static int hdmi_pm_suspend_late(struct device *dev)
 {
-	// pm_complete
+	struct hdmi_display_private *hdmi;
+	struct platform_device *pdev = to_platform_device(dev);
+	int rc = 0;
+
+	hdmi = platform_get_drvdata(pdev);
+	if (!hdmi) {
+		HDMI_ERR("invalid param(s), hdmi %pK\n", hdmi);
+		return -EINVAL;
+	}
+
+	mutex_lock(&hdmi->session_lock);
+	if (!hdmi->core_clks_off) {
+		rc = hdmi->power->clk_enable(hdmi->power, HDMI_CORE_PM, false);
+		if (rc) {
+			HDMI_ERR("Unable to stop core clocks, rc=%d\n", rc);
+			mutex_unlock(&hdmi->session_lock);
+			return rc;
+		}
+		hdmi->core_clks_off = true;
+	}
+	mutex_unlock(&hdmi->session_lock);
+	return 0;
+}
+
+static int hdmi_pm_resume(struct device *dev)
+{
+	struct hdmi_display_private *hdmi;
+	struct platform_device *pdev = to_platform_device(dev);
+	int rc = 0;
+
+	hdmi = platform_get_drvdata(pdev);
+	if (!hdmi) {
+		HDMI_ERR("invalid param(s), hdmi %pK\n", hdmi);
+		return -EINVAL;
+	}
+
+	rc = hdmi_hpd_post_init(hdmi);
+	if (rc) {
+		HDMI_ERR("hpd post enable failed rc=%d\n", rc);
+		return rc;
+	}
+
+	return 0;
 }
 
 static const struct dev_pm_ops hdmi_pm_ops = {
-	.prepare = hdmi_pm_prepare,
-	.complete = hdmi_pm_complete,
+	.suspend = hdmi_pm_suspend,
+	.suspend_late = hdmi_pm_suspend_late,
+	.resume = hdmi_pm_resume,
 };
 
 static struct platform_driver hdmi_display_driver = {
@@ -1654,6 +1781,7 @@ static struct platform_driver hdmi_display_driver = {
 		.pm = &hdmi_pm_ops,
 	},
 };
+
 void __init hdmi_display_register(void)
 {
 	hdmi_pll_drv_register();

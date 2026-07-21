@@ -139,13 +139,21 @@ static bool _hfi_encoder_check_frame_event_trigger(struct sde_encoder_virt *sde_
 static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 		void *payload, u32 event)
 {
-	struct sde_kms *sde_kms = sde_encoder_get_kms(&sde_enc->base);
-	struct hfi_encoder *hfi_enc = to_hfi_encoder(sde_enc);
+	struct sde_kms *sde_kms;
+	struct hfi_encoder *hfi_enc;
 	ktime_t ts = 0;
 	struct drm_encoder *drm_enc;
 	unsigned long lock_flags;
 	int new_cnt = -1;
 	bool frame_event_trigger;
+
+	if (!sde_enc) {
+		SDE_ERROR("invalid param\n");
+		return;
+	}
+
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	hfi_enc = to_hfi_encoder(sde_enc);
 
 	if (!sde_kms || !hfi_enc) {
 		SDE_ERROR("invalid param: sde_kms %pK\n", sde_kms);
@@ -337,8 +345,7 @@ static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, vo
 static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		void *payload, u32 size, struct hfi_prop_listener *listener)
 {
-	struct hfi_encoder *hfi_enc = container_of(listener,
-			struct hfi_encoder, hfi_cb_obj);
+	struct hfi_encoder *hfi_enc;
 	struct sde_encoder_virt *sde_enc;
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
@@ -346,8 +353,16 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 	bool recovery_events;
 	u32 *data = payload;
 
+	if (!listener) {
+		SDE_ERROR("invalid listener from FW for cmd_id %x obj_id %x size %d\n",
+			cmd_id, obj_id, size);
+		return;
+	}
+
+	hfi_enc = container_of(listener,
+			struct hfi_encoder, hfi_cb_obj);
 	if (!hfi_enc) {
-		SDE_ERROR("invalid object or listener from FW\n");
+		SDE_ERROR("invalid hfi encoder hfi_enc %pK\n", hfi_enc);
 		return;
 	}
 
@@ -414,7 +429,6 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 
 		recovery_events = sde_encoder_recovery_events_enabled(&sde_enc->base);
 
-		drm_enc = &sde_enc->base;
 		conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
 		if (!conn) {
 			SDE_ERROR("invalid connector\n");
@@ -466,11 +480,19 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 		bool enable, bool defer_to_commit)
 {
 	struct drm_connector *conn;
-	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
-	struct hfi_kms *hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	struct hfi_encoder *hfi_enc;
+	struct hfi_kms *hfi_kms;
 	struct hfi_cmdbuf_t *cmd_buf;
 	u32 cmd, display_id = 0, packet_id = 0;
 	int ret = 0;
+
+	if (!enc) {
+		SDE_ERROR("Invalid param\n");
+		return -EINVAL;
+	}
+
+	hfi_enc = to_hfi_encoder(enc);
+	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
 
 	if (!hfi_enc || !hfi_kms) {
 		SDE_ERROR("invalid connector\n");
@@ -578,9 +600,9 @@ static int hfi_enc_register_pwr_event(struct sde_encoder_virt *enc, bool enable)
 
 static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 {
-	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
-	struct hfi_kms *hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
-	struct sde_encoder_virt *sde_enc = hfi_enc->sde_base;
+	struct hfi_encoder *hfi_enc;
+	struct hfi_kms *hfi_kms;
+	struct sde_encoder_virt *sde_enc;
 	struct hfi_cmdbuf_t *cmd_buf;
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
@@ -588,11 +610,20 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	u32 disp_id, packet_id = 0;
 	int ret;
 
-	if (!enc || !hfi_enc || !hfi_kms) {
+	if (!enc) {
+		SDE_ERROR("invalid param\n");
+		return -EINVAL;
+	}
+
+	hfi_enc = to_hfi_encoder(enc);
+	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+
+	if (!hfi_enc || !hfi_kms) {
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
 
+	sde_enc = hfi_enc->sde_base;
 	drm_enc = &sde_enc->base;
 
 	if ((hfi_enc->panic_events_state && enable)
@@ -696,13 +727,18 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 	struct dsi_panel *panel = NULL;
 
 	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
 	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
 		return -EINVAL;
 	}
 
-	panel = hfi_encoder_get_panel(sde_enc);
+	if (!sde_encoder_is_wb_display(&sde_enc->base))
+		panel = hfi_encoder_get_panel(sde_enc);
 	do {
 		rc = wait_event_timeout(*(info->wq),
 				(atomic_read(info->atomic_cnt) == info->count_check) ||
@@ -915,6 +951,10 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 		return -EINVAL;
 
 	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
 	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
@@ -1207,13 +1247,19 @@ static int _hfi_enc_send_wb_detach_output_layer(struct sde_encoder_virt *enc)
 	struct hfi_cmdbuf_t *cmd_buf;
 	struct sde_connector *sde_conn;
 	struct hfi_connector *hfi_conn;
+	struct sde_kms *sde_kms;
 	u32 display_id, wb_id;
 	int ret = 0;
 
 	if (!enc)
 		return -EINVAL;
 
-	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
+	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
 		return -EINVAL;
@@ -1271,11 +1317,16 @@ static int _hfi_enc_send_wb_detach_output_layer(struct sde_encoder_virt *enc)
 
 static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 {
-	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
+	struct hfi_encoder *hfi_enc;
 	struct hfi_kms *hfi_kms;
 	int ret;
 
-	if (!enc || !hfi_enc) {
+	if (!enc) {
+		SDE_ERROR("	Invalid param\n");
+		return -EINVAL;
+	}
+	hfi_enc = to_hfi_encoder(enc);
+	if (!hfi_enc) {
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
@@ -1305,18 +1356,14 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 		sde_encoder_is_wb_display(&enc->base)) {
 		/* Disable exactly what we enabled in the enable path */
 		if (sde_encoder_in_clone_mode(&enc->base)) {
-			/* For CWB: Disable frame capture complete */
-			ret = _hfi_enc_wait_for_tx_complete(hfi_enc);
-			if (ret <= 0) {
-				ret = -ETIMEDOUT;
-				SDE_ERROR("wait for event failure\n");
-				return ret;
-			}
-			ret = hfi_enc_enable_hw_event(enc, MSM_ENC_CAPTURE_COMPLETE, false);
-			if (ret) {
-				SDE_ERROR("failed to send capture complete command\n");
-				return ret;
-			}
+			/*
+			 * For CWB clone mode: skip the wait and the
+			 * CAPTURE_COMPLETE deregister here.  The wait must
+			 * happen in sde_kms_wait_for_commit_done() so that the
+			 * primary display commit is not blocked inside
+			 * msm_disable.  hfi_enc_deregister_cwb_events() is called
+			 * from there after the wait completes.
+			 */
 		} else {
 			/* For regular WB: Disable TX complete */
 			ret = hfi_enc_enable_hw_event(enc, MSM_ENC_TX_COMPLETE, false);
@@ -1473,13 +1520,19 @@ static int hfi_enc_misr_setup(struct sde_encoder_virt *enc, bool en, u32 frame_c
 	struct sde_connector *sde_conn;
 	struct hfi_connector *hfi_conn;
 	struct hfi_misr_config misr_data;
+	struct sde_kms *sde_kms;
 	u32 display_id, wb_id;
 	int ret = 0;
 
 	if (!enc)
 		return -EINVAL;
 
-	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
+	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
 		return -EINVAL;
@@ -1554,6 +1607,10 @@ static int hfi_enc_early_wakeup_call(struct sde_encoder_virt *enc)
 
 	hfi_enc = to_hfi_encoder(enc);
 	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
 	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
@@ -1776,6 +1833,7 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 	struct hfi_encoder *hfi_enc;
 	struct hfi_kms *hfi_kms;
 	struct misr_read_data misr_read;
+	struct sde_kms *sde_kms;
 	u32 disp_id, packet_id = 0;
 
 	if (!enc) {
@@ -1799,7 +1857,12 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 	if (!hfi_enc)
 		return -EINVAL;
 
-	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
+	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
 		return -EINVAL;
@@ -1914,6 +1977,74 @@ static ktime_t hfi_enc_get_vblank_timestamp(struct sde_encoder_virt *enc)
 }
 #endif /* CONFIG_DEBUG_FS */
 
+/*
+ * hfi_enc_deregister_cwb_events - called from sde_kms_wait_for_commit_done() after
+ * the FRAME_CAPTURE_COMPLETE wait has returned for a CWB disable commit.
+ * Deregisters the capture-complete HFI event.
+ */
+static int hfi_enc_deregister_cwb_events(struct sde_encoder_virt *enc)
+{
+	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
+	struct hfi_kms *hfi_kms;
+	struct hfi_cmdbuf_t *cmd_buf;
+	u32 display_id, packet_id = 0;
+	int ret = 0;
+	u32 capture_complete_event = HFI_EVENT_FRAME_CAPTURE_COMPLETE;
+
+	if (!enc) {
+		SDE_ERROR("invalid params\n");
+		return -EINVAL;
+	}
+
+	if (!sde_encoder_in_clone_mode(&enc->base)) {
+		SDE_DEBUG("encoder not in clone mode, skipping post disable\n");
+		return 0;
+	}
+
+	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi_kms\n");
+		return -EINVAL;
+	}
+
+	display_id = hfi_crtc_get_display_id(enc->crtc, enc->crtc ? enc->crtc->state : NULL);
+	if (display_id == U32_MAX) {
+		SDE_ERROR("failed to get display_id for cwb post disable\n");
+		return -EINVAL;
+	}
+
+	/* Deregister the FRAME_CAPTURE_COMPLETE event */
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			display_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		SDE_ERROR("enc:%d failed to get cmd buf for cwb post disable display:%d\n",
+				enc->base.base.id, display_id);
+		return -EINVAL;
+	}
+
+	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DISPLAY_EVENT_DEREGISTER, display_id,
+			HFI_PAYLOAD_TYPE_U32, &capture_complete_event,
+			sizeof(capture_complete_event), &hfi_enc->hfi_cb_obj,
+			HFI_HOST_FLAGS_NON_DISCARDABLE, false, &packet_id);
+	if (ret) {
+		SDE_ERROR("failed to deregister capture complete event\n");
+		return ret;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+	SDE_EVT32(enc->base.base.id, display_id, HFI_COMMAND_DISPLAY_EVENT_DEREGISTER, ret);
+	if (ret) {
+		SDE_ERROR("failed to send capture complete deregister command\n");
+		return ret;
+	}
+
+	hfi_enc->hw_events_state[MSM_ENC_CAPTURE_COMPLETE].state = false;
+	hfi_enc->hw_events_state[MSM_ENC_CAPTURE_COMPLETE].pending = false;
+
+	return ret;
+}
+
 static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 {
 	sde_enc->hal_ops.kickoff[MSM_DISP_OP_HFI] = hfi_enc_kickoff;
@@ -1933,6 +2064,7 @@ static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 								hfi_enc_register_panel_dead_event;
 
 	sde_enc->hal_ops.misr_setup[MSM_DISP_OP_HFI] = hfi_enc_misr_setup;
+	sde_enc->hal_ops.deregister_cwb_events[MSM_DISP_OP_HFI] = hfi_enc_deregister_cwb_events;
 }
 
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)

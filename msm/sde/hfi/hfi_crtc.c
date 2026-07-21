@@ -124,7 +124,7 @@ static inline int get_num_mixers(struct sde_crtc_state *cstate,
 static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate, struct sde_crtc *sde_crtc,
 		struct hfi_util_u32_prop_helper *prop_collector, u32 hfi_prop)
 {
-	struct hfi_resource_cfg lm_cfg;
+	struct hfi_resource_cfg lm_cfg = {0, };
 	int rc = 0;
 	int num_mixers;
 	bool is_cmd;
@@ -141,14 +141,15 @@ static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate, struct sde
 	} else if (cstate->num_ds_enabled) {
 		lm_cfg.res_type = HFI_RESOURCE_LM;
 		lm_cfg.resource_idx = cstate->ds_cfg[0].idx;
-		lm_cfg.width = cstate->ds_cfg[0].lm_width;
-		lm_cfg.height = cstate->ds_cfg[0].lm_height;
+		lm_cfg.width = cstate->lm_roi[0].w;
+		lm_cfg.height = cstate->lm_roi[0].h;
+		lm_cfg.reserved = ((u32)cstate->lm_roi[0].x << 16) | (cstate->lm_roi[0].y);
 	} else if (is_cmd) {
 		lm_cfg.res_type = HFI_RESOURCE_LM;
 		lm_cfg.resource_idx = 0;
 		lm_cfg.width = cstate->lm_roi[0].w;
 		lm_cfg.height = cstate->lm_roi[0].h;
-		lm_cfg.reserved = (cstate->lm_roi[0].x << 16) | (cstate->lm_roi[0].y);
+		lm_cfg.reserved = ((u32)cstate->lm_roi[0].x << 16) | (cstate->lm_roi[0].y);
 	} else {
 		lm_cfg.res_type = HFI_RESOURCE_LM;
 		lm_cfg.resource_idx = 0;
@@ -868,12 +869,12 @@ static int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 
 }
 #else
-int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
+static int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
 {
 	return 0;
 }
 
-int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
+static int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 {
 	return 0;
 }
