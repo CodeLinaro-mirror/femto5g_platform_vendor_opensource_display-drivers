@@ -2676,8 +2676,10 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 	_sde_kms_mmu_destroy(sde_kms);
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
-	atomic_set(&sde_kms->base.dpu_power_on, 0);
-	msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_OFF);
+	if (atomic_read(&sde_kms->base.dpu_power_on)) {
+		atomic_set(&sde_kms->base.dpu_power_on, 0);
+		msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_OFF);
+	}
 #endif
 }
 
@@ -5320,6 +5322,10 @@ static int _sde_kms_hyp_power_up_dpu(struct sde_kms *sde_kms,
 	/* Store the DPU ID */
 	sde_kms->dpu_id = dpu_id;
 	sde_kms->hyp_kms = msm_hyp_get_kms();
+
+	if (!msm_hyp_has_displays(dpu_id))
+		return -ENODEV;
+
 	/* Make sure core clock/power is up, to able read registers for HW init */
 	rc = msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_ON);
 
@@ -5499,7 +5505,8 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	rc = _sde_kms_hyp_power_up_dpu(sde_kms, dev);
 	if (rc) {
-		SDE_ERROR("Failed to power up DPU core!\n");
+		if (rc != -ENODEV)
+			SDE_ERROR("Failed to power up DPU core!\n");
 		goto power_error;
 	}
 #endif
