@@ -359,6 +359,7 @@ struct msm_hyp_kms_funcs {
 	struct sde_mdss_cfg * (*hw_catalog_init)(struct sde_kms *sde_kms);
 	int (*update_hw_reservation)(struct sde_kms *sde_kms);
 	int (*set_power_level)(struct sde_kms *sde_kms, uint32_t power_level);
+	bool (*has_displays)(struct msm_hyp_kms *hyp_kms, int dpu_id);
 };
 
 struct virq_shmem_t {
@@ -391,6 +392,7 @@ struct msm_hyp_drm_private {
 struct msm_hyp_kms *msm_hyp_get_kms(void);
 int msm_hyp_check_dpu_probed(int dpu_id);
 int msm_hyp_set_dpu_probed(int dpu_id);
+bool msm_hyp_has_displays(int dpu_id);
 void msm_hyp_set_kms(struct drm_device *dev, struct msm_hyp_kms *kms);
 void msm_hyp_crtc_commit_done(struct drm_crtc *crtc);
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc);

@@ -840,7 +840,8 @@ static struct msm_kms *_msm_drm_component_init_helper(
 
 	ret = (kms)->funcs->hw_init(kms);
 	if (ret) {
-		DISP_DEV_ERR(dev, "kms hw init failed: %d\n", ret);
+		if (ret != -ENODEV)
+			DISP_DEV_ERR(dev, "kms hw init failed: %d\n", ret);
 		return ERR_PTR(ret);
 	}
 
@@ -964,8 +965,9 @@ static int msm_drm_component_init(struct device *dev)
 
 	kms = _msm_drm_component_init_helper(priv, ddev, dev, pdev);
 	if (IS_ERR_OR_NULL(kms)) {
-		DISP_DEV_ERR(dev, "msm_drm_component_init_helper failed\n");
-		ret = -ENODEV;
+		ret = IS_ERR(kms) ? PTR_ERR(kms) : -ENODEV;
+		if (ret != -ENODEV)
+			DISP_DEV_ERR(dev, "msm_drm_component_init_helper failed\n");
 		goto fail;
 	}
 
