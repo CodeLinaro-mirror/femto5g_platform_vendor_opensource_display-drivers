@@ -991,6 +991,8 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 
 		sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_COPR, payload);
 		break;
+	case HFI_COMMAND_DISPLAY_BATCH_MODE:
+		break;
 	default:
 		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
 	}

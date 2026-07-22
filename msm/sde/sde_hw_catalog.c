@@ -7174,6 +7174,7 @@ static void _sde_get_hw_caps_for_pikachu(struct sde_mdss_cfg *sde_cfg, uint32_t 
 	set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
 	set_bit(SDE_FEATURE_BATCH_COMMIT, sde_cfg->features);
 	set_bit(SDE_FEATURE_GMU_REPROJ, sde_cfg->features);
+	set_bit(SDE_FEATURE_FRAME_SEQ_CHECK, sde_cfg->features);
 	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
 	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;

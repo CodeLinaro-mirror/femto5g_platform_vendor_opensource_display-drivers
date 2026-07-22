@@ -134,6 +134,20 @@ struct hfi_hwfence_data {
 #endif
 
 /**
+ * struct hfi_kms_batch_info - batch commit state for one CRTC iteration
+ * @index:      value of CRTC_PROP_BATCH_INDEX for this commit
+ * @size:       value of CRTC_PROP_BATCH_SIZE for this commit
+ * @usecase_id: HFI usecase mapped from CRTC_PROP_BATCH_TYPE
+ * @is_batch:   true when this commit belongs to a batch sequence
+ */
+struct hfi_kms_batch_info {
+	u32 index;
+	u32 size;
+	enum hfi_batch_usecase_id usecase_id;
+	bool is_batch;
+};
+
+/**
  * struct hfi_kms - virtualized hfi kms structure
  * @base: Pointer to base sde kms structure
  * @hfi_client: hfi client structure
