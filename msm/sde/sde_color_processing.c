@@ -2237,12 +2237,31 @@ exit:
 
 void sde_cp_reset_unsupported_feature_wrappers(struct sde_mdss_cfg *catalog)
 {
+	/*
+	 * These statics latch true the first time any catalog reports a feature.
+	 * setup_*_wrappers() runs exactly once (guarded by wrappers_initialized)
+	 * and fills in real function pointers for all features.  Each subsequent
+	 * drm_device init calls this function to selectively disable features
+	 * absent from its catalog.  The prev_*_supported snapshot detects the
+	 * transition false->true: if an earlier no-feature catalog already
+	 * overwrote a wrapper with _feature_unsupported, the first catalog that
+	 * latches support restores the real pointer.
+	 */
+	static bool rc_supported;
+	static bool demura_supported;
+	static bool spr_supported;
+	bool prev_rc_supported, prev_demura_supported, prev_spr_supported;
+
 	if (!catalog) {
 		DRM_ERROR("invalid catalog\n");
 		return;
 	}
 
-	if (!catalog->rc_count) {
+	prev_rc_supported = rc_supported;
+	if (catalog->rc_count)
+		rc_supported = true;
+	if (!rc_supported) {
+		DRM_INFO("[RC] rc_count=0, RC feature disabled\n");
 		check_crtc_feature_wrappers[SDE_CP_CRTC_DSPP_RC_MASK] =
 			_feature_unsupported;
 		check_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_RC_PU] =
@@ -2251,18 +2270,44 @@ void sde_cp_reset_unsupported_feature_wrappers(struct sde_mdss_cfg *catalog)
 			_feature_unsupported;
 		set_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_RC_PU] =
 			_feature_unsupported;
+	} else if (!prev_rc_supported) {
+		/* Restore wrappers disabled by an earlier no-RC catalog. */
+		check_crtc_feature_wrappers[SDE_CP_CRTC_DSPP_RC_MASK] =
+			_check_rc_mask_feature;
+		check_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_RC_PU] =
+			_check_rc_pu_feature;
+		set_crtc_feature_wrappers[SDE_CP_CRTC_DSPP_RC_MASK] =
+			_set_rc_mask_feature;
+		set_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_RC_PU] =
+			_set_rc_pu_feature;
 	}
 
-	if (!catalog->demura_count) {
+	prev_demura_supported = demura_supported;
+	if (catalog->demura_count)
+		demura_supported = true;
+	if (!demura_supported) {
+		DRM_INFO("[DEMURA] demura_count=0, DEMURA feature disabled\n");
 		check_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_DEMURA_PU] =
 			_feature_unsupported;
 		set_crtc_feature_wrappers[SDE_CP_CRTC_DSPP_DEMURA_INIT] =
 			_feature_unsupported;
 		set_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_DEMURA_PU] =
 			_feature_unsupported;
+	} else if (!prev_demura_supported) {
+		/* Restore wrappers disabled by an earlier no-DEMURA catalog. */
+		check_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_DEMURA_PU] =
+			_check_spr_pu_feature;
+		set_crtc_feature_wrappers[SDE_CP_CRTC_DSPP_DEMURA_INIT] =
+			_set_demura_feature;
+		set_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_DEMURA_PU] =
+			_set_demura_pu_feature;
 	}
 
-	if (!catalog->spr_count) {
+	prev_spr_supported = spr_supported;
+	if (catalog->spr_count)
+		spr_supported = true;
+	if (!spr_supported) {
+		DRM_INFO("[SPR] spr_count=0, SPR feature disabled\n");
 		check_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_SPR_PU] =
 			_feature_unsupported;
 		set_crtc_feature_wrappers[SDE_CP_CRTC_DSPP_SPR_INIT] =
@@ -2271,9 +2316,17 @@ void sde_cp_reset_unsupported_feature_wrappers(struct sde_mdss_cfg *catalog)
 			_feature_unsupported;
 		set_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_SPR_PU] =
 			_feature_unsupported;
+	} else if (!prev_spr_supported) {
+		/* Restore wrappers disabled by an earlier no-SPR catalog. */
+		check_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_SPR_PU] =
+			_check_spr_pu_feature;
+		set_crtc_feature_wrappers[SDE_CP_CRTC_DSPP_SPR_INIT] =
+			_set_spr_init_feature;
+		set_crtc_feature_wrappers[SDE_CP_CRTC_DSPP_SPR_DITHER] =
+			_set_dspp_spr_dither_feature;
+		set_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_SPR_PU] =
+			_set_spr_pu_feature;
 	}
-
-	return;
 }
 
 void sde_cp_crtc_install_properties(struct drm_crtc *crtc)
@@ -2322,18 +2375,23 @@ void sde_cp_crtc_install_properties(struct drm_crtc *crtc)
 	 * crtcs.
 	 */
 	if (!priv->cp_property) {
+		static bool wrappers_initialized;
+
 		priv->cp_property = kzalloc((sizeof(priv->cp_property) *
 				SDE_CP_CRTC_MAX_FEATURES), GFP_KERNEL);
 		setup_dspp_prop_install_funcs(dspp_prop_install_func);
 		setup_lm_prop_install_funcs(lm_prop_install_func);
-		setup_set_crtc_feature_wrappers(set_crtc_feature_wrappers);
-		setup_check_crtc_feature_wrappers(check_crtc_feature_wrappers);
-		setup_crtc_feature_disable_wrappers(crtc_feature_disable_wrappers);
-		setup_set_crtc_pu_feature_wrappers(
-				set_crtc_pu_feature_wrappers);
-		setup_check_crtc_pu_feature_wrappers(
-				check_crtc_pu_feature_wrappers);
-		setup_dspp_caps_funcs(dspp_cap_update_func);
+		if (!wrappers_initialized) {
+			wrappers_initialized = true;
+			setup_set_crtc_feature_wrappers(set_crtc_feature_wrappers);
+			setup_check_crtc_feature_wrappers(check_crtc_feature_wrappers);
+			setup_crtc_feature_disable_wrappers(crtc_feature_disable_wrappers);
+			setup_set_crtc_pu_feature_wrappers(
+					set_crtc_pu_feature_wrappers);
+			setup_check_crtc_pu_feature_wrappers(
+					check_crtc_pu_feature_wrappers);
+			setup_dspp_caps_funcs(dspp_cap_update_func);
+		}
 		sde_cp_reset_unsupported_feature_wrappers(catalog);
 	}
 	if (!priv->cp_property)
