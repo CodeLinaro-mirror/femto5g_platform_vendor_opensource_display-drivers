@@ -437,11 +437,11 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 		tap_payload[1] = tap_point;
 		hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
 			HFI_VAL_U32_ARRAY, tap_payload, sizeof(tap_payload));
+	} else {
+		prop_id = HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT;
+		hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+			wb_id, HFI_VAL_U32, &tap_point, sizeof(u32));
 	}
-
-	prop_id = HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-		wb_id, HFI_VAL_U32, &tap_point, sizeof(u32));
 
 	_hfi_wb_add_dnsc_prop(wb_dev, cstate, hfi_conn->base_props);
 	_hfi_wb_add_wb_dnsc_prop(wb_dev, cstate, hfi_conn->base_props);
