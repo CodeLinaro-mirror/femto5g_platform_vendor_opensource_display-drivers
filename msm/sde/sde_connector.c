@@ -2108,6 +2108,28 @@ int sde_connector_clk_get_rate_esync(struct drm_connector *connector,
 	return rc;
 }
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
+static void _sde_connector_cleanup_gmu_dcp_fb(struct sde_connector *c_conn)
+{
+	hfi_connector_cleanup_gmu_dcp_fb(c_conn);
+}
+
+static void _sde_connector_set_gmu_dcp_intf_mem(struct drm_connector *connector,
+		uint64_t val)
+{
+	hfi_connector_set_gmu_dcp_intf_mem(connector, val);
+}
+#else
+static void _sde_connector_cleanup_gmu_dcp_fb(struct sde_connector *c_conn)
+{
+}
+
+static void _sde_connector_set_gmu_dcp_intf_mem(struct drm_connector *connector,
+		uint64_t val)
+{
+}
+#endif /* CONFIG_QTI_HFI_CORE */
+
 void sde_connector_destroy(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
@@ -2119,6 +2141,8 @@ void sde_connector_destroy(struct drm_connector *connector)
 	}
 
 	c_conn = to_sde_connector(connector);
+
+	_sde_connector_cleanup_gmu_dcp_fb(c_conn);
 
 	if (c_conn->sysfs_dev)
 		device_unregister(c_conn->sysfs_dev);
@@ -2949,6 +2973,9 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 				c_conn->bl_scale_dirty = true;
 			}
 		}
+		break;
+	case CONN_PROP_GMU_DCP_INTF_MEM:
+		_sde_connector_set_gmu_dcp_intf_mem(connector, val);
 		break;
 	default:
 		break;

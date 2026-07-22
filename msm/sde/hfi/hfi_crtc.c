@@ -637,6 +637,7 @@ int hfi_crtc_atomic_check(struct sde_crtc *crtc, struct sde_crtc_state *state)
 	struct hfi_crtc *crtc_hfi = NULL;
 	struct hfi_kms *hfi_kms;
 	struct drm_crtc_state *crtc_state;
+	struct hfi_kms_batch_info batch;
 	u32 disp_id;
 
 	if (!crtc) {
@@ -650,6 +651,14 @@ int hfi_crtc_atomic_check(struct sde_crtc *crtc, struct sde_crtc_state *state)
 	hfi_kms = sde_crtc_get_kms(crtc);
 	if (!hfi_kms)
 		return -EINVAL;
+
+	hfi_kms_get_batch_info(hfi_kms, crtc_state, &batch);
+	if (batch.is_batch && hfi_kms_is_gmu_lsr_batch(&batch) &&
+			(!hfi_kms->primary_connector || !hfi_kms->primary_connector->sde_base ||
+			!hfi_kms->primary_connector->sde_base->gmu_dcp_iova)) {
+		SDE_ERROR("crtc:%d invalid gmu_dcp_iova for GMU LSR batch\n", DRMID(&crtc->base));
+		return -EINVAL;
+	}
 
 	disp_id = hfi_crtc_get_display_id(&crtc->base, crtc_state);
 	if (disp_id == U32_MAX) {
@@ -992,6 +1001,8 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 		sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_COPR, payload);
 		break;
 	case HFI_COMMAND_DISPLAY_BATCH_MODE:
+	case HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG:
+		SDE_EVT32(cmd_id);
 		break;
 	default:
 		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
