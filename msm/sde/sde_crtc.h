@@ -705,6 +705,8 @@ struct sde_crtc {
 	struct sde_rgb_hist_buffer *rgb_hist_buffers[RGB_HISTOGRAM_BUFFER_SIZE];
 	struct mutex rgb_hist_buffer_lock;
 	struct sde_pa_hist_buffer pa_hist_buffers[PA_HIST_BUFFER_NUM];
+	bool cp_ssr_recovery_pending;
+	bool hw_events_ssr_recovery_pending;
 
 	struct sde_qrtc_buffer qrtc_buffer;
 
