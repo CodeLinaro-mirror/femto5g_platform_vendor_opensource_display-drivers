@@ -1739,8 +1739,6 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 		return -ENODEV;
 	}
 
-	hfi = mgr_priv->hfi[DP_STREAM_0];
-
 	while (sscanf(buf, "%d %d %d %d %d %d%n",
 		      &debug_en, &con_id,
 		      &hdisplay, &vdisplay, &vrefresh, &aspect_ratio,
@@ -1763,11 +1761,13 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 		sde_conn = to_sde_connector(connector);
 		stream_id = sde_conn->panel_id;
 
-		if (stream_id >= mgr_priv->max_streams || !hfi) {
+		if (stream_id >= mgr_priv->max_streams || !mgr_priv->hfi[stream_id]) {
 			DP_ERR("Invalid stream_id %u for con_id=%d\n", stream_id, con_id);
 			buf += offset;
 			continue;
 		}
+
+		hfi = mgr_priv->hfi[stream_id];
 
 		if (!debug_en || !hdisplay || !vdisplay || !vrefresh) {
 			DP_DEBUG("clearing MST override (con_id=%d, stream_id=%u)\n",
