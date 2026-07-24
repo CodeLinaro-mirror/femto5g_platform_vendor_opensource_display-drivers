@@ -252,7 +252,8 @@ msm_drm-$(CONFIG_DRM_MSM_DP) += dp/dp_altmode.o \
 msm_drm-$(CONFIG_DRM_MSM_DP_HFI) += dp/hfi/dp_mgr_hfi.o \
 				    dp/hfi/dp_hfi.o \
 				    dp/hfi/dp_debug_client_hfi.o \
-				    dp/hfi/dp_hfi_audio.o
+				    dp/hfi/dp_hfi_audio.o \
+				    dp/hfi/dp_hdcp.o
 
 msm_drm-$(CONFIG_DRM_MSM_DP_MST) += dp/dp_mst_drm.o
 
