@@ -441,17 +441,32 @@ static void dp_debug_hfi_destroy_client(struct dp_debug_client_hfi_priv *priv)
 }
 
 /* HFI response handler for DP simulation read commands */
-static void dp_debug_hfi_response_handler(u32 obj_id, u32 cmd_id, void *payload,
-		u32 payload_size, struct hfi_prop_listener *listener)
+static void dp_debug_hfi_response_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *listener)
 {
 	struct dp_debug_client_hfi_priv *priv;
-	u32 *payload_ptr = payload;
+	u32 obj_id;
+	u32 cmd_id;
+	void *payload;
+	u32 payload_size;
+	u32 *payload_ptr;
 	u32 num_misr;
+
+	if (!packet_info) {
+		DP_ERR("Invalid packet_info\n");
+		return;
+	}
 
 	if (!listener) {
 		DP_ERR("Invalid listener\n");
 		return;
 	}
+
+	obj_id = packet_info->id;
+	cmd_id = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	payload_size = packet_info->payload_size;
+	payload_ptr = payload;
 
 	/* Use container_of to get back to the parent structure, just like dp_hfi.c does */
 	priv = container_of(listener, struct dp_debug_client_hfi_priv, hfi_cb_obj);

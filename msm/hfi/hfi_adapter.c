@@ -1575,13 +1575,12 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 				ret = -HFI_ERROR;
 				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd,
 						packet_info.flags);
-				listener->hfi_prop_handler(packet_info.id,
-						packet_info.cmd, NULL, 0, listener);
+				packet_info.payload_ptr = NULL;
+				packet_info.payload_size = 0;
+				listener->hfi_prop_handler(&packet_info, listener);
 			} else {
 				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd);
-				listener->hfi_prop_handler(packet_info.id,
-						packet_info.cmd, packet_info.payload_ptr,
-						packet_info.payload_size, listener);
+				listener->hfi_prop_handler(&packet_info, listener);
 			}
 
 			/* Remove and free the temporary entry */

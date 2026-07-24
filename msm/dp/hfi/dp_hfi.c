@@ -120,16 +120,30 @@ static int dp_hfi_process_cmd_buf(struct hfi_client_t *hfi_client, struct hfi_cm
 	return rc;
 }
 
-static void dp_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
+static void dp_hfi_prop_handler(struct hfi_packet_info *packet_info,
 			  struct hfi_prop_listener *listener)
 {
 	struct dp_hfi *hfi;
 	u32 dp_display_obj_id;
+	u32 hfi_uid;
+	u32 prop;
+	void *payload;
+	u32 size;
+
+	if (!packet_info) {
+		DP_ERR("invalid packet_info\n");
+		return;
+	}
 
 	if (!listener) {
 		DP_ERR("invalid listener\n");
 		return;
 	}
+
+	hfi_uid = packet_info->id;
+	prop = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	hfi = container_of(listener, struct dp_hfi, hfi_cb_obj);
 

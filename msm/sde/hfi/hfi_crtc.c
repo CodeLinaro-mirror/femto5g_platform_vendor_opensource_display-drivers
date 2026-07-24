@@ -785,18 +785,30 @@ static int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
 	return rc;
 }
 
-static void hfi_crtc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload, u32 size,
+static void hfi_crtc_misr_read_hfi_prop_handler(struct hfi_packet_info *packet_info,
 			struct hfi_prop_listener *hfi_listener)
 {
 	struct hfi_crtc *hfi_crtc;
 	struct misr_read_data_ret *misr_data;
 	struct sde_misr_values *misr_read_values;
+	void *payload;
+	u32 size;
 	u32 max_count = 0;
 	u32 module_type = 0;
 	u32 *misr_values;
 
-	if (!hfi_listener)
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info\n");
 		return;
+	}
+
+	if (!hfi_listener) {
+		SDE_ERROR("invalid hfi_listener\n");
+		return;
+	}
+
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	hfi_crtc = container_of(hfi_listener, struct hfi_crtc, misr_read_listener);
 
@@ -891,20 +903,32 @@ static int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 }
 #endif /* CONFIG_DEBUG_FS */
 
-static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
-		void *payload, u32 size, struct hfi_prop_listener *listener)
+static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *listener)
 {
-	struct hfi_crtc *hfi_crtc = container_of(listener,
-			struct hfi_crtc, hfi_cb_obj);
+	struct hfi_crtc *hfi_crtc;
 	struct sde_crtc *sde_crtc = NULL;
 	struct hfi_display_ltm_event_resp *event_payload = NULL;
+	u32 cmd_id;
+	void *payload;
+	u32 size;
 	u32 ex_size = 0;
 	u32 *data;
 
+	if (!packet_info) {
+		SDE_ERROR("packet_info is NULL\n");
+		return;
+	}
+
+	hfi_crtc = container_of(listener, struct hfi_crtc, hfi_cb_obj);
 	if (!hfi_crtc) {
 		SDE_ERROR("hfi_crtc is NULL\n");
 		return;
 	}
+
+	cmd_id = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	sde_crtc = hfi_crtc->sde_base;
 	if (!sde_crtc) {
