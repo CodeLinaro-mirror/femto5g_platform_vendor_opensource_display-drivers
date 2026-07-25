@@ -791,14 +791,28 @@ static long dp_pll_vco_div_clk_round(struct clk_hw *hw, unsigned long rate,
 	return dp_pll_vco_div_clk_recalc_rate(hw, *parent_rate);
 }
 
+static int dp_pll_link_clk_determine_rate(struct clk_hw *hw,
+			struct clk_rate_request *req)
+{
+	req->rate = dp_pll_link_clk_recalc_rate(hw, req->best_parent_rate);
+	return 0;
+}
+
+static int dp_pll_vco_div_clk_determine_rate(struct clk_hw *hw,
+			struct clk_rate_request *req)
+{
+	req->rate = dp_pll_vco_div_clk_recalc_rate(hw, req->best_parent_rate);
+	return 0;
+}
+
 static const struct clk_ops pll_link_clk_ops = {
 	.recalc_rate = dp_pll_link_clk_recalc_rate,
-	.round_rate = dp_pll_link_clk_round,
+	.determine_rate = dp_pll_link_clk_determine_rate,
 };
 
 static const struct clk_ops pll_vco_div_clk_ops = {
 	.recalc_rate = dp_pll_vco_div_clk_recalc_rate,
-	.round_rate = dp_pll_vco_div_clk_round,
+	.determine_rate = dp_pll_vco_div_clk_determine_rate,
 };
 
 static struct clk_init_data phy_pll_clks[DP_PLL_NUM_CLKS] = {

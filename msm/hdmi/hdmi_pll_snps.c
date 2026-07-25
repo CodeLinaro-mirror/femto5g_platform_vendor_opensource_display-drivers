@@ -607,9 +607,16 @@ static int hdmi_pll_snps_unprepare(struct hdmi_pll *pll)
 	return 0;
 }
 
+static int hdmi_pll_vco_div_clk_determine_rate(struct clk_hw *hw,
+		struct clk_rate_request *req)
+{
+	req->rate = hdmi_pll_vco_div_clk_recalc_rate(hw, req->best_parent_rate);
+	return 0;
+}
+
 static const struct clk_ops hdmi_phy_pll_clk_ops = {
 	.recalc_rate    = hdmi_pll_vco_div_clk_recalc_rate,
-	.round_rate     = hdmi_pll_vco_div_clk_round,
+	.determine_rate = hdmi_pll_vco_div_clk_determine_rate,
 };
 
 static struct clk_init_data phy_pll_clks[HDMI_PLL_NUM_CLKS] = {

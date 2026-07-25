@@ -817,10 +817,30 @@ static unsigned long dsi_pll_pclk_recalc_rate(struct clk_hw *hw, unsigned long p
 	return pclk_rate;
 }
 
+static int dsi_pll_byteclk_determine_rate(struct clk_hw *hw,
+			struct clk_rate_request *req)
+{
+	struct dsi_pll_clk *pll = to_pll_clk_hw(hw);
+	struct dsi_pll_resource *pll_res = pll->priv;
+
+	req->rate = pll_res->byteclk_rate;
+	return 0;
+}
+
+static int dsi_pll_pclk_determine_rate(struct clk_hw *hw,
+			struct clk_rate_request *req)
+{
+	struct dsi_pll_clk *pll = to_pll_clk_hw(hw);
+	struct dsi_pll_resource *pll_res = pll->priv;
+
+	req->rate = pll_res->pclk_rate;
+	return 0;
+}
+
 static const struct clk_ops pll_byteclk_ops = {
 	.recalc_rate = dsi_pll_byteclk_recalc_rate,
 	.set_rate = dsi_pll_set_rate_stub,
-	.round_rate = dsi_pll_byteclk_round_rate,
+	.determine_rate = dsi_pll_byteclk_determine_rate,
 	.prepare = dsi_pll_prepare_stub,
 	.unprepare = dsi_pll_unprepare_stub,
 };
@@ -828,7 +848,7 @@ static const struct clk_ops pll_byteclk_ops = {
 static const struct clk_ops pll_pclk_ops = {
 	.recalc_rate = dsi_pll_pclk_recalc_rate,
 	.set_rate = dsi_pll_set_rate_stub,
-	.round_rate = dsi_pll_pclk_round_rate,
+	.determine_rate = dsi_pll_pclk_determine_rate,
 	.prepare = dsi_pll_prepare_stub,
 	.unprepare = dsi_pll_unprepare_stub,
 };
