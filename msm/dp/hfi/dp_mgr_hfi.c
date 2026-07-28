@@ -622,8 +622,7 @@ static int _hfi_send_hot_plug(struct dp_mgr_hfi_priv *hfi_priv,
 	if (rc || skip_wait)
 		goto end;
 
-	// wait for 4 seconds
-	if (!wait_for_completion_timeout(&hfi_priv->hpd_comp, HZ * 4)) {
+	if (!wait_for_completion_timeout(&hfi_priv->hpd_comp, HZ * 5)) {
 		DP_WARN("%s timeout\n", hfi_priv->connected ? "connect" : "disconnect");
 		rc = -ETIMEDOUT;
 	}
@@ -633,7 +632,7 @@ end:
 		DP_WARN("HOTPLUG (%d %d) failed. rc=%d\n", hfi_priv->connected, config->hpd_irq,
 				rc);
 	else
-		DP_WARN("HOTPLUG (%d %d) successful\n", hfi_priv->connected, config->hpd_irq);
+		DP_INFO("HOTPLUG (%d %d) successful\n", hfi_priv->connected, config->hpd_irq);
 
 	return rc;
 }
@@ -1050,11 +1049,10 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 		goto end;
 	}
 
-	mutex_lock(&hfi_priv->hpd_mutex);
-
 	hfi_priv->connected = false;
-
 	_aux_switch_enable(hfi_priv, false);
+
+	mutex_lock(&hfi_priv->hpd_mutex);
 
 	if (hfi_priv->audio && hfi_priv->audio_supported)
 		hfi_priv->audio->off(hfi_priv->audio, false);
@@ -1141,6 +1139,9 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 
 	DP_DEBUG("hpd status from %d to %d irq %d\n", hfi_priv->connected, hpd_state, hpd_irq);
 
+	/* if hpd plug is waiting on display enable cancel it here */
+	complete_all(&hfi_priv->hpd_comp);
+
 	mutex_lock(&hfi_priv->hpd_mutex);
 
 	/* check if there was any change in state */
@@ -1170,6 +1171,7 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 	_hfi_update_config(hfi_priv, &config);
 	hfi_priv->connected = hpd_state;
 	rc = _hfi_send_hot_plug(hfi_priv, &config);
+	DP_INFO("attention %d\n", hpd_state);
 
 	mutex_unlock(&hfi_priv->hpd_mutex);
 
@@ -1896,11 +1898,21 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 		hfi_priv->mst_st = 0;
 		hfi_priv->fec_en = 0;
 		hfi_priv->dsc_en = 0;
-		hfi->connected = false;
-		_hfi_notify_hpd_user(hfi, false);
+		if (hfi->connected) {
+			hfi->connected = false;
+			_hfi_notify_hpd_user(hfi, false);
+		}
+		if (!hfi_priv->active_streams)
+			complete_all(&hfi_priv->hpd_comp);
 		break;
 	case HFI_DP_EVENT_HPD_PLUGGED:
 		/* this is for mst case where topology changed detected */
+
+		/*
+		 * add 20 ms delay here to ensure display_disabled had been done
+		 * before sending faked hpd-up event to dcp
+		 */
+		msleep(20);
 
 		mutex_lock(&hfi_priv->hpd_mutex);
 
@@ -1911,12 +1923,6 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 		hfi_priv->connected = true;
 		config.hpd_state = 1;
 		config.hpd_irq = 0;
-
-		/*
-		 * add 20 ms delay here to ensure display_disabled had been done
-		 * before sending faked hpd-up event to dcp
-		 */
-		msleep(20);
 
 		_hfi_send_hot_plug(hfi_priv, &config);
 		mutex_unlock(&hfi_priv->hpd_mutex);
