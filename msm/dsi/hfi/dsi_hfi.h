@@ -244,6 +244,7 @@ struct dsi_panel_timing_caps {
  * @ulps_supported:                 HFI_PROPERTY_PANEL_ULPS_SUPPORTED
  * @phy_tuning_config:              HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG
  * @phy_tuning_config_valid:        true if phy_tuning_config has been populated
+ * @pll_config:                     HFI_PROPERTY_PANEL_PLL_CONFIG
  */
 struct dsi_panel_generic_caps {
 	u32 panel_name;
@@ -286,6 +287,7 @@ struct dsi_panel_generic_caps {
 	u32 ulps_supported;
 	struct hfi_panel_phy_tuning_config phy_tuning_config;
 	bool phy_tuning_config_valid;
+	struct hfi_panel_pll_config pll_config;
 };
 
 /**
