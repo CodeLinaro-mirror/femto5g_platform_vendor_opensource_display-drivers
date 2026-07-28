@@ -55,6 +55,8 @@
 #define MSM_MODE_FLAG_SEAMLESS_DMS_VID			(1<<10)
 /* Request to switch SPR chroma format mode */
 #define MSM_MODE_FLAG_SEAMLESS_SPR_MODE_SWITCH		(1<<11)
+/* Request to enable DNSC for writeback demura client */
+#define MSM_MODE_FLAG_SEAMLESS_DNSC_BLUR		(1<<12)
 
 /* As there are different display controller blocks depending on the
  * snapdragon version, the kms support is split out and the appropriate
@@ -239,6 +241,11 @@ void msm_sde_qtimer_install(struct device *dev);
 static inline bool msm_is_mode_seamless(const struct msm_display_mode *mode)
 {
 	return (mode->private_flags & DRM_MODE_FLAG_SEAMLESS);
+}
+
+static inline bool msm_is_mode_seamless_dnsc_blur(const struct msm_display_mode *mode)
+{
+	return (mode->private_flags & MSM_MODE_FLAG_SEAMLESS_DNSC_BLUR);
 }
 
 static inline bool msm_is_mode_seamless_dms(const struct msm_display_mode *mode)
