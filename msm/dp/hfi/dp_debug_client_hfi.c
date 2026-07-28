@@ -1989,11 +1989,24 @@ static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 	 */
 	if (status == connector_status_disconnected) {
 		/*
-		 * Send an HPD IRQ to DCP before marking the stream as
-		 * soft-unplugged.  The attention callback is gated on
-		 * soft_unplug==false, so the IRQ must be dispatched first.
-		 * This notifies DCP of the MST topology change (monitor
-		 * removed from port) while the physical DP link stays up.
+		 * Set soft_unplug=true BEFORE firing the attention/disconnect
+		 * callback below. dp_mgr_hfi_hpd_attention_cb() checks soft_unplug
+		 * at entry and returns early when it is set. If soft_unplug is set
+		 * after the call (as it was previously), the attention callback
+		 * runs to completion and sends an extra, unintended
+		 * HFI_COMMAND_DEVICE_HOT_PLUG_DETECT to DCP right after the
+		 * MST_CONFIG command above, causing DCP to tear down the entire
+		 * MST topology instead of just the single port being removed.
+		 */
+		mgr_priv->soft_unplug = true;
+		DP_DEBUG("Set soft_unplug=true for con_id=%d (active_streams=%u)\n",
+			con_id, mgr_priv->active_streams);
+
+		/*
+		 * Send an HPD IRQ to DCP to notify it of the MST topology
+		 * change (monitor removed from port) while the physical DP
+		 * link stays up. For the last stream, the code below performs
+		 * a full disconnect instead.
 		 */
 		if (mgr_priv->hpd) {
 			if (mgr_priv->active_streams > 1 && mgr_priv->hpd_cb.attention) {
@@ -2008,8 +2021,6 @@ static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 				mgr_priv->hpd_cb.disconnect(mgr_priv);
 			}
 		}
-		mgr_priv->soft_unplug = true;
-		DP_DEBUG("Set soft_unplug=true for con_id=%d\n", con_id);
 	} else if (status == connector_status_connected) {
 		mgr_priv->soft_unplug = false;
 		DP_DEBUG("Cleared soft_unplug for con_id=%d\n", con_id);
