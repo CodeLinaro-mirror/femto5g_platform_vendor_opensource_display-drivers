@@ -19,6 +19,12 @@
 #define SDE_ROT_SYNC_NAME_SIZE		64
 #define SDE_ROT_SYNC_DRIVER_NAME	"sde_rot"
 
+#if (KERNEL_VERSION(7, 1, 0) <= LINUX_VERSION_CODE)
+#define sde_rot_fence_get_lock(fence) dma_fence_spinlock(fence)
+#else
+#define sde_rot_fence_get_lock(fence) (fence->lock)
+#endif /* KERNEL_VERSION(7, 1, 0) <= LINUX_VERSION_CODE */
+
 /**
  * struct sde_rot_fence - sync fence context
  * @base: base sync fence object
@@ -68,7 +74,7 @@ static struct sde_rot_fence *to_sde_rot_fence(struct dma_fence *fence)
  */
 static struct sde_rot_timeline *to_sde_rot_timeline(struct dma_fence *fence)
 {
-	return container_of(fence->lock, struct sde_rot_timeline, lock);
+	return container_of(sde_rot_fence_get_lock(fence), struct sde_rot_timeline, lock);
 }
 
 /*
@@ -144,10 +150,10 @@ static void sde_rot_fence_release(struct dma_fence *fence)
 	struct sde_rot_fence *f = to_sde_rot_fence(fence);
 	unsigned long flags;
 
-	spin_lock_irqsave(fence->lock, flags);
+	spin_lock_irqsave(sde_rot_fence_get_lock(fence), flags);
 	if (!list_empty(&f->fence_list))
 		list_del(&f->fence_list);
-	spin_unlock_irqrestore(fence->lock, flags);
+	spin_unlock_irqrestore(sde_rot_fence_get_lock(fence), flags);
 	sde_rotator_put_timeline(to_sde_rot_timeline(fence));
 	kfree(f);
 }
