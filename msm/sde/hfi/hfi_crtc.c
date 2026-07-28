@@ -922,11 +922,12 @@ static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
 		return;
 	}
 
-	hfi_crtc = container_of(listener, struct hfi_crtc, hfi_cb_obj);
-	if (!hfi_crtc) {
-		SDE_ERROR("hfi_crtc is NULL\n");
+	if (!listener) {
+		SDE_ERROR("listener is NULL\n");
 		return;
 	}
+
+	hfi_crtc = container_of(listener, struct hfi_crtc, hfi_cb_obj);
 
 	cmd_id = packet_info->cmd;
 	payload = packet_info->payload_ptr;
@@ -940,10 +941,12 @@ static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
 
 	switch (cmd_id) {
 	case HFI_COMMAND_DISPLAY_EVENT_LTM:
-		if (!payload) {
-			SDE_ERROR("Invalid LTM event payload %pK\n", payload);
+		if (!payload || !sde_crtc->crtc_event_cb) {
+			SDE_ERROR("Invalid LTM event payload %pK or crtc_event_cb is NULL\n",
+			payload);
 			return;
 		}
+
 		event_payload = (struct hfi_display_ltm_event_resp *)payload;
 		if (event_payload->event_type == HFI_LTM_HIST_DONE)
 			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_LTM_HIST, event_payload);
@@ -955,8 +958,10 @@ static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
 			SDE_ERROR("unknown LTM event type %d\n", event_payload->event_type);
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_RGB_HIST: {
-		if (!payload) {
-			SDE_ERROR("Invalid RGB hist event payload %pK\n", payload);
+		if (!payload || !sde_crtc->crtc_event_cb) {
+			SDE_ERROR(
+			"Invalid RGB hist event payload %pK or crtc_event_cb is NULL\n",
+			payload);
 			return;
 		}
 		struct hfi_display_rgb_hist_event_resp *event_payload;
@@ -979,8 +984,10 @@ static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
 	}
 	case HFI_COMMAND_DISPLAY_EVENT_PA_HIST:
 	{
-		if (!payload) {
-			SDE_ERROR("Invalid PA hist event payload %pK\n", payload);
+		if (!payload || !sde_crtc->crtc_event_cb) {
+			SDE_ERROR(
+			"Invalid PA hist event payload %pK or crtc_event_cb is NULL\n",
+			payload);
 			return;
 		}
 		struct hfi_display_pa_hist_event_resp *event_payload;
@@ -994,8 +1001,10 @@ static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
 		break;
 	}
 	case HFI_COMMAND_DISPLAY_EVENT_SPR_OPR: {
-		if (!payload) {
-			SDE_ERROR("Invalid SPR OPR event payload %pK\n", payload);
+		if (!payload || !sde_crtc->crtc_event_cb) {
+			SDE_ERROR(
+			"Invalid SPR OPR event payload %pK or crtc_event_cb is NULL\n",
+			payload);
 			return;
 		}
 
@@ -1011,8 +1020,9 @@ static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
 		break;
 	}
 	case HFI_COMMAND_DISPLAY_EVENT_AIQE_COPR_READ:
-		if (!payload) {
-			SDE_ERROR("Invalid COPR event payload %pK\n", payload);
+		if (!payload || !sde_crtc->crtc_event_cb) {
+			SDE_ERROR(
+			"Invalid COPR event payload %pK or crtc_event_cb is NULL\n", payload);
 			return;
 		}
 
