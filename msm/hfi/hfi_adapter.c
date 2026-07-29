@@ -548,7 +548,20 @@ int hfi_adapter_handle_hibernation_entry(struct hfi_client_t *hfi_client)
 
 int hfi_adapter_handle_hibernation_exit(void)
 {
-	return  hfi_core_reinit_queues();
+	int ret = 0;
+
+	ret = hfi_smem_init();
+	if (ret) {
+		HFI_AD_ERROR("Failed sde_kms_resume_helper: %d\n", ret);
+		return ret;
+	}
+	ret = hfi_core_reinit_queues();
+	if (ret) {
+		HFI_AD_ERROR("Failed sde_kms_resume_helper: %d\n", ret);
+		return ret;
+	}
+
+	return ret;
 }
 
 struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance)

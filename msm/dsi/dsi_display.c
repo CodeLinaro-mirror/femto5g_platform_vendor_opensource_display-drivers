@@ -6833,6 +6833,21 @@ static int dsi_display_pm_restore(struct device *dev)
 	if (!hfi_kms)
 		return -EINVAL;
 
+	/*
+	 * Rebind DSI HFI client to current active adapter on restore.
+	 * Prevent stale host/session usage after hibernation.
+	 */
+	if (display->dsi_hfi_info && display->dsi_hfi_info->hfi_client &&
+			hfi_kms->hfi_adapter &&
+			(display->dsi_hfi_info->hfi_adapter != hfi_kms->hfi_adapter ||
+			 display->dsi_hfi_info->hfi_client->host != hfi_kms->hfi_adapter)) {
+		DSI_WARN("rebinding dsi hfi client: old_adapter=%pK new_adapter=%pK old_host=%pK\n",
+			display->dsi_hfi_info->hfi_adapter, hfi_kms->hfi_adapter,
+			display->dsi_hfi_info->hfi_client->host);
+		display->dsi_hfi_info->hfi_adapter = hfi_kms->hfi_adapter;
+		display->dsi_hfi_info->hfi_client->host = hfi_kms->hfi_adapter;
+	}
+
 	rc = hfi_kms_send_trace_cfg(hfi_kms, HFI_TRUE);
 	if (rc) {
 		DSI_ERR("failed to send trace config to DCP, rc: %d\n", rc);

@@ -2255,6 +2255,7 @@ struct sde_perf_cfg {
  * @macrotile_mode      UBWC parameter for macro tile channel distribution
  * @pipe_order_type     indicates if it is required to specify pipe order
  * @csc_type            csc or csc_10bit support
+ * @enable_hibernation indicate if hibernation feature is supported
  * @allowed_dsc_reservation_switch      intf to which dsc reservation switch is supported
  * @autorefresh_disable_seq    indicates the autorefresh disable sequence; default is seq1
  * @sc_cfg              system cache configuration
@@ -2412,6 +2413,7 @@ struct sde_mdss_cfg {
 	u32 macrotile_mode;
 	u32 pipe_order_type;
 	u32 csc_type;
+	bool enable_hibernation;
 	u32 allowed_dsc_reservation_switch;
 	enum autorefresh_disable_sequence autorefresh_disable_seq;
 	struct sde_sc_cfg sc_cfg[SDE_SYS_CACHE_MAX];

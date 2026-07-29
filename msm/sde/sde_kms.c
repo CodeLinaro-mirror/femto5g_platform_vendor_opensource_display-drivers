@@ -1498,12 +1498,14 @@ static void _sde_kms_free_splash_display_data(struct sde_kms *sde_kms,
 			!sde_kms->splash_data.num_splash_displays)
 		return;
 
-	if (sde_kms->splash_data.num_splash_regions) {
+	if (sde_kms->splash_data.num_splash_regions &&
+			!sde_kms->catalog->enable_hibernation) {
 		_sde_kms_splash_mem_put(sde_kms, splash_display->splash);
 		if (splash_display->demura)
 			_sde_kms_splash_mem_put(sde_kms,
 					splash_display->demura);
 	}
+
 	sde_kms->splash_data.num_splash_displays--;
 	SDE_DEBUG("cont_splash handoff done, remaining:%d\n",
 				sde_kms->splash_data.num_splash_displays);
@@ -5622,7 +5624,7 @@ static int sde_kms_pm_suspend(struct device *dev)
 }
 
 #if IS_ENABLED(CONFIG_HIBERNATION)
-int sde_kms_freeze_helper(struct sde_kms *sde_kms)
+static int sde_kms_freeze_helper(struct sde_kms *sde_kms)
 {
 	struct drm_device *ddev;
 	struct drm_modeset_acquire_ctx ctx;
@@ -5889,6 +5891,12 @@ static int sde_kms_pm_restore(struct device *dev)
 		return ret;
 	}
 
+	/* Reset catalog before re-initialization.  */
+	if (hfi_kms->catalog) {
+		memset(hfi_kms->catalog, 0, sizeof(*hfi_kms->catalog));
+		atomic_set(&hfi_kms->cat_init_done, 0);
+	}
+
 	/* Device-init */
 	ret = hfi_kms_get_catalog_data(hfi_kms);
 	if (ret) {
@@ -5909,6 +5917,11 @@ static int sde_kms_pm_restore(struct device *dev)
 		SDE_ERROR("failed lut dma configuration, ret: %d\n", ret);
 		return ret;
 	}
+
+	/* Re-configure HW fence after restore */
+	ret = hfi_kms_init_hw_fence_config(hfi_kms);
+	if (ret)
+		SDE_INFO("hfi hw fence config init failed on restore: %d\n", ret);
 
 	/* Clear any pending interrupts before restore */
 	if (sde_kms->hw_intr && sde_kms->hw_intr->ops.clear_all_irqs[disp_op]) {
