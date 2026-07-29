@@ -382,6 +382,30 @@ enum hfi_panel_phy_tuning_flags {
 };
 
 /**
+ * enum hfi_panel_pll_config_flags - DSI PLL SSC parameters
+ * @HFI_PLL_SSC_EN_VALID:     Indicates ssc_en parameter is valid and should override
+ * @HFI_PLL_SSC_CENTER_VALID: Indicates ssc_center parameter is valid and should override
+ * @HFI_PLL_SSC_FREQ_VALID:   Indicates ssc_freq parameter is valid and should override
+ * @HFI_PLL_SSC_PPM_VALID:    Indicates ssc_ppm parameter is valid and should override
+ */
+enum hfi_panel_pll_config_flags {
+	HFI_PLL_SSC_EN_VALID     = 0x1,
+	HFI_PLL_SSC_CENTER_VALID = 0x2,
+	HFI_PLL_SSC_FREQ_VALID   = 0x4,
+	HFI_PLL_SSC_PPM_VALID    = 0x8,
+};
+
+/**
+ * enum hfi_panel_pll_ssc_center - Spread spectrum clocking spread mode
+ * @HFI_PLL_SSC_DOWN_SPREAD:   Down-spread SSC modulation.
+ * @HFI_PLL_SSC_CENTER_SPREAD: Center-spread SSC modulation.
+ */
+enum hfi_panel_pll_ssc_center {
+	HFI_PLL_SSC_DOWN_SPREAD   = 0x0,
+	HFI_PLL_SSC_CENTER_SPREAD = 0x1,
+};
+
+/**
  * struct hfi_panel_res_data - Panel resolution data
  * @active_width: Panel active width
  * @active_height: Panel active height
@@ -616,6 +640,25 @@ struct hfi_panel_phy_tuning_config {
 	enum hfi_panel_phy_tuning_flags flags;
 	u32 reserved1;
 	u32 reserved2;
+};
+
+/**
+ * @ssc_en: Enable/disable PLL SSC; valid when HFI_PLL_SSC_EN_VALID is set.
+ * @ssc_spread_mode: SSC spread mode; valid when HFI_PLL_SSC_CENTER_VALID is set.
+ * @ssc_freq: SSC frequency in Hz; valid when HFI_PLL_SSC_FREQ_VALID is set.
+ * @ssc_ppm: SSC magnitude in ppm; valid when HFI_PLL_SSC_PPM_VALID is set.
+ * @flags: Bitmask indicating which SSC parameters override DCP DT values.
+ * @reserve1: Reserved for future use.
+ * @reserve2: Reserved for future use.
+ */
+struct hfi_panel_pll_config {
+	u32 ssc_en;
+	enum hfi_panel_pll_ssc_center ssc_spread_mode;
+	u32 ssc_freq;
+	u32 ssc_ppm;
+	enum hfi_panel_pll_config_flags flags;
+	u32 reserve1;
+	u32 reserve2;
 };
 
 #endif // __H_HFI_DEFS_PANEL_H__
