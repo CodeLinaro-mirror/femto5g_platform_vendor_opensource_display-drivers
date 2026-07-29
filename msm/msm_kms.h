@@ -125,10 +125,10 @@ struct msm_kms_funcs {
 	/* pm suspend/resume/freeze/restore hooks */
 	int (*pm_suspend)(struct device *dev);
 	int (*pm_resume)(struct device *dev);
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 	int (*pm_freeze)(struct device *dev);
 	int (*pm_restore)(struct device *dev);
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 	/* cleanup: */
 	void (*destroy)(struct msm_kms *kms);
 	/* get address space */

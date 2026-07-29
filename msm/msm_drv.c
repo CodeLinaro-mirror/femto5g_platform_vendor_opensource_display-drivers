@@ -2156,7 +2156,7 @@ static int msm_pm_resume(struct device *dev)
 }
 #endif /* CONFIG_PM_SLEEP */
 
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 static int msm_pm_freeze(struct device *dev)
 {
 	struct drm_device *ddev;
@@ -2200,7 +2200,7 @@ static int msm_pm_restore(struct device *dev)
 
 	return 0;
 }
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 
 #if IS_ENABLED(CONFIG_PM)
 static int msm_runtime_suspend(struct device *dev)
@@ -2250,10 +2250,10 @@ static const struct dev_pm_ops msm_pm_ops = {
 	.suspend = msm_pm_suspend,
 	.resume = msm_pm_resume,
 #endif /* CONFIG_PM_SLEEP */
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 	.freeze = msm_pm_freeze,
 	.restore = msm_pm_restore,
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 	SET_RUNTIME_PM_OPS(msm_runtime_suspend, msm_runtime_resume, NULL)
 };
 
