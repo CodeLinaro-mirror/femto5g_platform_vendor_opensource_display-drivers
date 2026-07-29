@@ -4751,7 +4751,9 @@ static void _sde_kms_hfi_populate_splash_config(struct sde_kms *sde_kms,
 	struct sde_connector *sde_conn;
 	struct sde_sspp_index_info *pipe_info;
 	u32 lm_mask, active_pipes_mask;
-	int i, lm_idx = 0;
+	int i, lm_idx = 0, rc, count, cur_mode_idx = 0;
+	bool dsc_enabled = false;
+	struct dsi_display *display = NULL;
 
 	if (!sde_kms|| !splash_display || !conn)
 		return;
@@ -4762,9 +4764,32 @@ static void _sde_kms_hfi_populate_splash_config(struct sde_kms *sde_kms,
 	sde_conn = to_sde_connector(conn);
 	lm_mask = sde_conn->lm_mask;
 
+	display = _sde_connector_get_display(sde_conn);
+	if (!display) {
+		SDE_WARN("fail to get display");
+		return;
+	}
+
+	rc = dsi_display_get_mode_count(display, &count);
+	if (rc) {
+		SDE_WARN("fail to get mode count");
+		return;
+	}
+
+	for (i = 0 ; i < count; i++) {
+		if (display->modes[i].is_preferred) {
+			cur_mode_idx = i;
+			break;
+		}
+	}
+
+	if (display->modes[cur_mode_idx].priv_info)
+		dsc_enabled = display->modes[cur_mode_idx].priv_info->dsc_enabled;
+
 	// Count bits set in lm_mask
 	splash_display->lm_cnt = __builtin_popcount(lm_mask);
-	splash_display->dsc_cnt = splash_display->lm_cnt;
+	if (dsc_enabled)
+		splash_display->dsc_cnt = splash_display->lm_cnt;
 
 	// Extract LM IDs from the mask
 	for (int bit = 0; bit < 32; bit++) {
