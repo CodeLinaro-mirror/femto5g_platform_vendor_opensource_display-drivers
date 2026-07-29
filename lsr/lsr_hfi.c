@@ -154,7 +154,13 @@ static inline void __set_state(struct lsr_device *device,
 
 static inline bool __core_in_valid_state(struct lsr_device *device)
 {
-	return device->state != IRIS_STATE_DEINIT;
+	/*
+	 * A freshly kzalloc'd lsr_device has state == 0, which is neither
+	 * IRIS_STATE_INIT nor IRIS_STATE_DEINIT. Such a core never completed
+	 * iris_hfi_core_init() (power domains/bus locks not set up), so it must
+	 * not be treated as valid - require an explicit INIT state.
+	 */
+	return device->state == IRIS_STATE_INIT;
 }
 
 static inline bool is_sys_cache_present(struct lsr_device *device)
@@ -1497,6 +1503,20 @@ static int iris_hfi_core_release(void *dev)
 	}
 
 	mutex_lock(&device->lock);
+	/*
+	 * If the core never completed init (e.g. FW load failed at boot),
+	 * its resources (power domains, bus locks) were never set up. Running
+	 * the resume/power-on path here would dereference NULL pd_dev/bus and
+	 * crash, so skip recovery for a core that never booted.
+	 */
+	if (!__core_in_valid_state(device)) {
+		dprintk(LSR_WARN,
+			"Core not initialized (state:%d), skip release\n",
+			device->state);
+		mutex_unlock(&device->lock);
+		return -EINVAL;
+	}
+
 	dprintk(LSR_WARN, "Core releasing\n");
 	if (device->res->pm_qos.latency_us &&
 		device->res->pm_qos.pm_qos_hdls) {
@@ -3807,6 +3827,21 @@ int lsr_fw_reset(void)
 		return -EINVAL;
 	}
 
+	/*
+	 * Do not run FW-reset recovery on a core that never fully booted.
+	 * Without a completed init the power domains, bus locks and hw fence
+	 * handle are not set up, and the release/resume path below would
+	 * dereference NULL (crash). This guards the DCP-SSR recovery path when
+	 * LSR itself failed to come up (e.g. FW load failure at boot).
+	 */
+	if (!device || !__core_in_valid_state(device) ||
+			!device->hwfence_data.hw_fence_handle) {
+		dprintk(LSR_WARN,
+			"LSR core not ready, skip FW reset (dev:%pK state:%d)\n",
+			device, device ? device->state : -1);
+		return -EINVAL;
+	}
+
 	ops_tbl = core->dev_ops;
 
 	rc = call_hfi_op(ops_tbl, core_release, ops_tbl->hfi_device_data);
@@ -3841,6 +3876,17 @@ int hfi_lsr_reset(void)
 		device = core->dev_ops->hfi_device_data;
 	} else {
 		dprintk(LSR_ERR, "Invalid lsr core\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * Skip FW reset if the LSR core never fully booted. Driving the
+	 * reset/recovery path on a core that failed init (e.g. FW load
+	 * failure at boot) would dereference resources that were never set
+	 * up. This guards the DCP-SSR recovery path when LSR itself is down.
+	 */
+	if (!lsr_core_is_ready()) {
+		dprintk(LSR_WARN, "LSR core not ready, skip lsr fw reset\n");
 		return -EINVAL;
 	}
 
@@ -3886,4 +3932,30 @@ int hfi_lsr_reset(void)
 	}
 	dprintk(LSR_INFO, "HFI LSR FW reset end\n");
 	return rc;
+}
+
+bool lsr_core_is_ready(void)
+{
+	struct msm_lsr_core *core;
+	struct lsr_device *device;
+
+	if (!lsr_driver)
+		return false;
+
+	core = lsr_driver->lsr_core;
+	if (!core || !core->dev_ops)
+		return false;
+
+	device = core->dev_ops->hfi_device_data;
+	if (!device)
+		return false;
+
+	/*
+	 * The core is only usable once iris_hfi_core_init() completed
+	 * (state == IRIS_STATE_INIT) and the hw fence handle is set up.
+	 * Callers use this to avoid driving FW-reset/recovery on a core that
+	 * never booted.
+	 */
+	return __core_in_valid_state(device) &&
+		device->hwfence_data.hw_fence_handle != NULL;
 }
