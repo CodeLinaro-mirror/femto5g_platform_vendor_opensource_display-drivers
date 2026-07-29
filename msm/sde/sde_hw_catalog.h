@@ -76,6 +76,7 @@
 #define SDE_HW_VER_D10	SDE_HW_VER(13, 1, 0) /* alor */
 #define SDE_HW_VER_E00  SDE_HW_VER(14, 0, 0) /* art */
 #define SDE_HW_VER_E30  SDE_HW_VER(14, 3, 0) /* pebble */
+#define SDE_HW_VER_E40  SDE_HW_VER(14, 4, 0) /* coast */
 
 #define SDE_QULTIVATE_SW_NONE 0x0
 #define SDE_QULTIVATE_SW_REV1 0x1
@@ -128,6 +129,7 @@
 #define IS_ALOR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D10)
 #define IS_ART_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_E00)
 #define IS_PEBBLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_E30)
+#define IS_COAST_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_E40)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
