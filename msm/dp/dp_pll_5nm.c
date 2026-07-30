@@ -721,25 +721,6 @@ static unsigned long dp_pll_link_clk_recalc_rate(struct clk_hw *hw,
 	return rate;
 }
 
-static long dp_pll_link_clk_round(struct clk_hw *hw, unsigned long rate,
-			unsigned long *parent_rate)
-{
-	struct dp_pll *pll = NULL;
-	struct dp_pll_vco_clk *pll_link = NULL;
-
-	if (!hw) {
-		DP_ERR("invalid input parameters\n");
-		return -EINVAL;
-	}
-
-	pll_link = to_dp_vco_hw(hw);
-	pll = pll_link->priv;
-
-	rate = pll->vco_rate * pll->clk_factor / 10;
-
-	return rate;
-}
-
 static unsigned long dp_pll_vco_div_clk_get_rate(struct dp_pll *pll)
 {
 	if (pll->vco_rate == DP_VCO_HSCLK_RATE_8100MHZDIV1000)
@@ -765,12 +746,6 @@ static unsigned long dp_pll_vco_div_clk_recalc_rate(struct clk_hw *hw,
 	pll = pll_link->priv;
 
 	return dp_pll_vco_div_clk_get_rate(pll);
-}
-
-static long dp_pll_vco_div_clk_round(struct clk_hw *hw, unsigned long rate,
-			unsigned long *parent_rate)
-{
-	return dp_pll_vco_div_clk_recalc_rate(hw, *parent_rate);
 }
 
 static int dp_pll_link_clk_determine_rate(struct clk_hw *hw,

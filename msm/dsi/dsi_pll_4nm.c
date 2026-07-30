@@ -659,24 +659,6 @@ static int dsi_pll_set_rate_stub(struct clk_hw *hw, unsigned long rate, unsigned
 	return 0;
 }
 
-static long dsi_pll_byteclk_round_rate(struct clk_hw *hw, unsigned long rate,
-		unsigned long *parent_rate)
-{
-	struct dsi_pll_clk *pll = to_pll_clk_hw(hw);
-	struct dsi_pll_resource *pll_res = pll->priv;
-
-	return pll_res->byteclk_rate;
-}
-
-static long dsi_pll_pclk_round_rate(struct clk_hw *hw, unsigned long rate,
-		unsigned long *parent_rate)
-{
-	struct dsi_pll_clk *pll = to_pll_clk_hw(hw);
-	struct dsi_pll_resource *pll_res = pll->priv;
-
-	return pll_res->pclk_rate;
-}
-
 static unsigned long dsi_pll_vco_recalc_rate(struct dsi_pll_resource *pll)
 {
 	u64 ref_clk;
