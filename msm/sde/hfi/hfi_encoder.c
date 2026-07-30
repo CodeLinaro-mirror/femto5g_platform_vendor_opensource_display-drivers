@@ -306,6 +306,37 @@ static int sde_encoder_update_pending_release_fence_cnt(struct sde_encoder_virt 
 	return 0;
 }
 
+static void hfi_encoder_dcs_cmd_error_callback(struct sde_encoder_virt *sde_enc, void *payload)
+{
+	struct hfi_display_dcs_cmd_error_data *err_data = payload;
+	struct drm_encoder *drm_enc;
+	ktime_t ts = 0;
+
+	if (!sde_enc) {
+		SDE_ERROR("invalid sde encoder\n");
+		return;
+	}
+
+	if (!err_data) {
+		SDE_ERROR("invalid DCS cmd error payload\n");
+		return;
+	}
+	drm_enc = &sde_enc->base;
+
+	ts = err_data->ts_hi;
+	ts =  (ts << 32) | (err_data->ts_lo);
+
+	/* convert into qtimer hw ticks & adjust */
+	ts = NS_TO_QTIMER(ts);
+	ts = sde_encoder_event_timestamp_adjust(DRMID(drm_enc), 1, ts);
+
+	SDE_EVT32(SDE_EVTLOG_ERROR, err_data->seq_no, err_data->cmd_type, err_data->cmd_index,
+		ktime_to_us(ts), err_data->error_code);
+	SDE_ERROR("DCS cmd error: seq_no=0x%x cmd_type=0x%x cmd_index:0x%x ts=%lld err=%d\n",
+		  err_data->seq_no, err_data->cmd_type, err_data->cmd_index,
+		  (long long)ts, err_data->error_code);
+}
+
 static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, void *payload)
 {
 	struct drm_connector *conn;
@@ -420,6 +451,9 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD:
 		hfi_encoder_panel_dead_callback(sde_enc, payload);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_DCS_CMD_ERROR:
+		hfi_encoder_dcs_cmd_error_callback(sde_enc, payload);
 		break;
 	case HFI_COMMAND_DEBUG_PANIC_EVENT:
 		if (!data) {
@@ -573,6 +607,10 @@ static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 		break;
 	case MSM_ENC_PANEL_DEAD:
 		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_PANEL_DEAD,
+				enable, defer_to_commit);
+		break;
+	case MSM_ENC_DCS_CMD_ERROR:
+		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_DCS_CMD_ERROR,
 				enable, defer_to_commit);
 		break;
 	case MSM_ENC_MISR:
@@ -935,6 +973,27 @@ static int hfi_enc_register_panel_dead_event(struct sde_encoder_virt *enc, bool 
 	ret = _hfi_enc_register_hw_event(enc, MSM_ENC_PANEL_DEAD, enable, false);
 	if (ret)
 		SDE_ERROR("failed to register panel dead event ret:%d\n", ret);
+
+	return ret;
+}
+
+static int hfi_enc_register_dcs_cmd_error_event(struct sde_encoder_virt *enc, bool enable)
+{
+	int ret = 0;
+	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
+
+	if (!hfi_enc)
+		return -EINVAL;
+
+	/* Avoid redundant register/unregister */
+	if (hfi_enc->hw_events_state[MSM_ENC_DCS_CMD_ERROR].state == enable)
+		return 0;
+
+	ret = _hfi_enc_register_hw_event(enc, MSM_ENC_DCS_CMD_ERROR, enable, false);
+	if (ret)
+		SDE_ERROR("failed to register DCS cmd error event ret:%d\n", ret);
+	else
+		hfi_enc->hw_events_state[MSM_ENC_DCS_CMD_ERROR].state = enable;
 
 	return ret;
 }
@@ -2464,6 +2523,8 @@ static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 	sde_enc->hal_ops.early_wakeup_call[MSM_DISP_OP_HFI] = hfi_enc_early_wakeup_call;
 	sde_enc->hal_ops.register_panel_dead_event_notify[MSM_DISP_OP_HFI] =
 								hfi_enc_register_panel_dead_event;
+	sde_enc->hal_ops.register_dcs_cmd_error_event_notify[MSM_DISP_OP_HFI] =
+							hfi_enc_register_dcs_cmd_error_event;
 
 	sde_enc->hal_ops.misr_setup[MSM_DISP_OP_HFI] = hfi_enc_misr_setup;
 	sde_enc->hal_ops.deregister_cwb_events[MSM_DISP_OP_HFI] = hfi_enc_deregister_cwb_events;
