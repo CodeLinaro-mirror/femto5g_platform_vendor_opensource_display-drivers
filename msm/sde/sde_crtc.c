@@ -3159,12 +3159,18 @@ int sde_crtc_get_secure_transition_ops(struct drm_crtc *crtc,
 	case SDE_DRM_FB_SEC_DIR_TRANS:
 		_sde_drm_fb_sec_dir_trans(smmu_state, secure_level,
 				catalog, old_valid_fb, &ops);
+		if (ops)
+			smmu_state->crtc_id = DRMID(crtc);
 		break;
 
 	case SDE_DRM_FB_SEC:
 	case SDE_DRM_FB_NON_SEC:
-		_sde_drm_fb_transactions(smmu_state, catalog,
+		if (!smmu_state->crtc_id
+				|| (smmu_state->crtc_id == DRMID(crtc))) {
+			_sde_drm_fb_transactions(smmu_state, catalog,
 				old_valid_fb, post_commit, &ops);
+			smmu_state->crtc_id = 0;
+		}
 		break;
 
 	case SDE_DRM_FB_NON_SEC_DIR_TRANS:
