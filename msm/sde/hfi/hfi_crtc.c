@@ -128,8 +128,10 @@ static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate, struct sde
 	int rc = 0;
 	int num_mixers;
 	bool is_cmd;
+	bool is_video;
 
 	is_cmd = (sde_crtc_get_intf_mode(&sde_crtc->base, &cstate->base) == INTF_MODE_CMD);
+	is_video = (sde_crtc_get_intf_mode(&sde_crtc->base, &cstate->base) == INTF_MODE_VIDEO);
 
 	num_mixers = get_num_mixers(cstate, sde_crtc);
 
@@ -144,7 +146,7 @@ static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate, struct sde
 		lm_cfg.width = cstate->lm_roi[0].w;
 		lm_cfg.height = cstate->lm_roi[0].h;
 		lm_cfg.reserved = ((u32)cstate->lm_roi[0].x << 16) | (cstate->lm_roi[0].y);
-	} else if (is_cmd) {
+	} else if (is_cmd || is_video) {
 		lm_cfg.res_type = HFI_RESOURCE_LM;
 		lm_cfg.resource_idx = 0;
 		lm_cfg.width = cstate->lm_roi[0].w;
