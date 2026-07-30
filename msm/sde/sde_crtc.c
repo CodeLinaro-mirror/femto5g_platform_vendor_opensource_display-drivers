@@ -4301,7 +4301,7 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 	if ((crtc->state->active_changed || cont_splash_enabled) && crtc->state->active)
 		sde_crtc_event_notify(crtc, DRM_EVENT_CRTC_POWER, &power_on, sizeof(u32));
 
-	sde_crtc->kickoff_in_progress = false;
+	atomic_set(&sde_crtc->kickoff_in_progress, 0);
 	lsr_mode = sde_crtc_get_property(to_sde_crtc_state(crtc->state), CRTC_PROP_LSR_MODE);
 
 	if (lsr_mode == MSM_DISP_LSR_MODE_ENABLED) {
@@ -5679,6 +5679,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	cstate = to_sde_crtc_state(crtc->state);
 	dev = crtc->dev;
 
+	atomic_set(&sde_crtc->kickoff_in_progress, 1);
 	if (!sde_crtc->num_mixers || cstate->in_loopback_transition) {
 		_sde_crtc_setup_mixers(crtc);
 		_sde_crtc_setup_is_ppsplit(crtc->state);
@@ -5735,8 +5736,10 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	 * it means we are trying to flush a CRTC whose state is disabled:
 	 * nothing else needs to be done.
 	 */
-	if (unlikely(!sde_crtc->num_mixers))
+	if (unlikely(!sde_crtc->num_mixers)) {
+		atomic_set(&sde_crtc->kickoff_in_progress, 0);
 		goto end;
+	}
 
 	_sde_crtc_blend_setup(crtc, old_state, true);
 
@@ -6298,14 +6301,15 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	 * it means we are trying to start a CRTC whose state is disabled:
 	 * nothing else needs to be done.
 	 */
-	if (unlikely(!sde_crtc->num_mixers))
+	if (unlikely(!sde_crtc->num_mixers)) {
+		atomic_set(&sde_crtc->kickoff_in_progress, 0);
 		return;
+	}
 
 	SDE_ATRACE_BEGIN("crtc_commit");
 
 	idle_pc_state = sde_crtc_get_property(cstate, CRTC_PROP_IDLE_PC_STATE);
 
-	sde_crtc->kickoff_in_progress = true;
 	sde_crtc->handle_fence_error_bw_update = false;
 	list_for_each_entry_reverse(encoder, &dev->mode_config.encoder_list, head) {
 		if (encoder->crtc != crtc)
@@ -6647,7 +6651,8 @@ void sde_crtc_reset_sw_state(struct drm_crtc *crtc)
 		sde_plane_set_revalidate(plane, true);
 
 	/* mark mixers dirty for next update */
-	sde_crtc_clear_cached_mixer_cfg(crtc);
+	if (!atomic_read(&sde_crtc->kickoff_in_progress))
+		sde_crtc_clear_cached_mixer_cfg(crtc);
 
 	/* mark other properties which need to be dirty for next update */
 	set_bit(SDE_CRTC_DIRTY_DIM_LAYERS, &sde_crtc->revalidate_mask);
@@ -6931,6 +6936,8 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 		sde_core_perf_crtc_release_bw(crtc);
 		atomic_set(&sde_crtc->frame_pending, 0);
 	}
+
+	atomic_set(&sde_crtc->kickoff_in_progress, 0);
 
 	spin_lock_irqsave(&sde_crtc->spin_lock, flags);
 	list_for_each_entry(node, &sde_crtc->user_event_list, list) {
@@ -9694,7 +9701,7 @@ static int _sde_debugfs_fence_status_show(struct seq_file *s, void *data)
 	dev = crtc->dev;
 	cstate = to_sde_crtc_state(crtc->state);
 
-	if (!sde_crtc->kickoff_in_progress)
+	if (!atomic_read(&sde_crtc->kickoff_in_progress))
 		goto skip_input_fence;
 
 	/* Dump input fence info */
@@ -10260,7 +10267,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	atomic_set(&sde_crtc->frame_pending, 0);
 
 	sde_crtc->enabled = false;
-	sde_crtc->kickoff_in_progress = false;
+	atomic_set(&sde_crtc->kickoff_in_progress, 0);
 	sde_crtc->do_clear_buf = false;
 	sde_crtc->do_clear_rgb_hist_buf = false;
 
