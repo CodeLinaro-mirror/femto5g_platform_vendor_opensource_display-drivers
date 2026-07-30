@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023, 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -648,6 +648,7 @@ struct dsi_host_config {
  * @widebus_support       48 bit wide data bus is supported by hw
  * @allowed_mode_switch: BIT mask to mark allowed mode switches
  * @disable_rsc_solver: Dynamically disable RSC solver for the timing mode.
+ * @panel_self_refresh_rate: Panel self refresh rate per timing node.
  */
 struct dsi_display_mode_priv_info {
 	struct dsi_panel_cmd_set cmd_sets[DSI_CMD_SET_MAX];
@@ -679,6 +680,7 @@ struct dsi_display_mode_priv_info {
 	bool widebus_support;
 	u32 allowed_mode_switch;
 	bool disable_rsc_solver;
+	u32 panel_self_refresh_rate;
 };
 
 /**

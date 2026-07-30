@@ -725,6 +725,9 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 			sizeof(dsi_mode->priv_info->roi_caps));
 	}
 
+	mode_info->panel_self_refresh_rate =
+		dsi_mode->priv_info->panel_self_refresh_rate;
+
 	mode_info->allowed_mode_switches =
 		dsi_mode->priv_info->allowed_mode_switch;
 

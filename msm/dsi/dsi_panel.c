@@ -939,6 +939,14 @@ static int dsi_panel_parse_timing(struct dsi_mode_info *mode,
 		rc = 0;
 	}
 
+	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-panel-self-refresh-rate",
+				&priv_info->panel_self_refresh_rate);
+	if (rc) {
+		DSI_DEBUG("panel self refresh rate not defined in timing node\n");
+		priv_info->panel_self_refresh_rate = 0;
+		rc = 0;
+	}
+
 	DSI_DEBUG("panel vert active:%d front_portch:%d back_porch:%d pulse_width:%d\n",
 		mode->v_active, mode->v_front_porch, mode->v_back_porch,
 		mode->v_sync_width);

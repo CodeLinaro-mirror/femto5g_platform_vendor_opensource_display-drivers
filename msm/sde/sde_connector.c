@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -3014,6 +3014,9 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 
 		sde_kms_info_add_keyint(info, "allowed_mode_switch",
 			mode_info.allowed_mode_switches);
+
+		sde_kms_info_add_keyint(info, "panel_self_refresh_rate",
+			mode_info.panel_self_refresh_rate);
 
 		if (!mode_info.roi_caps.num_roi)
 			continue;
