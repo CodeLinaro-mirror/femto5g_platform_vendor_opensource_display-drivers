@@ -223,6 +223,7 @@ static int _hfi_process_edid(struct dp_hfi *hfi, char *buf_addr, int buf_size)
 	sde_parse_edid(edid_ctrl);
 
 	DP_INFO("Successfully processed EDID from DCP\n");
+	SDE_EVT32_EXTERNAL(connector->base.id);
 
 	return edid_size;
 }
@@ -263,6 +264,8 @@ static bool _hfi_notify_hpd_user(struct dp_hfi *hfi, bool connection)
 		(connection && hfi->mode_count > 0) ? hfi->mode_list[0].test_pattern : 0);
 
 	DP_INFO("[%s]:[%s] [%s] [%s]\n", name, status, bpp, pattern);
+	SDE_EVT32_EXTERNAL(connector->base.id, hfi->connected, bpp, pattern);
+
 	envp[0] = name;
 	envp[1] = status;
 	envp[2] = bpp;
@@ -611,6 +614,7 @@ static int _hfi_send_hot_plug(struct dp_mgr_hfi_priv *hfi_priv,
 	reinit_completion(&hfi_priv->hpd_comp);
 
 	DP_INFO("****** HOTPLUG (%d %d) *******\n", hfi_priv->connected, config->hpd_irq);
+	SDE_EVT32_EXTERNAL(hfi_priv->connected, config->hpd_irq);
 	if (hfi_priv->connected) {
 		rc = _send_plug(hfi_priv, config);
 		if (config->hpd_irq)
@@ -628,6 +632,7 @@ static int _hfi_send_hot_plug(struct dp_mgr_hfi_priv *hfi_priv,
 	}
 
 end:
+	SDE_EVT32_EXTERNAL(hfi_priv->connected, config->hpd_irq, rc);
 	if (rc)
 		DP_WARN("HOTPLUG (%d %d) failed. rc=%d\n", hfi_priv->connected, config->hpd_irq,
 				rc);
@@ -993,6 +998,7 @@ end:
 		if (!skip_hpd)
 			rc = _hfi_send_hot_plug(hfi_priv, &config);
 		DP_INFO("connected\n");
+		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hfi_priv->connected);
 	}
 
 	return rc;
@@ -1038,6 +1044,7 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 
 	if (!hfi_priv->connected) {
 		DP_INFO("DP already disconnected, ignoring\n");
+		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, hfi_priv->connected);
 		complete_all(&hfi_priv->hpd_comp);
 		return 0;
 	}
@@ -1060,6 +1067,7 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 	_hfi_update_config(hfi_priv, &config);
 	_hfi_send_hot_plug(hfi_priv, &config);
 	DP_INFO("disconnected\n");
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hfi_priv->connected);
 
 	mutex_unlock(&hfi_priv->hpd_mutex);
 
@@ -1172,6 +1180,7 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 	hfi_priv->connected = hpd_state;
 	rc = _hfi_send_hot_plug(hfi_priv, &config);
 	DP_INFO("attention %d\n", hpd_state);
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hpd_state, config.hpd_irq);
 
 	mutex_unlock(&hfi_priv->hpd_mutex);
 
@@ -1802,6 +1811,8 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	DP_INFO("EDID Info: stream_id=%d size=%u, link_rate=%u, lane_count=%u, bpp=%u, flags=%x\n",
 			info->stream_id, edid_buf->size, info->link_rate,
 			info->lane_count, info->bits_per_pixel, info->flags);
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, info->stream_id, edid_buf->size, info->link_rate,
+			info->lane_count, info->bits_per_pixel, info->flags);
 
 	edid_map = hfi->edid_addr_map;
 	if (!edid_map) {
@@ -1855,14 +1866,18 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 		DP_ERR("No modes received from DCP\n");
 		goto end;
 	}
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, hfi->stream_id, hfi->mode_count);
 	DP_INFO("DP%d: Received %u modes from DCP:\n", hfi->stream_id, hfi->mode_count);
 	for (i = 0; i < hfi->mode_count; i++) {
 		mode = &hfi->mode_list[i].base;
 
-		DP_INFO("DP%d: Mode[%d]: %ux%u@%uHz hb:(%u %u %u) vb:(%u %u %u)\n", hfi->stream_id,
+		DP_DEBUG("DP%d: Mode[%d]: %ux%u@%uHz hb:(%u %u %u) vb:(%u %u %u)\n", hfi->stream_id,
 				i, mode->h_active, mode->v_active, mode->refresh_rate,
 				mode->h_front_porch, mode->h_sync_width, mode->h_back_porch,
 				mode->v_front_porch, mode->v_sync_width, mode->v_back_porch);
+		SDE_EVT32_EXTERNAL(hfi->stream_id, i, mode->h_active, mode->v_active,
+				mode->refresh_rate);
 	}
 end:
 	_hfi_notify_hpd_user(hfi, hfi->connected);
@@ -1890,6 +1905,7 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 	}
 
 	hpd_status = (struct hfi_display_hpd_status *) payload;
+	SDE_EVT32_EXTERNAL(hfi->stream_id, hpd_status->dp_evt);
 
 	switch (hpd_status->dp_evt) {
 	case HFI_DP_EVENT_HPD_UNPLUGGED:
@@ -2520,6 +2536,7 @@ static void dp_mgr_hfi_handle_event(void *cb_data, u32 event, void *payload, u32
 	struct dp_hfi *hfi = cb_data;
 
 	DP_INFO("hfi response for stream%d: %x\n", hfi->stream_id, event);
+	SDE_EVT32_EXTERNAL(hfi->stream_id, event);
 	switch (event) {
 	case HFI_COMMAND_DISPLAY_EVENT_HPD_STATUS:
 		dp_mgr_hfi_handle_hpd_status(hfi, payload, size);
@@ -2901,6 +2918,7 @@ static int dp_mgr_hfi_post_enable(struct dp_client *client, int panel_id)
 
 	complete_all(&hfi_priv->hpd_comp);
 	DP_INFO("hpd plug completed\n");
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, stream_id, rc);
 
 	return rc;
 }
