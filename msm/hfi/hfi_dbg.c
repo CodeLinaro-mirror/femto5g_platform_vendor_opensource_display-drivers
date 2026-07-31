@@ -498,6 +498,11 @@ void hfi_dbg_destroy(void)
 		return;
 	}
 	pdev = to_platform_device(dev);
+
+	if (!pdev) {
+		SDE_ERROR("Invalid platform device\n");
+		return;
+	}
 	ddev = platform_get_drvdata(pdev);
 
 	if (!ddev || !ddev->dev_private) {
