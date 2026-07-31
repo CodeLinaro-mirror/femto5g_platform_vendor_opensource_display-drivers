@@ -54,6 +54,10 @@
 #define CTL_PIPE_ACTIVE              0x12C
 #define CTL_LAYER_ACTIVE             0x130
 #define CTL_DSPP_0_FLUSH             0x13c
+#define CTL_DSPP_5_FLUSH             0x200
+#define CTL_DSPP_FLUSH_STRIDE        4
+#define CTL_DSPP_5_FLUSH_STRIDE      8
+#define CTL_DSPP_5_START_IDX         5
 
 #define CTL_INTF_MASTER               0x134
 #define CTL_UIDLE_ACTIVE              0x138
@@ -165,7 +169,7 @@ static const u32 wb_flush_tbl[WB_MAX] = {SDE_NONE, SDE_NONE, 1, 2};
 /**
  * list of INTF bits in CTL_INTF_FLUSH
  */
-static const u32 intf_flush_tbl[INTF_MAX] = {SDE_NONE, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+static const u32 intf_flush_tbl[INTF_MAX] = {SDE_NONE, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
 /**
  * list of DSC bits in CTL_DSC_FLUSH
@@ -1053,10 +1057,19 @@ static inline void _sde_hw_ctl_write_dspp_flushes(struct sde_hw_ctl *ctx) {
 
 	for (i = 0; i < CTL_MAX_DSPP_COUNT; i++) {
 		u32 pending = ctx->flush.pending_dspp_flush_masks[i];
+		u32 offset;
 
-		if (pending)
-			SDE_REG_WRITE(&ctx->hw, CTL_DSPP_0_FLUSH + (i * 4),
-					pending);
+		if (!pending)
+			continue;
+
+		if (i < CTL_DSPP_5_START_IDX)
+			offset = CTL_DSPP_0_FLUSH + (i * CTL_DSPP_FLUSH_STRIDE);
+		else
+			offset = CTL_DSPP_5_FLUSH +
+					((i - CTL_DSPP_5_START_IDX) *
+					CTL_DSPP_5_FLUSH_STRIDE);
+
+		SDE_REG_WRITE(&ctx->hw, offset, pending);
 	}
 }
 

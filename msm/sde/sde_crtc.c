@@ -1122,6 +1122,9 @@ static void _sde_crtc_setup_dim_layer_cfg(struct drm_crtc *crtc,
 						cstate->lm_roi[i].y;
 		}
 
+		split_dim_layer.rect.x += sde_crtc->offset_x;
+		split_dim_layer.rect.y += sde_crtc->offset_y;
+
 		/* update dim layer rect for panel stacking crtc */
 		if (cstate->line_insertion.padding_height)
 			_sde_crtc_calc_split_dim_layer_yh_param(crtc, &split_dim_layer.rect.y,
@@ -3086,7 +3089,8 @@ static int _sde_validate_hw_resources(struct sde_crtc *sde_crtc,
 	for (i = 0; i < num_mixers; i++) {
 		if (!cstate->is_loopback_mode && (!sde_crtc->mixers[i].hw_lm ||
 			!sde_crtc->mixers[i].hw_ctl ||
-			!sde_crtc->mixers[i].hw_ds)) {
+			(sde_crtc->mixers[i].hw_lm->cap->ds != DS_MAX &&
+			!sde_crtc->mixers[i].hw_ds))) {
 			SDE_ERROR("%s:insufficient resources for mixer(%d)\n",
 				sde_crtc->name, i);
 			SDE_EVT32(DRMID(&sde_crtc->base), sde_crtc->num_mixers,
@@ -3094,6 +3098,10 @@ static int _sde_validate_hw_resources(struct sde_crtc *sde_crtc,
 				sde_crtc->mixers[i].hw_ctl,
 				sde_crtc->mixers[i].hw_ds, SDE_EVTLOG_ERROR);
 			return -EINVAL;
+		} else if (sde_crtc->mixers[i].hw_lm &&
+				sde_crtc->mixers[i].hw_lm->cap->ds == DS_MAX) {
+			SDE_ERROR("%s: dest scaler not supported for mixer(%d)\n",
+					sde_crtc->name, i);
 		}
 	}
 

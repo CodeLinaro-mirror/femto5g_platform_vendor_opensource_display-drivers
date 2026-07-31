@@ -3986,6 +3986,7 @@ static void _sde_plane_atomic_disable(struct drm_plane *plane,
 	struct drm_plane_state *state;
 	struct sde_plane_state *pstate;
 	struct sde_plane_state *old_pstate;
+	struct sde_hw_ctl *ctl;
 	u32 multirect_index = SDE_SSPP_RECT_0;
 	struct sde_cp_crtc_skip_blend_plane skip_blend_plane;
 	u32 blend_type;
@@ -4039,6 +4040,16 @@ static void _sde_plane_atomic_disable(struct drm_plane *plane,
 	_sde_plane_set_active_fetch(psde, pstate, false);
 	_sde_plane_local_flush(psde, pstate);
 
+	/* Flush SSPP deactivation into pending_flush_mask so CTL_FLUSH includes
+	 * the SSPP bit even when this plane is no longer in crtc->state->plane_mask.
+	 */
+	ctl = _sde_plane_get_hw_ctl(plane, old_state);
+	if (!ctl)
+		SDE_ERROR("plane%d: failed to get hw_ctl for disable flush\n",
+				plane->base.id);
+	else
+		sde_plane_ctl_flush(plane, ctl, true);
+
 	/* On disabling CAC, need to reset CAC control programming to ensure
 	 * proper CAC to non-CAC transition
 	 */
@@ -4046,7 +4057,8 @@ static void _sde_plane_atomic_disable(struct drm_plane *plane,
 		if (psde->pipe_hw->ops.setup_cac_ctrl)
 			psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, SDE_CAC_NONE,
 				false, 0xf);
-		sde_plane_ctl_flush(plane, _sde_plane_get_hw_ctl(plane, old_state), true);
+		if (ctl)
+			sde_plane_ctl_flush(plane, ctl, true);
 	}
 }
 
@@ -4607,7 +4619,7 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 
 	/* linux default file descriptor range on each process */
 	msm_property_install_range(&psde->property_info, "input_fence",
-		0x0, 0, INR_OPEN_MAX, 0, PLANE_PROP_INPUT_FENCE);
+		0x0, 0, ~0, 0, PLANE_PROP_INPUT_FENCE);
 
 	if (is_master)
 		_sde_plane_install_master_only_properties(psde);
