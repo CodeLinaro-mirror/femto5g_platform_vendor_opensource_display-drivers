@@ -100,6 +100,8 @@ static void msm_parse_mode_priv_info(const struct msm_display_mode *msm_mode,
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_NONDSC_BPP_SWITCH;
 	if (msm_is_mode_seamless_emsync_fps_switch(msm_mode))
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_EMSYNC_FPS_SWITCH;
+	if (msm_is_mode_seamless_spr_mode_switch(msm_mode))
+		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_SPR_MODE_SWITCH;
 	if (msm_is_mode_seamless_dms_vid(msm_mode))
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS_VID;
 }
@@ -179,6 +181,8 @@ static void dsi_convert_to_msm_mode(const struct dsi_display_mode *dsi_mode,
 		msm_mode->private_flags |= MSM_MODE_FLAG_NONDSC_BPP_SWITCH;
 	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)
 		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_EMSYNC_FPS_SWITCH;
+	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_SPR_MODE_SWITCH)
+		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_SPR_MODE_SWITCH;
 	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS_VID)
 		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DMS_VID;
 }
@@ -244,19 +248,12 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 	if (c_bridge->dsi_mode.dsi_mode_flags &
 		(DSI_MODE_FLAG_SEAMLESS | DSI_MODE_FLAG_VRR |
 		 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH |
-		 DSI_MODE_FLAG_DMS_VID)) {
+		 DSI_MODE_FLAG_SPR_MODE_SWITCH | DSI_MODE_FLAG_DMS_VID)) {
 		DSI_DEBUG("[%d] seamless pre-enable\n", c_bridge->id);
 		if ((c_bridge->dsi_mode.dsi_mode_flags &
-			(DSI_MODE_FLAG_VRR | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) &&
+			(DSI_MODE_FLAG_VRR | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH |
+			 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_SPR_MODE_SWITCH)) &&
 			(disp_op == MSM_DISP_OP_HFI)) {
-			rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
-			if (rc) {
-				DSI_ERR("[%d] DSI display prepare failed, rc=%d\n",
-					c_bridge->id, rc);
-				return;
-			}
-		} else if ((c_bridge->dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK) &&
-			   (disp_op == MSM_DISP_OP_HFI)) {
 			rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
 			if (rc) {
 				DSI_ERR("[%d] DSI display prepare failed, rc=%d\n",
@@ -314,7 +311,7 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 	if (c_bridge->dsi_mode.dsi_mode_flags &
 			(DSI_MODE_FLAG_SEAMLESS | DSI_MODE_FLAG_VRR |
 			 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH |
-			 DSI_MODE_FLAG_DMS_VID)) {
+			 DSI_MODE_FLAG_SPR_MODE_SWITCH | DSI_MODE_FLAG_DMS_VID)) {
 		DSI_DEBUG("[%d] seamless enable\n", c_bridge->id);
 		return;
 	}
@@ -528,6 +525,7 @@ static bool _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
 		(!(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_VID)) &&
 		(!(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_CMD)) &&
 		(!(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) &&
+		(!(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_SPR_MODE_SWITCH)) &&
 		(!crtc_state->active_changed ||
 		 display->is_cont_splash_enabled)) {
 			/* DMS on cmd and video mode use different flag. */
@@ -667,6 +665,7 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DMS_VID) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_EMSYNC_FPS_SWITCH) ||
+		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_SPR_MODE_SWITCH) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_VID) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_CMD))) {
 		DSI_INFO("seamless upon active changed 0x%x %d\n",
@@ -1148,6 +1147,10 @@ void dsi_conn_set_submode_blob_info(struct drm_connector *conn,
 		sde_kms_info_add_keyint(info, "dsc_mode",
 			dsi_mode->priv_info->dsc_enabled ? MSM_DISPLAY_DSC_MODE_ENABLED :
 				MSM_DISPLAY_DSC_MODE_DISABLED);
+		sde_kms_info_add_keyint(info, "spr_mode",
+			dsi_mode->priv_info->dsc_enabled ?
+				dsi_mode->priv_info->dsc.chroma_format :
+				dsi_mode->priv_info->vdc.chroma_format);
 		topo_name = sde_conn_get_topology_name(conn,
 			dsi_mode->priv_info->topology);
 		if (topo_name)

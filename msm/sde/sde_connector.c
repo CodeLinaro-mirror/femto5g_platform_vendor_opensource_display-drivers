@@ -82,6 +82,12 @@ static const struct drm_prop_enum_list e_dsc_mode[] = {
 	{MSM_DISPLAY_DSC_MODE_ENABLED, "dsc_enabled"},
 	{MSM_DISPLAY_DSC_MODE_DISABLED, "dsc_disabled"},
 };
+static const struct drm_prop_enum_list e_spr_mode[] = {
+	{MSM_DISPLAY_SPR_DISABLED, "spr_disabled"},
+	{MSM_DISPLAY_SPR_YUV_422, "spr_yuv_422"},
+	{MSM_DISPLAY_SPR_YUV_420, "spr_yuv_420"},
+	{MSM_DISPLAY_SPR_MAX, "none"},
+};
 static const struct drm_prop_enum_list e_frame_trigger_mode[] = {
 	{FRAME_DONE_WAIT_DEFAULT, "default"},
 	{FRAME_DONE_WAIT_SERIALIZE, "serialize_frame_trigger"},
@@ -1524,11 +1530,14 @@ static int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	c_state = to_sde_connector_state(connector->state);
 	sde_enc = to_sde_encoder_virt(c_conn->encoder);
 
-	if (sde_enc) {
-		sde_enc->vrr_info.vhm_cmd_in_progress = SDE_NO_CMD_SCHEDULED;
-		vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
-			CRTC_PROP_VM_REQ_STATE);
+	if (!sde_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
 	}
+
+	sde_enc->vrr_info.vhm_cmd_in_progress = SDE_NO_CMD_SCHEDULED;
+	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+			CRTC_PROP_VM_REQ_STATE);
 
 	if (vm_req == VM_REQ_RELEASE)
 		return 0;
@@ -4731,6 +4740,10 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 
 		msm_property_install_enum(&c_conn->property_info, "dsc_mode", 0,
 			0, e_dsc_mode, ARRAY_SIZE(e_dsc_mode), 0, CONNECTOR_PROP_DSC_MODE);
+
+		msm_property_install_enum(&c_conn->property_info, "spr_mode", 0,
+			0, e_spr_mode, ARRAY_SIZE(e_spr_mode),
+			MSM_DISPLAY_SPR_MAX, CONNECTOR_PROP_SPR_MODE);
 
 		_sde_connector_install_emsync_fps_property(c_conn, dsi_display);
 

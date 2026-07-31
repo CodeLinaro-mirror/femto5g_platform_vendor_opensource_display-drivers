@@ -36,16 +36,19 @@
 #define DSI_MODE_MATCH_DSC_CONFIG (1 << 2)
 #define DSI_MODE_MATCH_NONDSC_BPP_CONFIG (1 << 3)
 #define DSI_MODE_MATCH_EMSYNC_FPS (1 << 4)
+#define DSI_MODE_MATCH_SPR_MODE (1 << 5)
 /* Space in TX_CMD_BUF reserved for DT-defined DCS commands */
 #define DSI_TX_CMD_BUF_DT_CMD_SIZE  (SZ_4K * 4)
 /* Reserved space in TX_CMD_BUF for runtime custom dcs commands */
 #define DSI_RUNTIME_CUSTOM_DCS_CMD_RESERVED_SIZE  (SZ_4K)
 /* Reserved space in TX_CMD_BUF to always ensure DCP has space available */
 #define DSI_TX_CMD_BUF_DCP_RESERVED_SIZE  (SZ_4K)
-#define DSI_TX_CMD_BUF_SIZE  (DSI_TX_CMD_BUF_DT_CMD_SIZE + \
+#define DSI_TX_CMD_BUF_SIZE  ALIGN((DSI_TX_CMD_BUF_DT_CMD_SIZE + \
 				DSI_RUNTIME_CUSTOM_DCS_CMD_RESERVED_SIZE + \
-				DSI_TX_CMD_BUF_DCP_RESERVED_SIZE)
+				DSI_TX_CMD_BUF_DCP_RESERVED_SIZE), SZ_4K * 4)
 
+/* Size of the TX command buffer used specifically for non-embedded cmd transfers */
+#define DSI_TX_CMD_BUF_NON_EMBEDDED_SIZE  (SZ_4K * 4)
 /*
  * DSI Validate Mode modifiers
  * @DSI_VALIDATE_FLAG_ALLOW_ADJUST:	Allow mode validation to also do fixup
@@ -256,6 +259,10 @@ struct dsi_display_ops {
  * @dsi_hfi_info:         HFI adapter information
  * @display_ops:          HWIO/HFI display ops
  * @enabled:	      Boolean to indicate display enabled.
+ * @tx_cmd_buf_non_embedded:  TX command buffer object for non-embedded mode.
+ * @cmd_buffer_size_non_embedded: Size of the non-embedded TX command buffer.
+ * @cmd_buffer_iova_non_embedded:  I/O virtual address of the non-embedded mode TX command buffer.
+ * @vaddr_non_embedded:           Kernel virtual address of the non-embedded mode TX command buffer.
  */
 struct dsi_display {
 	struct platform_device *pdev;
@@ -316,6 +323,10 @@ struct dsi_display {
 	u64 cmd_buffer_iova;
 	void *vaddr;
 	struct msm_gem_address_space *aspace;
+	struct drm_gem_object *tx_cmd_buf_non_embedded;
+	u32 cmd_buffer_size_non_embedded;
+	u64 cmd_buffer_iova_non_embedded;
+	void *vaddr_non_embedded;
 
 	struct mipi_dsi_host host;
 	struct dsi_bridge    *bridge;
