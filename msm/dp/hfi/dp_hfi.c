@@ -565,8 +565,66 @@ static int _append_max_link_params(struct dp_hfi *hfi)
 	return kv_size;
 }
 
+/*
+ * _append_lane_tuning_params - Pack lane tuning param KV pair into kv_props.
+ */
+static int _append_lane_tuning_params(struct dp_hfi *hfi, u32 *lane_tuning_payload)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
+	struct dp_parser *parsed;
+	struct hfi_util_kv_helper *kv_props = hfi->kv_props;
+	u32 kv_size = 0, words, count, i;
+	u16 entry;
+
+	if (!hfi_priv->parser)
+		return kv_size;
+
+	parsed = hfi_priv->parser;
+
+	if (!kv_props || !lane_tuning_payload || !parsed->lane_tuning_params)
+		return kv_size;
+
+	count = parsed->lane_tuning_count;
+	if (!count)
+		return kv_size;
+
+	/* words = 1 (count) + ceil(count/2) packed entries */
+	words = 1 + ((count + 1) / 2);
+
+	lane_tuning_payload[0] = count;
+	for (i = 0; i < count; i++) {
+		entry = ((u16)parsed->lane_tuning_params[i].value << 8) |
+				parsed->lane_tuning_params[i].id;
+		if (i % 2 == 0)
+			lane_tuning_payload[1 + (i / 2)] = entry;
+		else
+			lane_tuning_payload[1 + (i / 2)] |= ((u32)entry << 16);
+	}
+
+	hfi_util_kv_helper_add(kv_props,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_LANE_TUNING_PARAMS, 0, words),
+			lane_tuning_payload);
+	kv_size += words * sizeof(u32);
+
+	return kv_size;
+}
+
 void dp_hfi_panel_init(struct dp_hfi *hfi)
 {
+	/*
+	 * Number of kv_props entries contributed by each helper.
+	 * DP_HFI_KV_PROP_COUNT is the last enumerator and automatically
+	 * accumulates the total count of kv_props to allocate.
+	 */
+	enum {
+		DP_HFI_KV_PROP_AUX_CFG = 1,
+		DP_HFI_KV_PROP_LT_PARAMS = NUM_BW_CODE,
+		DP_HFI_KV_PROP_MAX_LINK_RATE,
+		DP_HFI_KV_PROP_MAX_LANE_COUNT,
+		DP_HFI_KV_PROP_LANE_TUNING_PARAMS,
+		DP_HFI_KV_PROP_COUNT,
+	};
+
 	struct hfi_client_t *hfi_client = hfi->hfi_client;
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
 	struct hfi_util_kv_helper *kv_props;
@@ -579,6 +637,7 @@ void dp_hfi_panel_init(struct dp_hfi *hfi)
 	 */
 	u32 aux_cfg_payload[PHY_AUX_CFG_MAX + 1];
 	u32 lt_params_payload[NUM_BW_CODE * (2 + NUM_VSWING_VAL)];
+	u32 lane_tuning_payload[1 + ((DP_MAX_LANE_TUNING_PARAMS + 1) / 2)];
 	u32 kv_count, payload_size, kv_size = 0;
 
 	if (!hfi_client) {
@@ -598,8 +657,7 @@ void dp_hfi_panel_init(struct dp_hfi *hfi)
 		return;
 	}
 
-	/* aux_cfg(1) + lt_params(NUM_BW_CODE) + max_link_rate(1) + max_lane_count(1) */
-	kv_props = hfi_util_kv_helper_alloc(1 + NUM_BW_CODE + 2);
+	kv_props = hfi_util_kv_helper_alloc(DP_HFI_KV_PROP_COUNT);
 	if (!kv_props) {
 		DP_ERR("Failed to allocate kv_props for dp panel init\n");
 		hfi_adapter_release_cmd_buf(hfi_client, buffer);
@@ -612,6 +670,7 @@ void dp_hfi_panel_init(struct dp_hfi *hfi)
 	kv_size += _append_aux_cfg(hfi, aux_cfg_payload);
 	kv_size += _append_lt_params(hfi, lt_params_payload);
 	kv_size += _append_max_link_params(hfi);
+	kv_size += _append_lane_tuning_params(hfi, lane_tuning_payload);
 
 	if (!kv_size) {
 		DP_DEBUG("No dp panel init caps to send\n");

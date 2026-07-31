@@ -1408,6 +1408,7 @@ static int dp_mgr_hfi_parser(struct dp_mgr_hfi_priv *hfi_priv)
 	dp_parser_link_training_params(parser);
 	dp_parser_max_link_rate(parser);
 	dp_parser_max_lane_count(parser);
+	dp_parser_lane_tuning_params(parser);
 
 	return 0;
 }
