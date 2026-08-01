@@ -561,6 +561,7 @@ struct sde_crtc_hal_funcs {
  * @rgb_hist_buffers: Array of pointers to RGB histogram buffer structures
  * @rgb_hist_buffer_lock: Mutex to protect access to RGB histogram buffers
  * @qrtc_buffer     : struct stores qrtc buffer related data
+ * @vblank_pm_disable: vblank has been disabled by pm runtime suspend
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -706,6 +707,8 @@ struct sde_crtc {
 	struct sde_pa_hist_buffer pa_hist_buffers[PA_HIST_BUFFER_NUM];
 
 	struct sde_qrtc_buffer qrtc_buffer;
+
+	bool vblank_pm_disable;
 };
 
 enum sde_crtc_dirty_flags {

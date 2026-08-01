@@ -5337,6 +5337,8 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	struct drm_connector_list_iter conn_iter;
 	struct sde_encoder_virt *sde_enc = NULL;
 	struct msm_drm_private *priv = sde_kms->dev->dev_private;
+	struct drm_vblank_crtc *vblank;
+	struct sde_crtc *sde_crtc;
 
 	drm_connector_list_iter_begin(ddev, &conn_iter);
 	drm_for_each_connector_iter(conn, &conn_iter) {
@@ -5353,6 +5355,16 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 			continue;
 
 		crtc_id = drm_crtc_index(conn->state->crtc);
+
+		vblank = &ddev->vblank[crtc_id];
+		if (atomic_read(&vblank->refcount)) {
+			SDE_EVT32(DRMID(conn->state->crtc), atomic_read(&vblank->refcount),
+					SDE_EVTLOG_FUNC_CASE1);
+			drm_crtc_vblank_off(conn->state->crtc);
+			sde_crtc = to_sde_crtc(conn->state->crtc);
+			sde_crtc->vblank_pm_disable = true;
+		}
+
 		if (priv->disp_thread[crtc_id].thread)
 			kthread_flush_worker(
 				&priv->disp_thread[crtc_id].worker);
@@ -5953,6 +5965,8 @@ int sde_kms_resume_helper(struct sde_kms *sde_kms)
 {
 	struct drm_device *ddev;
 	struct drm_encoder *enc;
+	struct drm_crtc *crtc;
+	struct sde_crtc *sde_crtc;
 	struct drm_modeset_acquire_ctx ctx;
 	int ret, i;
 
@@ -5988,6 +6002,15 @@ retry:
 	}
 
 	sde_kms->suspend_block = false;
+
+	drm_for_each_crtc(crtc, ddev) {
+		sde_crtc = to_sde_crtc(crtc);
+		if (sde_crtc->vblank_pm_disable) {
+			SDE_EVT32(DRMID(crtc), SDE_EVTLOG_FUNC_CASE2);
+			drm_crtc_vblank_on(crtc);
+			sde_crtc->vblank_pm_disable = false;
+		}
+	}
 
 	if (sde_kms->suspend_state) {
 		sde_kms->suspend_state->acquire_ctx = &ctx;
