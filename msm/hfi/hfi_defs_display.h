@@ -312,12 +312,15 @@ struct hfi_display_dcs_cmd_error_data {
  *   Block the idle timer from expiring
  * @var HFI_UNBLOCK_TIMER
  *   Unblock the idle timer from expiring
+ * @var HFI_IMMEDIATE
+ *   Notify FW to immediately expire the idle timer
  */
 enum hfi_display_idle_timer_control {
 	HFI_DEFAULT          = 0x0,
 	HFI_WAKEUP           = 0x1,
 	HFI_BLOCK_TIMER      = 0x2,
 	HFI_UNBLOCK_TIMER    = 0x3,
+	HFI_IMMEDIATE        = 0x4,
 };
 
 /*
