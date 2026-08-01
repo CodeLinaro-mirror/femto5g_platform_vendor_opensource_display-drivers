@@ -464,6 +464,12 @@ struct sde_encoder_hal_funcs {
 	int (*early_wakeup_call[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
+	 * idle_timer_immediate_expiry - Command FW to immediately expire the idle timer
+	 * @enc: Pointer to sde encoder structure
+	 */
+	int (*idle_timer_immediate_expiry[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
 	 * register_panel_dead_event_notify - register panel dead event notification
 	 * @enc: Pointer to sde encoder structure
 	 * @enable: flag to regitser/deregister event.
@@ -719,6 +725,12 @@ void sde_encoder_get_hw_resources(struct drm_encoder *encoder,
  * @encoder:	encoder pointer
  */
 void sde_encoder_early_wakeup(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_idle_timer_immediate_expiry - notify FW to immediately expire the idle timer
+ * @encoder:	encoder pointer
+ */
+int sde_encoder_idle_timer_immediate_expiry(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_early_ept_hint - early wake up hint handling

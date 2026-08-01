@@ -7116,6 +7116,33 @@ void sde_encoder_early_wakeup(struct drm_encoder *drm_enc)
 	SDE_ATRACE_END("queue_early_wakeup_work");
 }
 
+int sde_encoder_idle_timer_immediate_expiry(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = NULL;
+	enum msm_disp_op disp_op;
+	int rc = 0;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	SDE_EVT32(DRMID(drm_enc), disp_op, SDE_EVTLOG_FUNC_ENTRY);
+
+	if (sde_enc->hal_ops.idle_timer_immediate_expiry[disp_op]) {
+		rc = sde_enc->hal_ops.idle_timer_immediate_expiry[disp_op](sde_enc);
+		if (rc)
+			SDE_ERROR_ENC(sde_enc, "failed to send idle timer immediate expiry hint\n");
+	}
+
+	SDE_EVT32(DRMID(drm_enc), disp_op, rc, SDE_EVTLOG_FUNC_EXIT);
+
+	return rc;
+}
+
 void sde_encoder_handle_hw_fence_error(int ctl_idx, struct sde_kms *sde_kms, u32 handle, int error)
 {
 	struct drm_encoder *drm_enc;
