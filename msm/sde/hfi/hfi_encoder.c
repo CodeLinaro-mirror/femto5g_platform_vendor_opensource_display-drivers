@@ -373,16 +373,31 @@ static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, vo
 	hfi_connector_report_panel_dead(sde_conn, false);
 }
 
-static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
-		void *payload, u32 size, struct hfi_prop_listener *listener)
+static void hfi_enc_hfi_prop_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *listener)
 {
 	struct hfi_encoder *hfi_enc;
 	struct sde_encoder_virt *sde_enc;
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
+	u32 obj_id;
+	u32 cmd_id;
+	void *payload;
+	u32 size;
 	u32 event = 0, exp_size = 0;
 	bool recovery_events;
-	u32 *data = payload;
+	u32 *data;
+
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info from FW\n");
+		return;
+	}
+
+	obj_id = packet_info->id;
+	cmd_id = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
+	data = payload;
 
 	if (!listener) {
 		SDE_ERROR("invalid listener from FW for cmd_id %x obj_id %x size %d\n",
@@ -1921,16 +1936,27 @@ static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 	return rc;
 }
 
-static void hfi_enc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload, u32 size,
+static void hfi_enc_misr_read_hfi_prop_handler(struct hfi_packet_info *packet_info,
 			struct hfi_prop_listener *hfi_listener)
 {
-	struct hfi_encoder *hfi_enc = container_of(hfi_listener,
-		struct hfi_encoder, misr_read_listener);
+	struct hfi_encoder *hfi_enc;
 	struct misr_read_data_ret *misr_data;
 	struct sde_misr_values *misr_read_values;
+	void *payload;
+	u32 size;
 	u32 max_count = 0;
 	u32 module_type = 0;
 	u32 *misr_values;
+
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info from fw\n");
+		return;
+	}
+
+	hfi_enc = container_of(hfi_listener,
+		struct hfi_encoder, misr_read_listener);
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	if (!hfi_enc) {
 		SDE_ERROR("invalid object or listener from fw\n");
@@ -2091,25 +2117,32 @@ static ktime_t hfi_enc_get_vblank_timestamp(struct sde_encoder_virt *enc)
 
 /**
  * _hfi_dbg_dump_handler - HFI property listener callback for debug dump response
- * @display_id: display identifier
- * @cmd_id:     HFI command identifier
- * @payload:    response payload from firmware
- * @size:       payload size in bytes
+ * @packet_info: HFI packet info for the response
  * @listener:   HFI property listener structure
  *
  * Invoked by the HFI framework when the firmware responds to
  * HFI_COMMAND_DEBUG_DUMP_ALL.  Triggers the local dump operations.
  */
-static void _hfi_dbg_dump_handler(u32 display_id, u32 cmd_id,
-		void *payload, u32 size, struct hfi_prop_listener *listener)
+static void _hfi_dbg_dump_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *listener)
 {
 	struct hfi_encoder *hfi_enc = container_of(listener,
 			struct hfi_encoder, dbg_dump_listener);
 	struct sde_encoder_virt *sde_enc;
 	struct drm_encoder *drm_enc;
+	u32 display_id;
+	u32 cmd_id;
 	bool recovery_events;
 	struct drm_connector *conn;
 	static u32 counter;
+
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info from FW\n");
+		return;
+	}
+
+	display_id = packet_info->id;
+	cmd_id = packet_info->cmd;
 
 	if (!hfi_enc) {
 		SDE_ERROR("invalid object or listener from FW\n");

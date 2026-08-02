@@ -320,13 +320,10 @@ int dsi_hfi_process_cmd_buf(struct hfi_client_t *hfi_client, struct hfi_cmdbuf_t
 
 /**
  * dsi_hfi_prop_handler() - handle/parse hfi properties
- * @UNIQUE_DISP_OR_OBJ_ID:	display/object ID
- * @CMD_ID: command ID
- * @payload: handle to payload
- * @size: size of payload
+ * @packet_info: handle to hfi packet info
  * @listener: handle to hfi property listener
  */
-void dsi_hfi_prop_handler(u32 UNIQUE_DISP_OR_OBJ_ID, u32 CMD_ID, void *payload, u32 size,
+void dsi_hfi_prop_handler(struct hfi_packet_info *packet_info,
 						struct hfi_prop_listener *listener);
 
 /**

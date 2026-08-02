@@ -241,7 +241,7 @@ struct hfi_buffer_pool {
  * listener of each packet while unpacking HFI command buffer.
  */
 struct hfi_prop_listener {
-	void (*hfi_prop_handler)(u32 obj_id, u32 cmd_id, void *payload, u32 size,
+	void (*hfi_prop_handler)(struct hfi_packet_info *packet_info,
 			struct hfi_prop_listener *listener);
 };
 

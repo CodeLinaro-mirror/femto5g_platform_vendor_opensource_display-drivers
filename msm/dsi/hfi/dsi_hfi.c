@@ -327,18 +327,32 @@ int dsi_hfi_misr_read(struct dsi_display *display)
 
 #endif /* CONFIG_DEBUG_FS */
 
-void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
+void dsi_hfi_prop_handler(struct hfi_packet_info *packet_info,
 			  struct hfi_prop_listener *listener)
 {
 	struct dsi_display_hfi *display_hfi;
 	struct dsi_display *display;
 	u32 dsi_display_obj_id;
+	u32 hfi_uid;
+	u32 prop;
+	void *payload;
+	u32 size;
 	int rc = 0;
+
+	if (!packet_info) {
+		DSI_ERR("invalid packet_info\n");
+		return;
+	}
 
 	if (!listener) {
 		DSI_ERR("invalid listener\n");
 		return;
 	}
+
+	hfi_uid = packet_info->id;
+	prop = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	display = container_of(listener, struct dsi_display,
 						hfi_cb_obj);

@@ -1041,16 +1041,28 @@ static int _hfi_kms_init_device_caps(struct hfi_catalog_base *catalog,
 	return ret;
 }
 
-static void hfi_kms_populate_catalog(u32 display_id, u32 cmd_id,
-		void *prop_data, u32 size, struct hfi_prop_listener *hfi_listener)
+static void hfi_kms_populate_catalog(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *hfi_listener)
 {
 	struct hfi_kms *hfi_kms = container_of(hfi_listener, struct hfi_kms, device_init_listener);
 	struct hfi_catalog_base *catalog;
+	u32 cmd_id;
+	void *prop_data;
+	u32 size;
+
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info from FW\n");
+		return;
+	}
 
 	if (!hfi_kms) {
 		SDE_ERROR("invalid object or listener from FW\n");
 		return;
 	}
+
+	cmd_id = packet_info->cmd;
+	prop_data = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	catalog = hfi_kms->catalog;
 	if (!catalog) {
@@ -1135,16 +1147,26 @@ static int _send_device_init_cmd(struct hfi_kms *hfi_kms)
 	return ret;
 }
 
-static void hfi_kms_get_debug_set_common_property_resp(u32 cmd, u32 obj_id,
-						       void *payload,
-						       u32 payload_size,
+static void hfi_kms_get_debug_set_common_property_resp(struct hfi_packet_info *packet_info,
 						       struct hfi_prop_listener *listener)
 {
 	struct hfi_util_kv_parser kv_parser;
+	u32 cmd;
+	void *payload;
+	u32 payload_size;
 	u32 hfi_prop;
 	u32 *prop_payload;
 	u32 max_words;
 	int ret;
+
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info\n");
+		return;
+	}
+
+	cmd = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	payload_size = packet_info->payload_size;
 
 	if (!listener || !payload) {
 		SDE_ERROR("invalid listener or payload\n");
@@ -1537,11 +1559,21 @@ struct hfi_kms_uidle_status_ctx {
 	u32 uidle_state;
 };
 
-static void _hfi_kms_uidle_status_handler(u32 obj_id, u32 cmd_id,
-		void *payload, u32 size, struct hfi_prop_listener *listener)
+static void _hfi_kms_uidle_status_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *listener)
 {
 	struct hfi_kms_uidle_status_ctx *ctx;
 	struct hfi_display_dbg_property *prop;
+	void *payload;
+	u32 size;
+
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info from FW\n");
+		return;
+	}
+
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	if (!listener || !payload || size < sizeof(struct hfi_display_dbg_property)) {
 		SDE_ERROR("invalid uidle status response listener:%d payload:%d size:%d\n",
@@ -1918,12 +1950,15 @@ int hfi_kms_destroy(struct sde_kms *sde_kms)
 	return 0;
 }
 
-void hfi_kms_resource_vote_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload, u32 size,
+void hfi_kms_resource_vote_hfi_prop_handler(struct hfi_packet_info *packet_info,
 			struct hfi_prop_listener *resource_vote_listener)
 {
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
 	struct hfi_kms *hfi_kms;
+	u32 CMD_ID;
+	void *payload;
+	u32 size;
 	u32 bus_id, i, prop_count;
 	struct hfi_kv_pairs *kv_pairs;
 	struct hfi_bw_config bw_config = {0};
@@ -1933,7 +1968,21 @@ void hfi_kms_resource_vote_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *paylo
 	u32 rc;
 	u32 enable;
 
-	if (!payload || !resource_vote_listener)
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info\n");
+		return;
+	}
+
+	if (!resource_vote_listener) {
+		SDE_ERROR("invalid resource_vote_listener\n");
+		return;
+	}
+
+	CMD_ID = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
+
+	if (!payload)
 		return;
 
 	hfi_kms = container_of(resource_vote_listener, struct hfi_kms, resource_vote_listener);

@@ -242,15 +242,12 @@ static inline int hfi_kms_destroy(struct sde_kms *sde_kms)
 
 /**
  * hfi_kms_resource_vote_hfi_prop_handler - listener function for resource voting
- * @UNIQUE_DISP_OR_OBJ_ID: Unique ID for display or object
- * @CMD_ID: HFI Command ID for which callback received
- * @payload: Pointer to the payload data
- * @size: Size of the payload
+ * @packet_info: Pointer to the hfi packet info for the response
  * @resource_vote_listener: Pointer to the resource vote listener structure
  * Returns: This function does not return a value.
  */
-void hfi_kms_resource_vote_hfi_prop_handler(u32 UNIQUE_DISP_OR_OBJ_ID, u32 CMD_ID, void *payload,
-		u32 size, struct hfi_prop_listener *resource_vote_listener);
+void hfi_kms_resource_vote_hfi_prop_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *resource_vote_listener);
 
 /**
  * to_hfi_kms - convert sde_kms pointer to hfi kms pointer
