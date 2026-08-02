@@ -609,19 +609,17 @@ static int _hfi_send_hot_plug(struct dp_mgr_hfi_priv *hfi_priv,
 		struct hfi_device_hotplug_config *config)
 {
 	int rc;
-	bool skip_wait = false;
+	bool skip_wait = hfi_priv->connected && hfi_priv->active_streams;
 
-	reinit_completion(&hfi_priv->hpd_comp);
+	if (!skip_wait)
+		reinit_completion(&hfi_priv->hpd_comp);
 
 	DP_INFO("****** HOTPLUG (%d %d) *******\n", hfi_priv->connected, config->hpd_irq);
 	SDE_EVT32_EXTERNAL(hfi_priv->connected, config->hpd_irq);
-	if (hfi_priv->connected) {
+	if (hfi_priv->connected)
 		rc = _send_plug(hfi_priv, config);
-		if (config->hpd_irq)
-			skip_wait = true;
-	} else {
+	else
 		rc = _send_unplug(hfi_priv, config);
-	}
 
 	if (rc || skip_wait)
 		goto end;
@@ -630,7 +628,6 @@ static int _hfi_send_hot_plug(struct dp_mgr_hfi_priv *hfi_priv,
 		DP_WARN("%s timeout\n", hfi_priv->connected ? "connect" : "disconnect");
 		rc = -ETIMEDOUT;
 	}
-
 end:
 	SDE_EVT32_EXTERNAL(hfi_priv->connected, config->hpd_irq, rc);
 	if (rc)
@@ -1024,6 +1021,41 @@ int dp_mgr_hfi_hpd_configure_cb(void *data)
 	return rc;
 }
 
+static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv)
+{
+	int rc = 0;
+	struct dp_hfi *hfi;
+	int i;
+
+	if (!hfi_priv) {
+		DP_ERR("Invalid hfi_priv data\n");
+		return -EINVAL;
+	}
+
+	if (!hfi_priv->configured)
+		return 0;
+
+	for (i = 0; i < hfi_priv->max_streams; i++) {
+		hfi = hfi_priv->hfi[i];
+		if (hfi->hpd_events_register) {
+			rc = _register_hpd_events(hfi_priv, i, false);
+			if (rc)
+				DP_ERR("failed to register hpd events on stream_id=%d\n", i);
+			else
+				hfi->hpd_events_register = false;
+		}
+	}
+
+	dp_mgr_hfi_clk_enable(hfi_priv, false);
+	_hfi_power_deinit(hfi_priv);
+
+	DP_INFO("DP_HFI cleanup");
+
+	hfi_priv->configured = false;
+
+	return rc;
+}
+
 int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 {
 	struct dp_mgr_hfi_priv *hfi_priv = data;
@@ -1065,62 +1097,15 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 		hfi_priv->audio->off(hfi_priv->audio, false);
 
 	_hfi_update_config(hfi_priv, &config);
-	_hfi_send_hot_plug(hfi_priv, &config);
+	rc = _hfi_send_hot_plug(hfi_priv, &config);
+	if (!rc)
+		dp_mgr_hfi_hpd_cleanup(hfi_priv);
+
 	DP_INFO("disconnected\n");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hfi_priv->connected);
 
 	mutex_unlock(&hfi_priv->hpd_mutex);
 
-end:
-	return rc;
-}
-
-static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv, u32 stream_id)
-{
-	struct hfi_client_t *hfi_client;
-	int rc = 0;
-	struct dp_hfi *hfi;
-
-	if (!hfi_priv) {
-		DP_ERR("Invalid hfi_priv data\n");
-		return -EINVAL;
-	}
-
-	hfi = hfi_priv->hfi[stream_id];
-	if (!hfi)
-		return -EINVAL;
-
-	hfi_client = hfi->hfi_client;
-	if (!hfi_client) {
-		rc = -EINVAL;
-		goto end;
-	}
-
-	if (!hfi_priv->configured)
-		return 0;
-
-	if (hfi->hpd_events_register) {
-		rc = _register_hpd_events(hfi_priv, stream_id, false);
-		if (rc) {
-			DP_ERR("failed to register hpd events on stream_id=%d, rc=%d\n",
-									stream_id, rc);
-		} else {
-			hfi->hpd_events_register = false;
-		}
-	}
-
-	hfi_priv->active_streams--;
-	if (hfi_priv->active_streams)
-		goto end;
-
-	dp_mgr_hfi_clk_enable(hfi_priv, false);
-
-	_hfi_power_deinit(hfi_priv);
-
-	DP_INFO("DP_HFI cleanup, stream_id=%d\n", stream_id);
-
-	hfi_priv->configured = false;
-	complete_all(&hfi_priv->hpd_comp);
 end:
 	return rc;
 }
@@ -1179,6 +1164,9 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 	_hfi_update_config(hfi_priv, &config);
 	hfi_priv->connected = hpd_state;
 	rc = _hfi_send_hot_plug(hfi_priv, &config);
+	if (!rc && !hfi_priv->connected)
+		dp_mgr_hfi_hpd_cleanup(hfi_priv);
+
 	DP_INFO("attention %d\n", hpd_state);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hpd_state, config.hpd_irq);
 
@@ -3098,25 +3086,13 @@ static int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
 
 	stream_id = panel_to_stream(hfi_priv, panel_id);
 
-	/* unprepare only when NOT connected */
-	if (!hfi_priv->connected) {
-		dp_mgr_hfi_hpd_cleanup(hfi_priv, stream_id);
-	} else {
-		/*
-		 * at mst case, there is rare case which dongle mistakenly issue the
-		 * up request sideband connection status notify message with no device
-		 * connected to dongle even there is device connected to dongle physically.
-		 * when this happen, the hfi_priv->connected is still true since dongle has
-		 * not physically disonnected.
-		 * however active_stream need to be decreased here to offset the acttive_stream
-		 * will be increased later.
-		 */
-		if (hfi_priv->active_streams > 0)
-			hfi_priv->active_streams--;
-	}
+	if (hfi_priv->active_streams > 0)
+		hfi_priv->active_streams--;
+
+	if (!hfi_priv->active_streams)
+		complete_all(&hfi_priv->hpd_comp);
 
 	SDE_EVT32_EXTERNAL(stream_id, hfi_priv->connected, hfi_priv->active_streams);
-
 end:
 	DP_DEBUG("%s: DP core power unprepare\n", __func__);
 	return rc;
