@@ -1610,9 +1610,9 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 			 */
 			if (packet_info.flags != HFI_RX_FLAGS_NONE &&
 					packet_info.flags != HFI_RX_FLAGS_SUCCESS) {
-				HFI_AD_ERROR("response packet error. cmd:0x%x resp:0x%x\n",
-						packet_info.cmd, packet_info.flags);
-				ret = -HFI_ERROR;
+				HFI_AD_WARN("response packet error. num_packets:%d id:0x%x cmd:0x%x"
+							" resp:0x%x\n", num_packets, packet_info.id,
+							packet_info.cmd, packet_info.flags);
 				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd,
 						packet_info.flags);
 				packet_info.payload_ptr = NULL;
