@@ -264,7 +264,8 @@ static bool _hfi_notify_hpd_user(struct dp_hfi *hfi, bool connection)
 		(connection && hfi->mode_count > 0) ? hfi->mode_list[0].test_pattern : 0);
 
 	DP_INFO("[%s]:[%s] [%s] [%s]\n", name, status, bpp, pattern);
-	SDE_EVT32_EXTERNAL(connector->base.id, hfi->connected, bpp, pattern);
+	SDE_EVT32_EXTERNAL(connector->base.id, hfi->connected, hfi->tgt_bpp,
+			hfi->mode_list[0].test_pattern);
 
 	envp[0] = name;
 	envp[1] = status;
@@ -1002,15 +1003,9 @@ end:
 }
 
 /* HPD callback functions */
-int dp_mgr_hfi_hpd_configure_cb(void *data)
+static int dp_mgr_hfi_hpd_configure_helper(struct dp_mgr_hfi_priv *hfi_priv)
 {
-	struct dp_mgr_hfi_priv *hfi_priv = data;
 	int rc;
-
-	if (!hfi_priv) {
-		DP_ERR("Invalid hfi_priv data\n");
-		return -EINVAL;
-	}
 
 	mutex_lock(&hfi_priv->hpd_mutex);
 
@@ -1056,11 +1051,9 @@ static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv)
 	return rc;
 }
 
-int dp_mgr_hfi_hpd_disconnect_cb(void *data)
+static int dp_mgr_hfi_hpd_disconnect_helper(struct dp_mgr_hfi_priv *hfi_priv)
 {
-	struct dp_mgr_hfi_priv *hfi_priv = data;
 	struct hfi_device_hotplug_config config = {0};
-	struct hfi_client_t *hfi_client;
 	int rc = 0;
 	struct dp_hfi *hfi;
 
@@ -1082,22 +1075,20 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 	}
 
 	hfi = hfi_priv->hfi[0];
-	hfi_client = hfi->hfi_client;
-	if (!hfi_client) {
-		rc = -EINVAL;
-		goto end;
-	}
+	if (!hfi || !hfi->hfi_client)
+		return -EINVAL;
 
 	hfi_priv->connected = false;
 	_aux_switch_enable(hfi_priv, false);
 
-	mutex_lock(&hfi_priv->hpd_mutex);
 
 	if (hfi_priv->audio && hfi_priv->audio_supported)
 		hfi_priv->audio->off(hfi_priv->audio, false);
 
 	_hfi_update_config(hfi_priv, &config);
 	rc = _hfi_send_hot_plug(hfi_priv, &config);
+	mutex_lock(&hfi_priv->hpd_mutex);
+
 	if (!rc)
 		dp_mgr_hfi_hpd_cleanup(hfi_priv);
 
@@ -1105,14 +1096,11 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hfi_priv->connected);
 
 	mutex_unlock(&hfi_priv->hpd_mutex);
-
-end:
 	return rc;
 }
 
-static int dp_mgr_hfi_hpd_attention_cb(void *data)
+static int dp_mgr_hfi_hpd_attention_helper(struct dp_mgr_hfi_priv *hfi_priv)
 {
-	struct dp_mgr_hfi_priv *hfi_priv = data;
 	struct hfi_device_hotplug_config config;
 	int rc = 0;
 	bool hpd_state;
@@ -1131,9 +1119,6 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 	hpd_irq = hfi_priv->hpd->hpd_irq;
 
 	DP_DEBUG("hpd status from %d to %d irq %d\n", hfi_priv->connected, hpd_state, hpd_irq);
-
-	/* if hpd plug is waiting on display enable cancel it here */
-	complete_all(&hfi_priv->hpd_comp);
 
 	mutex_lock(&hfi_priv->hpd_mutex);
 
@@ -1173,6 +1158,91 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 	mutex_unlock(&hfi_priv->hpd_mutex);
 
 	return rc;
+}
+
+static void dp_mgr_hfi_hpd_configure_work(struct work_struct *work)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = container_of(work,
+			struct dp_mgr_hfi_priv, configure_work);
+	int rc;
+
+	rc = dp_mgr_hfi_hpd_configure_helper(hfi_priv);
+	if (rc)
+		DP_ERR("configure work failed rc=%d\n", rc);
+}
+
+static void dp_mgr_hfi_hpd_attention_work(struct work_struct *work)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = container_of(work,
+			struct dp_mgr_hfi_priv, attention_work);
+	int rc;
+
+	rc = dp_mgr_hfi_hpd_attention_helper(hfi_priv);
+	if (rc)
+		DP_ERR("attention work failed rc=%d\n", rc);
+}
+
+int dp_mgr_hfi_hpd_configure_cb(void *data)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = data;
+
+	if (!hfi_priv) {
+		DP_ERR("Invalid hfi_priv data\n");
+		return -EINVAL;
+	}
+
+	if (!hfi_priv->wq)
+		return dp_mgr_hfi_hpd_configure_helper(hfi_priv);
+
+	queue_work(hfi_priv->wq, &hfi_priv->configure_work);
+	return 0;
+}
+
+int dp_mgr_hfi_hpd_disconnect_cb(void *data)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = data;
+
+	if (!hfi_priv) {
+		DP_ERR("Invalid hfi_priv data\n");
+		return -EINVAL;
+	}
+
+	if (hfi_priv->tui_active) {
+		DP_INFO("TUI is active\n");
+		return 0;
+	}
+
+	if (!hfi_priv->connected) {
+		DP_INFO("DP already disconnected, ignoring\n");
+		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, hfi_priv->connected);
+		complete_all(&hfi_priv->hpd_comp);
+		return 0;
+	}
+
+	cancel_work_sync(&hfi_priv->configure_work);
+	cancel_work_sync(&hfi_priv->attention_work);
+	flush_workqueue(hfi_priv->wq);
+
+	return dp_mgr_hfi_hpd_disconnect_helper(hfi_priv);
+}
+
+static int dp_mgr_hfi_hpd_attention_cb(void *data)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = data;
+
+	if (!hfi_priv) {
+		DP_ERR("Invalid hfi_priv data\n");
+		return -EINVAL;
+	}
+
+	/* if hpd plug is waiting on display enable cancel it here */
+	complete_all(&hfi_priv->hpd_comp);
+
+	if (!hfi_priv->wq)
+		return dp_mgr_hfi_hpd_attention_helper(hfi_priv);
+
+	queue_work(hfi_priv->wq, &hfi_priv->attention_work);
+	return 0;
 }
 
 static int dp_mgr_hfi_send_type_id_to_sink(struct dp_hfi *hfi, uint8_t stream_type)
@@ -3117,7 +3187,15 @@ static int dp_mgr_hfi_pre_hw_release(void *data)
 		return -EINVAL;
 	}
 
+	if (mgr->wq) {
+		cancel_work_sync(&mgr->configure_work);
+		cancel_work_sync(&mgr->attention_work);
+		flush_workqueue(mgr->wq);
+	}
+
+	mutex_lock(&mgr->hpd_mutex);
 	mgr->tui_active = true;
+	mutex_unlock(&mgr->hpd_mutex);
 
 	DP_INFO("Successfully entered TUI mode\n");
 
@@ -3145,7 +3223,9 @@ static int dp_mgr_hfi_post_hw_acquire(void *data)
 		return -EINVAL;
 	}
 
+	mutex_lock(&mgr->hpd_mutex);
 	mgr->tui_active = false;
+	mutex_unlock(&mgr->hpd_mutex);
 
 	DP_INFO("Successfully exited TUI mode\n");
 
@@ -3216,6 +3296,13 @@ static void dp_mgr_hfi_unbind(struct device *dev, struct device *master,
 
 	/* Unregister VM event callbacks */
 	msm_unregister_vm_event(master, dev);
+	if (hfi_priv->wq) {
+		cancel_work_sync(&hfi_priv->configure_work);
+		cancel_work_sync(&hfi_priv->attention_work);
+		flush_workqueue(hfi_priv->wq);
+		destroy_workqueue(hfi_priv->wq);
+		hfi_priv->wq = NULL;
+	}
 
 	/* Cleanup EDID control structure */
 	for (i = 0; i < hfi_priv->max_streams; i++) {
@@ -3551,7 +3638,7 @@ static void _parse_mst(struct dp_mgr_hfi_priv *hfi_priv)
 struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_client *debug)
 {
 	int rc = 0;
-	struct dp_mgr_hfi_priv *hfi_priv;
+	struct dp_mgr_hfi_priv *hfi_priv = NULL;
 	struct dp_client *client;
 	struct dp_client_drm_ops *drm_ops;
 
@@ -3633,9 +3720,21 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_
 	init_completion(&hfi_priv->hpd_comp);
 
 	mutex_init(&hfi_priv->hpd_mutex);
+	hfi_priv->wq = create_singlethread_workqueue("drm_dp_hfi");
+	if (!hfi_priv->wq) {
+		DP_ERR("failed to create hfi workqueue\n");
+		rc = -ENOMEM;
+		goto bail;
+	}
+	INIT_WORK(&hfi_priv->configure_work, dp_mgr_hfi_hpd_configure_work);
+	INIT_WORK(&hfi_priv->attention_work, dp_mgr_hfi_hpd_attention_work);
 
 	DP_INFO("DP HFI display initialized successfully\n");
 	return client;
 bail:
+	if (hfi_priv && hfi_priv->wq) {
+		destroy_workqueue(hfi_priv->wq);
+		hfi_priv->wq = NULL;
+	}
 	return ERR_PTR(rc);
 }
