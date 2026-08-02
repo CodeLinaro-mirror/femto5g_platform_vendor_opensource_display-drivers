@@ -50,6 +50,10 @@ struct dp_hdcp1x_ctx {
  * @app_data: HDCP 2.x application data for TrustZone communication
  * @response_buf: Buffer for response messages from TrustZone
  * @buf_len: Length of response buffer
+ * @mst: True if this HDCP 2.x context was initialized for an MST connection.
+ * @streams: List of MST streams currently open with TrustZone. Unused
+ *           (stream_count stays 0) for SST.
+ * @stream_count: Number of entries in @streams currently active
  *
  * Note: request buffer is managed internally by hdcp2_handle and accessed
  * via app_data.request.data pointer which is synchronized by hdcp2_update_app_data()
@@ -63,6 +67,10 @@ struct dp_hdcp2x_ctx {
 #endif
 	uint8_t *response_buf;
 	uint32_t buf_len;
+
+	bool mst;
+	struct sde_hdcp_stream streams[MAX_STREAM_COUNT];
+	u8 stream_count;
 };
 
 struct device *dp_hdcp_get_msm_hdcp_dev(void)
@@ -342,14 +350,14 @@ void dp_hdcp1x_deinit(void *input)
 
 /**
  * dp_hdcp2x_init() - Initialize DP HDCP 2.x TrustZone bridge
- * @init_data: HDCP initialization data from sde_hdcp
+ * @mst: true if this connection is operating in MST mode
  *
  * Creates HDCP 2.x context and initializes TrustZone interface.
  * This should be called during display post_enable.
  *
  * Return: Opaque handle to DP HDCP 2.x context on success, NULL on failure
  */
-void *dp_hdcp2x_init(void)
+void *dp_hdcp2x_init(bool mst)
 {
 	struct dp_hdcp2x_ctx *ctx;
 
@@ -366,9 +374,12 @@ void *dp_hdcp2x_init(void)
 		return NULL;
 	}
 
+	ctx->mst = mst;
+	ctx->stream_count = 0;
+
 #if IS_ENABLED(CONFIG_HDCP_QSEECOM)
 	/* Initialize TrustZone HDCP 2.x handle */
-	ctx->hdcp2_handle = hdcp2_init(HDCP_TXMTR_DP);
+	ctx->hdcp2_handle = hdcp2_init(mst ? HDCP_TXMTR_DP_MST : HDCP_TXMTR_DP);
 	if (!ctx->hdcp2_handle) {
 		DP_ERR("hdcp2_init failed\n");
 		kfree(ctx->response_buf);
@@ -388,7 +399,7 @@ void *dp_hdcp2x_init(void)
 	/* Initialize state */
 	ctx->state = HDCP_STATE_INACTIVE;
 
-	DP_DEBUG("DP HDCP 2.x initialized successfully\n");
+	DP_DEBUG("DP HDCP 2.x initialized successfully, mst=%d\n", mst);
 
 	return ctx;
 }
@@ -717,6 +728,7 @@ int dp_hdcp2x_timeout(void *input, uint8_t *req_buf, uint32_t req_len, uint8_t *
  * @input: HDCP 2.x context handle
  * @resp_buf: Pointer to store response buffer (REP_STREAM_MANAGE from TZ)
  * @resp_len: Pointer to store response length
+ * @timeout_ms: Pointer to store TZ's suggested delay
  *
  * Called after REP_SEND_ACK is written to the sink. Issues
  * HDCP2_CMD_QUERY_STREAM to TrustZone, which generates REP_STREAM_MANAGE.
@@ -724,7 +736,8 @@ int dp_hdcp2x_timeout(void *input, uint8_t *req_buf, uint32_t req_len, uint8_t *
  *
  * Return: 0 on success, negative error code on failure
  */
-int dp_hdcp2x_query_stream(void *input, uint8_t **resp_buf, uint32_t *resp_len)
+int dp_hdcp2x_query_stream(void *input, uint8_t **resp_buf, uint32_t *resp_len,
+	uint32_t *timeout_ms)
 {
 	struct dp_hdcp2x_ctx *ctx = input;
 	int rc;
@@ -749,14 +762,161 @@ int dp_hdcp2x_query_stream(void *input, uint8_t **resp_buf, uint32_t *resp_len)
 
 	*resp_buf = ctx->app_data.response.data;
 	*resp_len = ctx->app_data.response.length;
+	if (timeout_ms)
+		*timeout_ms = ctx->app_data.timeout;
 #else
 	DP_ERR("HDCP QSEECOM not enabled\n");
 	return -ENODEV;
 #endif
 
-	DP_DEBUG("QUERY_STREAM response length=%u\n", *resp_len);
+	DP_DEBUG("QUERY_STREAM response length=%u, timeout_ms=%u\n",
+		 *resp_len, timeout_ms ? *timeout_ms : 0);
 
 	return 0;
+}
+
+/**
+ * dp_hdcp2x_register_streams() - Register (open) MST streams with TrustZone
+ * @input: HDCP 2.x context handle
+ * @num_streams: Number of entries in @streams
+ * @streams: Array of stream_id/virtual_channel pairs to open
+ *
+ * For each requested stream not already tracked in ctx->streams,
+ * calls hdcp2_open_stream() so TrustZone includes it the
+ * next time it builds REP_STREAM_MANAGE.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_hdcp2x_register_streams(void *input, u8 num_streams, struct stream_info *streams)
+{
+	struct dp_hdcp2x_ctx *ctx = input;
+	int rc = 0;
+	int i, j;
+	bool already_open;
+	u32 stream_handle;
+
+	if (!ctx || !streams || num_streams == 0) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+#if IS_ENABLED(CONFIG_HDCP_QSEECOM)
+	if (!ctx->hdcp2_handle) {
+		DP_ERR("HDCP 2.x TrustZone handle not initialized\n");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < num_streams; i++) {
+		already_open = false;
+
+		for (j = 0; j < ctx->stream_count; j++) {
+			if (ctx->streams[j].active &&
+			    ctx->streams[j].stream_id == streams[i].stream_id &&
+			    ctx->streams[j].virtual_channel == streams[i].virtual_channel) {
+				already_open = true;
+				break;
+			}
+		}
+
+		if (already_open)
+			continue;
+
+		if (ctx->stream_count >= MAX_STREAM_COUNT) {
+			DP_ERR("stream_count %u exceeds MAX_STREAM_COUNT %d\n",
+			       ctx->stream_count, MAX_STREAM_COUNT);
+			rc = -ENOSPC;
+			break;
+		}
+
+		rc = hdcp2_open_stream(ctx->hdcp2_handle, streams[i].virtual_channel,
+				       streams[i].stream_id, &stream_handle);
+		if (rc) {
+			DP_ERR("hdcp2_open_stream failed for stream_id=%u vc=%u: %d\n",
+			       streams[i].stream_id, streams[i].virtual_channel, rc);
+			break;
+		}
+
+		j = ctx->stream_count;
+		ctx->streams[j].stream_id = streams[i].stream_id;
+		ctx->streams[j].virtual_channel = streams[i].virtual_channel;
+		ctx->streams[j].stream_handle = stream_handle;
+		ctx->streams[j].active = true;
+		ctx->stream_count++;
+
+		DP_DEBUG("opened stream_id=%u vc=%u handle=%u, stream_count=%u\n",
+			 streams[i].stream_id, streams[i].virtual_channel,
+			 stream_handle, ctx->stream_count);
+	}
+#else
+	DP_ERR("HDCP QSEECOM not enabled\n");
+	rc = -ENODEV;
+#endif
+
+	return rc;
+}
+
+/**
+ * dp_hdcp2x_deregister_streams() - Deregister (close) MST streams with TrustZone
+ * @input: HDCP 2.x context handle
+ * @num_streams: Number of entries in @streams
+ * @streams: Array of stream_id/virtual_channel pairs to close
+ *
+ * For each matching registered stream, calls hdcp2_close_stream() and removes it
+ * from ctx->streams. Unknown/unmatched entries are ignored so callers can
+ * always pass the disabling stream's info without checking registration
+ * state first.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_hdcp2x_deregister_streams(void *input, u8 num_streams, struct stream_info *streams)
+{
+	struct dp_hdcp2x_ctx *ctx = input;
+	int rc = 0;
+	int i, j;
+
+	if (!ctx || !streams || num_streams == 0) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+#if IS_ENABLED(CONFIG_HDCP_QSEECOM)
+	if (!ctx->hdcp2_handle) {
+		DP_ERR("HDCP 2.x TrustZone handle not initialized\n");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < num_streams; i++) {
+		for (j = 0; j < ctx->stream_count; j++) {
+			if (!ctx->streams[j].active ||
+			    ctx->streams[j].stream_id != streams[i].stream_id ||
+			    ctx->streams[j].virtual_channel != streams[i].virtual_channel)
+				continue;
+
+			rc = hdcp2_close_stream(ctx->hdcp2_handle, ctx->streams[j].stream_handle);
+			if (rc)
+				DP_ERR("hdcp2_close_stream failed for stream_id=%u: %d\n",
+				       streams[i].stream_id, rc);
+
+			/* Compact the array by shifting the tail down by one */
+			for (; j < ctx->stream_count - 1; j++)
+				ctx->streams[j] = ctx->streams[j + 1];
+
+			memset(&ctx->streams[ctx->stream_count - 1], 0,
+			       sizeof(ctx->streams[0]));
+			ctx->stream_count--;
+
+			DP_DEBUG("closed stream_id=%u vc=%u, stream_count=%u\n",
+				 streams[i].stream_id, streams[i].virtual_channel,
+				 ctx->stream_count);
+			break;
+		}
+	}
+#else
+	DP_ERR("HDCP QSEECOM not enabled\n");
+	rc = -ENODEV;
+#endif
+
+	return rc;
 }
 
 /**

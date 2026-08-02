@@ -91,6 +91,9 @@ struct dp_hfi {
 	bool connected;
 	u32 tgt_bpp;
 
+	int vcpi;
+	bool stream_registered;
+
 	/* Mode override */
 	struct dp_mode_override mode_ovr;
 	struct hfi_device_hotplug_config hpd_config;

@@ -1207,6 +1207,11 @@ static void dp_mgr_hfi_min_level_change(void *client_ctx, u8 min_enc_level)
 	struct dp_hfi *hfi;
 	uint8_t stream_type;
 	int rc;
+	uint8_t *resp_buf;
+	uint32_t resp_len;
+	uint32_t min_enc_timeout_ms = 0;
+	struct hfi_hdcp2_message response = {0};
+	struct hfi_client_t *hfi_client;
 
 	if (!hfi_priv) {
 		DP_ERR("invalid input\n");
@@ -1218,6 +1223,8 @@ static void dp_mgr_hfi_min_level_change(void *client_ctx, u8 min_enc_level)
 		DP_DEBUG("hfi not initialized, skipping TYPE_ID update\n");
 		return;
 	}
+
+	hfi_client = hfi->hfi_client;
 
 	DP_DEBUG("min_enc_level changed from %u to %u\n",
 		 hfi_priv->min_enc_level, min_enc_level);
@@ -1239,6 +1246,63 @@ static void dp_mgr_hfi_min_level_change(void *client_ctx, u8 min_enc_level)
 
 	DP_DEBUG("Using stream_type=%u (min_enc_level=%u)\n",
 			stream_type, hfi_priv->min_enc_level);
+
+	if (hfi_priv->mst_st && hfi->hdcp2x_ctx &&
+	    hfi->hdcp_info.hdcp_state == HDCP_STATE_AUTHENTICATED) {
+
+		if (!hfi_client || !hfi->hdcp2x_req_map || !hfi->hdcp2x_resp_map) {
+			DP_ERR("HDCP 2.x shared buffers/client not available for min_enc\n");
+			return;
+		}
+
+		/* Only one STREAM_MANAGE round-trip may be in flight at a time;
+		 * drop redundant pokes to avoid desyncing seqNumM with the sink.
+		 */
+		if (hfi_priv->stream_manage_inflight) {
+			DP_DEBUG(
+				"STREAM_MANAGE round-trip in flight, dropping redundant min_enc\n");
+			return;
+		}
+
+		rc = dp_hdcp2x_query_stream(hfi->hdcp2x_ctx, &resp_buf, &resp_len,
+					    &min_enc_timeout_ms);
+		if (rc || resp_len == 0) {
+			DP_ERR("min_enc QUERY_STREAM failed: rc=%d len=%u\n", rc, resp_len);
+			return;
+		}
+		if (resp_len > hfi->hdcp2x_resp_map->size) {
+			DP_ERR("min_enc STREAM_MANAGE too large: %u > %u\n",
+			       resp_len, hfi->hdcp2x_resp_map->size);
+			return;
+		}
+		memcpy(hfi->hdcp2x_resp_map->local_addr, resp_buf, resp_len);
+
+		dp_mgr_hfi_init_hfi_buff(&response.request, hfi->hdcp2x_req_map);
+		response.request.size = 0;
+		dp_mgr_hfi_init_hfi_buff(&response.response, hfi->hdcp2x_resp_map);
+		response.response.size = resp_len;
+		/* Forward TZ's timeout so DCP knows how long to wait before reading M'. */
+		response.timeout_ms = min_enc_timeout_ms;
+		response.repeater_flag = 1;
+
+		/* Cleared when DCP's STREAM_READY response is processed in
+		 * dp_mgr_hfi_handle_hdcp2x_process_msg().
+		 */
+		hfi_priv->stream_manage_inflight = true;
+
+		rc = dp_hfi_send_cmd_buf(hfi, hfi_client,
+					 HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE,
+					 "DisplayPort", HFI_PAYLOAD_TYPE_U32_ARRAY,
+					 &response, sizeof(response),
+					 HFI_HOST_FLAGS_NON_DISCARDABLE);
+		if (rc) {
+			DP_ERR("Failed to push min_enc STREAM_MANAGE to DCP: %d\n", rc);
+			hfi_priv->stream_manage_inflight = false;
+		} else {
+			DP_DEBUG("min_enc STREAM_MANAGE pushed to DCP, length=%u\n", resp_len);
+		}
+		return;
+	}
 
 	rc = dp_mgr_hfi_send_type_id_to_sink(hfi_priv->hfi[0], stream_type);
 	if (rc) {
@@ -1983,6 +2047,9 @@ static void dp_mgr_hfi_handle_hdcp2x_start(struct dp_hfi *hfi, void *payload, u3
 	uint8_t *ake_init;
 	uint32_t ake_init_len;
 	int rc;
+	struct dp_mgr_hfi_priv *hfi_priv;
+	struct stream_info streams[DP_STREAMS_MAX];
+	int i, n;
 
 	DP_DEBUG("HDCP2X_START event received from DCP\n");
 
@@ -1998,6 +2065,28 @@ static void dp_mgr_hfi_handle_hdcp2x_start(struct dp_hfi *hfi, void *payload, u3
 	if (!hfi->hdcp2x_req_map || !hfi->hdcp2x_resp_map) {
 		DP_ERR("HDCP 2.x shared buffers not allocated\n");
 		return;
+	}
+
+	hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
+
+	if (hfi_priv && hfi_priv->mst_st) {
+		n = 0;
+		for (i = 0; i < DP_STREAMS_MAX; i++) {
+			if (!hfi_priv->hfi[i] || !hfi_priv->hfi[i]->connected)
+				continue;
+			streams[n].stream_id = (u8)i;
+			streams[n].virtual_channel = (u8)hfi_priv->hfi[i]->vcpi;
+			n++;
+		}
+
+		if (n > 0) {
+			rc = dp_hdcp2x_register_streams(hfi->hdcp2x_ctx, (u8)n, streams);
+			if (rc)
+				DP_ERR("Failed to register %d MST stream(s) with TZ: %d\n",
+				       n, rc);
+			else
+				DP_DEBUG("Registered %d MST stream(s) with TZ before auth\n", n);
+		}
 	}
 
 	/* Call dp_hdcp to start and get AKE_INIT */
@@ -2099,9 +2188,8 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 	if (hfi_data->request.size == 0 &&
 	    ((uint8_t *)hfi->hdcp2x_resp_map->local_addr)[0] == REP_SEND_ACK) {
 		DP_DEBUG("Zero-length request after REP_SEND_ACK: calling QUERY_STREAM\n");
-		rc = dp_hdcp2x_query_stream(hfi->hdcp2x_ctx, &resp_buf, &resp_len);
+		rc = dp_hdcp2x_query_stream(hfi->hdcp2x_ctx, &resp_buf, &resp_len, &timeout_ms);
 		repeater_flag = true;
-		timeout_ms = 0;
 	} else {
 		rc = dp_hdcp2x_process_msg(hfi->hdcp2x_ctx,
 					   req_buf, hfi_data->request.size,
@@ -2111,6 +2199,13 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 	if (rc) {
 		DP_ERR("Process msg failed: %d, send NULL response to trigger auth retry\n", rc);
 		resp_len = 0;
+		/*
+		 * A failed PROCESS_MSG means whatever STREAM_MANAGE round-trip
+		 * was in flight has terminated (auth retry will follow) -
+		 * don't leave the min_enc gate stuck closed.
+		 */
+		if (hfi_priv)
+			hfi_priv->stream_manage_inflight = false;
 	}
 
 	/* Copy response to shared buffer (if any) */
@@ -2161,6 +2256,14 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 	if ((msg_id == SKE_SEND_EKS && !is_repeater) ||
 			(req_buf[0] == REP_STREAM_READY && is_repeater
 			&& msg_id != REP_STREAM_MANAGE)) {
+
+		/*
+		 * The STREAM_MANAGE -> STREAM_READY round-trip (whether from
+		 * initial auth or a min_enc-triggered refresh) has now settled
+		 * with TZ accepting M' - safe to allow the next QUERY_STREAM.
+		 */
+		if (hfi_priv)
+			hfi_priv->stream_manage_inflight = false;
 
 		rc = dp_hdcp2x_enable_encryption(hfi->hdcp2x_ctx);
 		if (rc) {
@@ -2302,7 +2405,7 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_hfi *hfi, void *p
 		}
 	}
 	if (!hfi->hdcp2x_ctx && hdcp_support[1]) {
-		hfi->hdcp2x_ctx = dp_hdcp2x_init();
+		hfi->hdcp2x_ctx = dp_hdcp2x_init(hfi_priv->mst_st);
 		if (!hfi->hdcp2x_ctx) {
 			DP_WARN("HDCP 2.x init failed, continuing without HDCP 2.x\n");
 			hfi->hdcp_info.source_cap &= ~HDCP_VERSION_2P2;
@@ -2814,6 +2917,8 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 	int rc = 0;
 	u32 stream_id;
 	struct dp_hfi *hfi;
+	bool other_stream_active = false;
+	int i;
 
 	if (!client) {
 		DP_ERR("Invalid params\n");
@@ -2837,12 +2942,37 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 
 	/* Deinitialize HDCP 2.x*/
 	if (hfi->hdcp2x_ctx) {
-		/* If force_encryption is set, disable encryption before tearing down */
-		if (hfi_priv->debug->force_encryption)
-			dp_hdcp2x_force_encryption(hfi->hdcp2x_ctx, false);
-		dp_hdcp2x_deinit(hfi->hdcp2x_ctx);
-		hfi->hdcp2x_ctx = NULL;
-		DP_DEBUG("HDCP 2.x deinitialized\n");
+		if (hfi_priv->mst_st) {
+			struct stream_info s = {
+				.stream_id = (u8)stream_id,
+				.virtual_channel = (u8)hfi->vcpi,
+			};
+
+			rc = dp_hdcp2x_deregister_streams(hfi->hdcp2x_ctx, 1, &s);
+			if (rc)
+				DP_ERR("Failed to deregister stream_id=%u with TZ: %d\n",
+				       stream_id, rc);
+
+			for (i = 0; i < DP_STREAMS_MAX; i++) {
+				if (i == stream_id)
+					continue;
+				if (hfi_priv->hfi[i] && hfi_priv->hfi[i]->connected) {
+					other_stream_active = true;
+					break;
+				}
+			}
+		}
+
+		if (!other_stream_active) {
+			/* If force_encryption is set, disable encryption before tearing down */
+			if (hfi_priv->debug->force_encryption)
+				dp_hdcp2x_force_encryption(hfi->hdcp2x_ctx, false);
+			dp_hdcp2x_deinit(hfi->hdcp2x_ctx);
+			hfi->hdcp2x_ctx = NULL;
+			DP_DEBUG("HDCP 2.x deinitialized\n");
+		} else {
+			DP_DEBUG("Other MST stream(s) still active, keeping HDCP 2.x alive\n");
+		}
 	}
 
 	DP_DEBUG("Sending DISPLAY_POST_DISABLE command to DCP, panel_id=%d\n", panel_id);
@@ -3263,6 +3393,32 @@ static int dp_mgr_hfi_set_stream_info(struct dp_client *client,
 			int panel_id, u32 strm_id, u32 start_slot,
 			u32 num_slots, u32 pbn, int vcpi)
 {
+	struct dp_mgr_hfi_priv *hfi_priv;
+	struct dp_hfi *hfi;
+
+	if (!client) {
+		DP_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+
+	if (strm_id >= DP_STREAMS_MAX) {
+		DP_ERR("invalid stream id:%d\n", strm_id);
+		return -EINVAL;
+	}
+
+	hfi = hfi_priv->hfi[strm_id];
+	if (!hfi) {
+		DP_ERR("hfi not initialized for stream_id:%d\n", strm_id);
+		return -EINVAL;
+	}
+
+	hfi->vcpi = vcpi;
+
+	DP_DEBUG("stream_id=%u vcpi=%d start_slot=%u num_slots=%u pbn=%u\n",
+		 strm_id, vcpi, start_slot, num_slots, pbn);
+
 	return 0;
 }
 
