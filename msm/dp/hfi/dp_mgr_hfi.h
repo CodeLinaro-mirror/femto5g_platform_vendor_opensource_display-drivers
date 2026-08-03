@@ -73,6 +73,14 @@ void dp_mgr_hfi_init_hfi_buff(struct hfi_buff *buff, struct hfi_shared_addr_map 
 int dp_mgr_hfi_hpd_configure_cb(void *data);
 
 /**
+ * dp_mgr_hfi_hpd_attention_cb() - HPD attention callback
+ * @data: pointer to dp_mgr_hfi_priv structure
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_mgr_hfi_hpd_attention_cb(void *data);
+
+/**
  * dp_mgr_hfi_hpd_disconnect_cb() - HPD disconnect callback
  * @data: pointer to dp_mgr_hfi_priv structure
  *
@@ -166,5 +174,27 @@ int dp_mgr_hfi_send_audio_control(struct dp_client *client, u32 enable);
 
 void dp_mgr_hfi_clk_deinit(struct dp_mgr_hfi_priv *hfi_priv);
 void dp_mgr_hfi_set_mst_mode(struct dp_mgr_hfi_priv *hfi_priv, bool mst_en);
+
+/**
+ * dp_mgr_hfi_hpd_configure_helper() - HPD configure callback, run synchronously
+ * @hfi_priv: pointer to dp_mgr_hfi_priv structure
+ *
+ * Same as dp_mgr_hfi_hpd_configure_cb() but processes the configure
+ * immediately on the caller's thread instead of queuing it on hfi_priv->wq.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_mgr_hfi_hpd_configure_helper(struct dp_mgr_hfi_priv *hfi_priv);
+
+/**
+ * dp_mgr_hfi_hpd_attention_helper() - HPD attention callback, run synchronously
+ * @hfi_priv: pointer to dp_mgr_hfi_priv structure
+ *
+ * Same as dp_mgr_hfi_hpd_attention_cb() but processes the attention
+ * immediately on the caller's thread instead of queuing it on hfi_priv->wq.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_mgr_hfi_hpd_attention_helper(struct dp_mgr_hfi_priv *hfi_priv);
 
 #endif /* _DP_MGR_HFI_H_ */
