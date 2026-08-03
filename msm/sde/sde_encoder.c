@@ -1971,13 +1971,23 @@ static int _sde_encoder_update_rsc_client(
 	struct drm_display_mode *mode;
 	bool is_vid_mode;
 	struct drm_encoder *enc;
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
 
-	if (!drm_enc || !drm_enc->dev) {
+	if (!drm_enc || !drm_enc->dev || !drm_enc->dev->dev_private) {
 		SDE_ERROR("invalid encoder arguments\n");
 		return -EINVAL;
 	}
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
+	priv = drm_enc->dev->dev_private;
+	sde_kms = to_sde_kms(priv->kms);
+
+        if (!sde_kms) {
+                SDE_ERROR("invalid parameters\n");
+                return -EINVAL;
+        }
+
 	mode_info = &sde_enc->mode_info;
 
 	crtc = sde_enc->crtc;
@@ -2022,6 +2032,10 @@ static int _sde_encoder_update_rsc_client(
 		rsc_state = enable ? SDE_RSC_CMD_STATE : SDE_RSC_IDLE_STATE;
 	else if (sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_VIDEO_MODE))
 		rsc_state = enable ? SDE_RSC_VID_STATE : SDE_RSC_IDLE_STATE;
+
+	if (rsc_state == SDE_RSC_CMD_STATE &&
+			test_bit(SDE_FEATURE_RSC_CLK_STATE, sde_kms->catalog->features))
+		rsc_state = SDE_RSC_CLK_STATE;
 
 	drm_for_each_encoder(enc, drm_enc->dev) {
 		if (enc->base.id != drm_enc->base.id &&
