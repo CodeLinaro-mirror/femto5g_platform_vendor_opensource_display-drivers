@@ -2395,8 +2395,10 @@ static int _virtio_kms_hw_init(struct virtio_kms *kms, struct device *dev)
 
 	for (scanout = 0; scanout < kms->num_scanouts; scanout++) {
 		rc = virtio_kms_scanout_init(kms, scanout, dev);
-		if (rc)
+		if (rc){
 			pr_err("scanout init failed %d\n", scanout);
+			goto error;
+		}
 	}
 error:
 	return rc;
