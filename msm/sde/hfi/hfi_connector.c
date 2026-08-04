@@ -373,8 +373,8 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 }
 
 /**
- * hfi_connector_populate_custom_kv_setter_props:  this is for all basic payloads.
- * Collects all listed props into a linear memory and voids memcopy of value by value at adapeter
+ * _hfi_connector_set_props_base: this is for all basic payloads. Collects all
+ * listed props into a linear memory and voids memcopy of value by value at adapeter
  */
 static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id,
 		struct sde_connector_state *old_cstate, struct hfi_cmdbuf_t *cmd_buf)
@@ -382,11 +382,22 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 	u32 drm_prop, hfi_prop;
 	int i, ret = 0;
 	struct hfi_connector *hfi_conn = to_hfi_connector(conn);
+	struct sde_kms *sde_kms;
+	struct msm_kms *msm_kms;
+	bool is_cont_splash = false;
 
 	if (!hfi_conn || !hfi_conn->base_props) {
 		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
 	}
+
+	sde_kms = sde_connector_get_kms(&conn->base);
+	if (!sde_kms)
+		return -EINVAL;
+
+	msm_kms = &sde_kms->base;
+	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
+		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
 
 	mutex_lock(&hfi_conn->hfi_lock);
 	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
@@ -410,6 +421,10 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 		_hfi_connector_add_base_prop_helper(hfi_prop, conn, old_cstate,
 				 hfi_conn->base_props);
 	}
+
+	if (is_cont_splash)
+		sde_connector_add_autorefresh(HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG,
+				conn, old_cstate, is_cont_splash, hfi_conn->base_props);
 
 	if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->base_props))
 		goto end;
@@ -449,22 +464,12 @@ static int hfi_connector_populate_custom_kv_setter_props(struct sde_connector *c
 	struct hfi_prop_map *setter;
 	int i, ret = 0;
 	struct hfi_connector *hfi_conn = to_hfi_connector(conn);
-	struct sde_kms *sde_kms;
-	struct msm_kms *msm_kms;
 	u32 kv_count;
-	bool is_cont_splash = false;
 
 	if (!hfi_conn || !old_cstate || !cmd_buf) {
 		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
 	}
-
-	sde_kms = sde_connector_get_kms(&conn->base);
-	if (!sde_kms)
-		return -EINVAL;
-	msm_kms = &sde_kms->base;
-	if (!msm_kms)
-		return -EINVAL;
 
 	mutex_lock(&hfi_conn->hfi_lock);
 	hfi_util_kv_helper_reset(hfi_conn->kv_props);
@@ -479,14 +484,6 @@ static int hfi_connector_populate_custom_kv_setter_props(struct sde_connector *c
 		if (setter->add_hfi_prop)
 			setter->add_hfi_prop(setter->hfi_prop, conn, old_cstate, cmd_buf);
 	}
-
-	/* Check continuous splash HFI for autorefresh disable */
-	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
-		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
-
-	if (is_cont_splash)
-		sde_connector_add_autorefresh(HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG,
-				conn, old_cstate, is_cont_splash, hfi_conn->base_props);
 
 	kv_count = hfi_util_kv_helper_get_count(hfi_conn->kv_props);
 	if (!kv_count)
