@@ -1171,6 +1171,26 @@ static void dp_mgr_hfi_hpd_configure_work(struct work_struct *work)
 		DP_ERR("configure work failed rc=%d\n", rc);
 }
 
+static void dp_mgr_hfi_hpd_connect_work(struct work_struct *work)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = container_of(work,
+			struct dp_mgr_hfi_priv, connect_work);
+	struct hfi_device_hotplug_config config = {0};
+
+	mutex_lock(&hfi_priv->hpd_mutex);
+
+	if (hfi_priv->connected) {
+		_hfi_update_config(hfi_priv, &config);
+
+		config.hpd_state = 1;
+		config.hpd_irq = 0;
+
+		_hfi_send_hot_plug(hfi_priv, &config);
+	}
+
+	mutex_unlock(&hfi_priv->hpd_mutex);
+}
+
 static void dp_mgr_hfi_hpd_attention_work(struct work_struct *work)
 {
 	struct dp_mgr_hfi_priv *hfi_priv = container_of(work,
@@ -1221,6 +1241,7 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 
 	cancel_work_sync(&hfi_priv->configure_work);
 	cancel_work_sync(&hfi_priv->attention_work);
+	cancel_work_sync(&hfi_priv->connect_work);
 	flush_workqueue(hfi_priv->wq);
 
 	return dp_mgr_hfi_hpd_disconnect_helper(hfi_priv);
@@ -1954,7 +1975,6 @@ end:
 static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 size)
 {
 	struct hfi_display_hpd_status *hpd_status;
-	struct hfi_device_hotplug_config config = {0};
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
 
 	if (!payload) {
@@ -1972,12 +1992,13 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 		hfi_priv->mst_st = 0;
 		hfi_priv->fec_en = 0;
 		hfi_priv->dsc_en = 0;
-		if (hfi->connected) {
-			hfi->connected = false;
-			_hfi_notify_hpd_user(hfi, false);
-		}
-		if (!hfi_priv->active_streams)
+		hfi->connected = false;
+		_hfi_notify_hpd_user(hfi, false);
+		if (!hfi_priv->active_streams) {
 			complete_all(&hfi_priv->hpd_comp);
+			if (hfi_priv->connected)
+				queue_work(hfi_priv->wq, &hfi_priv->connect_work);
+		}
 		break;
 	case HFI_DP_EVENT_HPD_PLUGGED:
 		/* this is for mst case where topology changed detected */
@@ -1987,19 +2008,7 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 		 * before sending faked hpd-up event to dcp
 		 */
 		msleep(20);
-
-		mutex_lock(&hfi_priv->hpd_mutex);
-
-		DP_DEBUG("HPD_PLUGGED conn:%d\n", (hfi->connector ? hfi->connector->base.id : -1));
-
-		_hfi_update_config(hfi_priv, &config);
-
-		hfi_priv->connected = true;
-		config.hpd_state = 1;
-		config.hpd_irq = 0;
-
-		_hfi_send_hot_plug(hfi_priv, &config);
-		mutex_unlock(&hfi_priv->hpd_mutex);
+		queue_work(hfi_priv->wq, &hfi_priv->connect_work);
 		break;
 	default:
 		break;
@@ -3190,6 +3199,7 @@ static int dp_mgr_hfi_pre_hw_release(void *data)
 	if (mgr->wq) {
 		cancel_work_sync(&mgr->configure_work);
 		cancel_work_sync(&mgr->attention_work);
+		cancel_work_sync(&mgr->connect_work);
 		flush_workqueue(mgr->wq);
 	}
 
@@ -3299,6 +3309,7 @@ static void dp_mgr_hfi_unbind(struct device *dev, struct device *master,
 	if (hfi_priv->wq) {
 		cancel_work_sync(&hfi_priv->configure_work);
 		cancel_work_sync(&hfi_priv->attention_work);
+		cancel_work_sync(&hfi_priv->connect_work);
 		flush_workqueue(hfi_priv->wq);
 		destroy_workqueue(hfi_priv->wq);
 		hfi_priv->wq = NULL;
@@ -3728,6 +3739,7 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_
 	}
 	INIT_WORK(&hfi_priv->configure_work, dp_mgr_hfi_hpd_configure_work);
 	INIT_WORK(&hfi_priv->attention_work, dp_mgr_hfi_hpd_attention_work);
+	INIT_WORK(&hfi_priv->connect_work, dp_mgr_hfi_hpd_connect_work);
 
 	DP_INFO("DP HFI display initialized successfully\n");
 	return client;
