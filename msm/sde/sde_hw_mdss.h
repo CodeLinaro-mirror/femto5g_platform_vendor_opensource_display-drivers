@@ -44,7 +44,8 @@
 #define MAX_DSI_DISPLAYS		2
 #define MAX_DATA_PATH_PER_DSIPLAY	4
 
-#define MAX_DISPLAYNODES		10
+/* Increased to 16 to support the maximum total scanouts across both DPUs */
+#define MAX_DISPLAYNODES		16
 
 enum sde_format_flags {
 	SDE_FORMAT_FLAG_YUV_BIT,
