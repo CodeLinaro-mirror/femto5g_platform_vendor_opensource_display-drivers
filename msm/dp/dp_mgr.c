@@ -1978,7 +1978,7 @@ static int dp_mgr_usbpd_attention_cb(void *data)
 
 	mgr = data;
 
-	if (mgr->hpd->hpd_high && mgr->hpd->hpd_irq)
+	if (mgr->parser->dp_cec_feature && mgr->hpd->hpd_high && mgr->hpd->hpd_irq)
 		drm_dp_cec_irq(mgr->aux->drm_aux);
 
 	DP_DEBUG("hpd_irq:%d, hpd_high:%d, power_on:%d, is_connected:%d\n",
