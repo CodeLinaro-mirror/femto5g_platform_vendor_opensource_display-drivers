@@ -2056,12 +2056,14 @@ static void dp_display_connect_work(struct work_struct *work)
 	if (dp->active_stream_cnt) {
 		if (dp->active_panels[DP_STREAM_0] == dp->panel &&
 				!dp->panel->video_test) {
-			dp->aux->abort(dp->aux, true);
-			dp->ctrl->abort(dp->ctrl, true);
+			dp->aux->abort(dp->aux, false);
+			dp->ctrl->abort(dp->ctrl, false);
 			reset_connector = dp->dp_display.base_connector;
 		} else {
 			dp_display_clean(dp, false);
+			dp_display_host_unready(dp);
 			dp_display_host_deinit(dp);
+			dp_display_state_add(DP_STATE_SRC_PWRDN);
 		}
 	}
 
@@ -2963,15 +2965,13 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	if (dp->active_stream_cnt || dp->mst.mst_active)
 		goto end;
 
-	if (flags & DP_PANEL_SRC_INITIATED_POWER_DOWN) {
-		dp->link->psm_config(dp->link, &dp->panel->link_info, true);
-		dp->debug->psm_enabled = true;
+	dp->link->psm_config(dp->link, &dp->panel->link_info, true);
+	dp->debug->psm_enabled = true;
 
-		dp->ctrl->off(dp->ctrl);
-		dp_display_host_unready(dp);
-		dp_display_host_deinit(dp);
-		dp_display_state_add(DP_STATE_SRC_PWRDN);
-	}
+	dp->ctrl->off(dp->ctrl);
+	dp_display_host_unready(dp);
+	dp_display_host_deinit(dp);
+	dp_display_state_add(DP_STATE_SRC_PWRDN);
 
 	dp_display_state_remove(DP_STATE_ENABLED);
 
