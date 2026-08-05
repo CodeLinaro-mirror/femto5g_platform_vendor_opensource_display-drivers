@@ -1443,7 +1443,14 @@ static int _sde_connector_update_dirty_properties(
 	}
 	mutex_unlock(&c_conn->property_info.property_lock);
 
-	if (disp_op == MSM_DISP_OP_HFI && is_roi_dirty) {
+	/*
+	 * Only forward the ROI to the HFI target when the panel actually supports
+	 * partial update. Otherwise a userspace CONNECTOR_PROP_ROI_V1 submission
+	 * (even a full-frame ROI) would re-mark the property dirty and get sent as
+	 * DEST_ROI, triggering an unnecessary ROI reprogram/DCS on the panel.
+	 */
+	if (disp_op == MSM_DISP_OP_HFI && is_roi_dirty &&
+			c_state->mode_info.roi_caps.enabled) {
 		msm_property_set_dirty(&c_conn->property_info,
 			&c_state->property_state, CONNECTOR_PROP_ROI_V1);
 	}
