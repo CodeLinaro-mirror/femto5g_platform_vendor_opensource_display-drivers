@@ -1027,7 +1027,7 @@ static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv)
 		return -EINVAL;
 	}
 
-	if (!hfi_priv->configured)
+	if (!hfi_priv->configured || (hfi_priv->hpd && hfi_priv->hpd->pin_config))
 		return 0;
 
 	for (i = 0; i < hfi_priv->max_streams; i++) {
@@ -1873,7 +1873,6 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	struct hfi_buff *edid_buf;
 	struct hfi_display_mode_info *mode;
 	int i, len, buf_size, edid_size;
-	int ret;
 	char *buf_addr;
 	struct hfi_shared_addr_map *edid_map;
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
@@ -1965,11 +1964,6 @@ end:
 		edid = hfi->edid_ctrl->edid;
 		hfi_priv->audio_supported = drm_detect_monitor_audio(edid);
 	}
-
-	if (hfi_priv->audio && hfi_priv->audio_supported) {
-		ret = hfi_priv->audio->on(hfi_priv->audio);
-		(void)ret;
-	}
 }
 
 static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 size)
@@ -1992,6 +1986,9 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 		hfi_priv->mst_st = 0;
 		hfi_priv->fec_en = 0;
 		hfi_priv->dsc_en = 0;
+
+		if (!hfi->connected) /* already disconnected, ignore */
+			break;
 		hfi->connected = false;
 		_hfi_notify_hpd_user(hfi, false);
 		if (!hfi_priv->active_streams) {
@@ -2001,13 +1998,6 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 		}
 		break;
 	case HFI_DP_EVENT_HPD_PLUGGED:
-		/* this is for mst case where topology changed detected */
-
-		/*
-		 * add 20 ms delay here to ensure display_disabled had been done
-		 * before sending faked hpd-up event to dcp
-		 */
-		msleep(20);
 		queue_work(hfi_priv->wq, &hfi_priv->connect_work);
 		break;
 	default:
@@ -2962,6 +2952,7 @@ static int dp_mgr_hfi_post_enable(struct dp_client *client, int panel_id)
 	struct dp_mgr_hfi_priv *hfi_priv;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_POST_ENABLE;
 	int rc = 0;
+	int ret;
 	u32 stream_id;
 	struct dp_hfi *hfi;
 
@@ -2980,8 +2971,13 @@ static int dp_mgr_hfi_post_enable(struct dp_client *client, int panel_id)
 	rc = dp_hfi_send_cmd_buf(hfi, hfi_client, hfi_cmd, "DisplayPort",
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0,
 			(HFI_HOST_FLAGS_NON_DISCARDABLE));
-	if (rc)
+	if (rc) {
 		DP_ERR("Could not send HFI_COMMAND_DISPLAY_POST_ENABLE, rc=%d\n", rc);
+	} else if (hfi_priv->audio && hfi_priv->audio_supported) {
+		ret = hfi_priv->audio->on(hfi_priv->audio);
+		if (ret)
+			DP_WARN("audio on failed: %d\n", ret);
+	}
 
 	complete_all(&hfi_priv->hpd_comp);
 	DP_INFO("hpd plug completed\n");
