@@ -329,6 +329,7 @@ enum AreaModeValid {
 };
 
 struct dsi_panel;
+struct mtd_info;
 
 struct dsi_panel_ops {
 	int (*pinctrl_init)(struct dsi_panel *panel);
@@ -387,6 +388,11 @@ struct dsi_panel {
 	bool allow_phy_power_off;
 	bool reset_gpio_always_on;
 	bool privacy_feature_enabled;
+
+	bool calibration_enabled;
+	struct mtd_info *calib_partition_left;
+	struct mtd_info *calib_partition_right;
+
 	atomic_t esd_recovery_pending;
 	atomic_t ssr_in_progress;
 
