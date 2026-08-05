@@ -390,8 +390,8 @@ struct dsi_panel {
 	bool privacy_feature_enabled;
 
 	bool calibration_enabled;
-	struct mtd_info *calib_partition_left;
-	struct mtd_info *calib_partition_right;
+	struct mtd_info *calibration_mtd_left;
+	struct mtd_info *calibration_mtd_right;
 
 	atomic_t esd_recovery_pending;
 	atomic_t ssr_in_progress;

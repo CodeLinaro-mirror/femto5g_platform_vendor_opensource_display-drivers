@@ -2922,19 +2922,19 @@ error:
 }
 
 /*
- * dsi_panel_parse_calib_partitions - look up the left/right calibration MTD
- * partitions from the panel DT node.
+ * dsi_panel_parse_calibration_mtd - look up the left/right calibration MTD
+ * devices from the panel DT node.
  */
 #if IS_ENABLED(CONFIG_MTD)
-static int dsi_panel_parse_calib_partitions(struct dsi_panel *panel)
+static int dsi_panel_parse_calibration_mtd(struct dsi_panel *panel)
 {
 	struct device_node *np;
 	struct mtd_info *mtd;
 
 	np = of_parse_phandle(panel->panel_of_node,
-			"qcom,panel-calib-partition-left", 0);
+			"qcom,panel-calibration-mtd-left", 0);
 	if (!np) {
-		DSI_DEBUG("[%s] calibration mtd partition left not defined, skipping\n",
+		DSI_DEBUG("[%s] calibration MTD left not defined, skipping\n",
 				panel->name);
 	} else {
 		mtd = of_get_mtd_device_by_node(np);
@@ -2944,13 +2944,13 @@ static int dsi_panel_parse_calib_partitions(struct dsi_panel *panel)
 					panel->name, PTR_ERR(mtd));
 			return IS_ERR(mtd) ? PTR_ERR(mtd) : -ENODEV;
 		}
-		panel->calib_partition_left = mtd;
+		panel->calibration_mtd_left = mtd;
 	}
 
 	np = of_parse_phandle(panel->panel_of_node,
-			"qcom,panel-calib-partition-right", 0);
+			"qcom,panel-calibration-mtd-right", 0);
 	if (!np) {
-		DSI_DEBUG("[%s] calibration mtd partition right not defined, skipping\n",
+		DSI_DEBUG("[%s] calibration MTD right not defined, skipping\n",
 				panel->name);
 	} else {
 		mtd = of_get_mtd_device_by_node(np);
@@ -2958,19 +2958,19 @@ static int dsi_panel_parse_calib_partitions(struct dsi_panel *panel)
 		if (IS_ERR_OR_NULL(mtd)) {
 			DSI_ERR("[%s] failed to get right calibration MTD device, rc=%ld\n",
 					panel->name, PTR_ERR(mtd));
-			if (panel->calib_partition_left) {
-				put_mtd_device(panel->calib_partition_left);
-				panel->calib_partition_left = NULL;
+			if (panel->calibration_mtd_left) {
+				put_mtd_device(panel->calibration_mtd_left);
+				panel->calibration_mtd_left = NULL;
 			}
 			return IS_ERR(mtd) ? PTR_ERR(mtd) : -ENODEV;
 		}
-		panel->calib_partition_right = mtd;
+		panel->calibration_mtd_right = mtd;
 	}
 
 	return 0;
 }
 #else
-static inline int dsi_panel_parse_calib_partitions(struct dsi_panel *panel)
+static inline int dsi_panel_parse_calibration_mtd(struct dsi_panel *panel)
 {
 	DSI_WARN("[%s] calibration enabled in DT but MTD support not compiled in, disabling\n",
 			panel->name);
@@ -2992,7 +2992,7 @@ static int dsi_panel_parse_calibration(struct dsi_panel *panel)
 	if (!panel->calibration_enabled)
 		return 0;
 
-	return dsi_panel_parse_calib_partitions(panel);
+	return dsi_panel_parse_calibration_mtd(panel);
 }
 
 static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
@@ -4858,6 +4858,18 @@ void dsi_panel_put(struct dsi_panel *panel)
 
 	/* free resources allocated for ESD check */
 	dsi_panel_esd_config_deinit(&panel->esd_config);
+
+#if IS_ENABLED(CONFIG_MTD)
+	/* Release MTD references acquired in dsi_panel_parse_calibration_mtd() */
+	if (panel->calibration_mtd_left) {
+		put_mtd_device(panel->calibration_mtd_left);
+		panel->calibration_mtd_left = NULL;
+	}
+	if (panel->calibration_mtd_right) {
+		put_mtd_device(panel->calibration_mtd_right);
+		panel->calibration_mtd_right = NULL;
+	}
+#endif
 
 	kfree(panel->avr_caps.avr_step_fps_list);
 	kfree(panel);
