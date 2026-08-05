@@ -38,7 +38,9 @@
  * @DSI_PHY_VERSION_4_3:        5nm
  * @DSI_PHY_VERSION_4_3_2:	4nm (v4.3 specific to SM8475)
  * @DSI_PHY_VERSION_5_2:        4nm
+ * @DSI_PHY_VERSION_5_2_HFI:	4nm
  * @DSI_PHY_VERSION_7_2:        3nm
+ * @DSI_PHY_VERSION_7_2_HFI:	3nm
  * @DSI_PHY_VERSION_MAX:
  */
 enum dsi_phy_version {
@@ -51,6 +53,7 @@ enum dsi_phy_version {
 	DSI_PHY_VERSION_4_3, /* 5nm */
 	DSI_PHY_VERSION_4_3_2, /* 4nm */
 	DSI_PHY_VERSION_5_2, /* 4nm */
+	DSI_PHY_VERSION_5_2_HFI, /* 4nm */
 	DSI_PHY_VERSION_7_2, /* 3nm */
 	DSI_PHY_VERSION_7_2_HFI,
 	DSI_PHY_VERSION_MAX
@@ -58,8 +61,11 @@ enum dsi_phy_version {
 
 /**
  * enum dsi_pll_version - DSI PHY PLL version enumeration
- * @DSI_PLL_VERSION_4NM:        4nm PLL
- * @DSI_PLL_VERSION_5NM:        5nm PLL
+ * @DSI_PLL_VERSION_3NM:	3nm PLL
+ * @DSI_PLL_VERSION_3NM_HFI:	3nm PLL
+ * @DSI_PLL_VERSION_4NM:	4nm PLL
+ * @DSI_PLL_VERSION_4NM_HFI:	4nm PLL
+ * @DSI_PLL_VERSION_5NM:	5nm PLL
  * @DSI_PLL_VERSION_10NM:	10nm PLL
  * @DSI_PLL_VERSION_14NM:	14nm PLL
  * @DSI_PLL_VERSION_UNKNOWN:	Unknown PLL version
@@ -68,6 +74,7 @@ enum dsi_pll_version {
 	DSI_PLL_VERSION_3NM,
 	DSI_PLL_VERSION_3NM_HFI,
 	DSI_PLL_VERSION_4NM,
+	DSI_PLL_VERSION_4NM_HFI,
 	DSI_PLL_VERSION_5NM,
 	DSI_PLL_VERSION_10NM,
 	DSI_PLL_VERSION_14NM,

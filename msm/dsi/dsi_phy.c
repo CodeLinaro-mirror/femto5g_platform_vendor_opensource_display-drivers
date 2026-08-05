@@ -97,6 +97,14 @@ static const struct dsi_ver_spec_info dsi_phy_v5_2 = {
 	.timing_cfg_count = 14,
 };
 
+static const struct dsi_ver_spec_info dsi_phy_v5_2_hfi = {
+	.version = DSI_PHY_VERSION_5_2_HFI,
+	.lane_cfg_count = 4,
+	.strength_cfg_count = 2,
+	.regulator_cfg_count = 0,
+	.timing_cfg_count = 14,
+};
+
 static const struct dsi_ver_spec_info dsi_phy_v7_2 = {
 	.version = DSI_PHY_VERSION_7_2,
 	.lane_cfg_count = 4,
@@ -130,6 +138,8 @@ static const struct of_device_id msm_dsi_phy_of_match[] = {
 	  .data = &dsi_phy_v4_3_2,},
 	{ .compatible = "qcom,dsi-phy-v5.2",
 	  .data = &dsi_phy_v5_2,},
+	{ .compatible = "qcom,dsi-hfi-phy-v5.2",
+	  .data = &dsi_phy_v5_2_hfi,},
 	{ .compatible = "qcom,dsi-phy-v7.2",
 	  .data = &dsi_phy_v7_2,},
 	{ .compatible = "qcom,dsi-hfi-phy-v7.2",
@@ -533,6 +543,10 @@ static int dsi_phy_driver_probe(struct platform_device *pdev)
 	if (dsi_phy->ver_info->version == DSI_PHY_VERSION_7_2_HFI) {
 		dsi_phy->disp_op = MSM_DISP_OP_HFI;
 		dsi_phy->ver_info = &dsi_phy_v7_2;
+		dsi_phy->hw.phy_pll_bypass = true;
+	} else if (dsi_phy->ver_info->version == DSI_PHY_VERSION_5_2_HFI) {
+		dsi_phy->disp_op = MSM_DISP_OP_HFI;
+		dsi_phy->ver_info = &dsi_phy_v5_2;
 		dsi_phy->hw.phy_pll_bypass = true;
 	} else {
 		dsi_phy->disp_op = MSM_DISP_OP_HWIO;
