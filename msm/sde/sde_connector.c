@@ -1984,8 +1984,10 @@ void sde_connector_helper_bridge_post_disable(struct drm_connector *connector)
 void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn = NULL;
+	struct sde_connector_state *c_state = NULL;
 	struct dsi_display *display;
 	struct sde_kms *sde_kms;
+	bool is_dms = false;
 
 	sde_kms = sde_connector_get_kms(connector);
 	if (!sde_kms) {
@@ -1997,6 +1999,28 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 	display = _sde_connector_get_display(c_conn);
 	if (!display)
 		return;
+
+	/*
+	 * On a seamless DMS (dynamic mode switch) the panel stays powered on
+	 * and the backlight level is unchanged, so the backlight re-update
+	 * (and the frame-wait it can trigger) is redundant. post_enable has
+	 * already run in the bridge; only skip the backlight refresh here.
+	 */
+	if (connector->state) {
+		c_state = to_sde_connector_state(connector->state);
+		is_dms = msm_is_mode_seamless_dms(&c_state->msm_mode) ||
+			 msm_is_mode_seamless_dms_vid(&c_state->msm_mode);
+	}
+
+	if (is_dms) {
+		/* keep updates armed so a later real BL change still applies */
+		c_conn->allow_bl_update = true;
+		SDE_EVT32(connector->base.id, is_dms, SDE_EVTLOG_FUNC_CASE1);
+		SDE_DEBUG("skip backlight update for DMS on conn %d\n",
+				connector->base.id);
+		return;
+	}
+
 	/*
 	 * Special handling for some panels which need atleast
 	 * one frame to be transferred to GRAM before enabling backlight.
