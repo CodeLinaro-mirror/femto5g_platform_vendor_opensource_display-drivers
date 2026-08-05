@@ -1794,21 +1794,6 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 	for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i) {
 		sde_crtc_complete_commit(crtc, old_crtc_state);
 
-		if (old_crtc_state->active && !crtc->state->active) {
-			struct drm_pending_vblank_event *event;
-			unsigned long flags;
-
-			spin_lock_irqsave(&crtc->dev->event_lock, flags);
-			event = crtc->state->event;
-			if (event) {
-				crtc->state->event = NULL;
-				drm_send_event_locked(crtc->dev, &event->base);
-				SDE_DEBUG("crtc%d: sent event %pK\n",
-					  DRMID(crtc), event);
-			}
-			spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
-		}
-
 		/* complete secure transitions if any */
 		if (sde_kms->smmu_state.transition_type == POST_COMMIT)
 			_sde_kms_secure_ctrl(sde_kms, crtc, true);

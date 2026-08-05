@@ -4112,6 +4112,18 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 	if (!sde_kms)
 		return;
 
+	if (old_state->active && !crtc->state->active) {
+		unsigned long flags;
+
+		spin_lock_irqsave(&crtc->dev->event_lock, flags);
+		if (!sde_crtc->event && crtc->state->event) {
+			sde_crtc->event = crtc->state->event;
+			crtc->state->event = NULL;
+		}
+		spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
+		sde_crtc_complete_flip(crtc, NULL);
+	}
+
 	for (i = 0; i < MAX_DSI_DISPLAYS; i++) {
 		splash_display = &sde_kms->splash_data.splash_display[i];
 		if (splash_display->cont_splash_enabled && splash_display->encoder &&
