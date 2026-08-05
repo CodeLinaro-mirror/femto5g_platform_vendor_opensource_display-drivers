@@ -1135,6 +1135,9 @@ static int _sde_connector_update_bl_scale(struct sde_connector *c_conn)
 	if (c_conn->unset_bl_level)
 		bl_config->bl_level = c_conn->unset_bl_level;
 
+	if (sde_connector_get_disp_op(&c_conn->base) == MSM_DISP_OP_HFI)
+		c_conn->bl_dirty_change = true;
+
 	SDE_DEBUG("bl_scale = %u, bl_scale_sv = %u, bl_level = %u\n",
 		bl_config->bl_scale, bl_config->bl_scale_sv,
 		bl_config->bl_level);
