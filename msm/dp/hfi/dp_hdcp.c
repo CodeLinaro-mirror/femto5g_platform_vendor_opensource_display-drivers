@@ -791,9 +791,9 @@ int dp_hdcp2x_register_streams(void *input, u8 num_streams, struct stream_info *
 {
 	struct dp_hdcp2x_ctx *ctx = input;
 	int rc = 0;
-	int i, j;
-	bool already_open;
-	u32 stream_handle;
+	int i __maybe_unused, j __maybe_unused;
+	bool already_open __maybe_unused;
+	u32 stream_handle __maybe_unused;
 
 	if (!ctx || !streams || num_streams == 0) {
 		DP_ERR("invalid input\n");
@@ -872,7 +872,7 @@ int dp_hdcp2x_deregister_streams(void *input, u8 num_streams, struct stream_info
 {
 	struct dp_hdcp2x_ctx *ctx = input;
 	int rc = 0;
-	int i, j;
+	int i __maybe_unused, j __maybe_unused;
 
 	if (!ctx || !streams || num_streams == 0) {
 		DP_ERR("invalid input\n");
