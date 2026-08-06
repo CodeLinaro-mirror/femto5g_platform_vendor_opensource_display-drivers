@@ -833,7 +833,7 @@ static void msm_lease_parse_remain_objs(void)
 
 	list_for_each_entry(lease, &g_lease_list, head) {
 		if (!lease->minor)
-			continue;
+			return;
 
 		if (!lease->obj_cnt)
 			target = lease;
