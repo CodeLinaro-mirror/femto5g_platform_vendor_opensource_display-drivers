@@ -14,6 +14,8 @@ void msm_hdcp_cache_repeater_topology(struct device *dev,
 			struct HDCP_V2V1_MSG_TOPOLOGY *tp);
 void msm_hdcp_register_cb(struct device *dev, void *ctx,
 	void (*cb)(void *ctx, u8 data));
+void __init msm_hdcp_register(void);
+void __exit msm_hdcp_unregister(void);
 #else
 static inline void msm_hdcp_notify_topology(struct device *dev)
 {
@@ -26,6 +28,14 @@ static inline void msm_hdcp_cache_repeater_topology(struct device *dev,
 
 static inline void msm_hdcp_register_cb(struct device *dev, void *ctx,
 	void (*cb)(void *ctx, u8 data))
+{
+}
+
+static inline void __init msm_hdcp_register(void)
+{
+}
+
+static inline void __exit msm_hdcp_unregister(void)
 {
 }
 #endif /* CONFIG_HDCP_QSEECOM*/

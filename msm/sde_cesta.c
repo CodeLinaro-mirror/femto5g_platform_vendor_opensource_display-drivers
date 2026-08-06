@@ -849,6 +849,7 @@ void sde_cesta_destroy_client(struct sde_cesta_client *client)
 	if (!client || (client->cesta_index >= MAX_CESTA_COUNT)) {
 		SDE_ERROR_CESTA("invalid params - client:%d, cesta_idx:%d\n",
 				!!client, client ? client->cesta_index : -1);
+		return;
 	}
 
 	cesta = cesta_list[client->cesta_index];
@@ -1097,7 +1098,7 @@ static int sde_cesta_get_io_resources(struct msm_io_res *io_res, void *data)
 	return 0;
 }
 
-int sde_cesta_bind(struct device *dev, struct device *master, void *data)
+static int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sde_cesta *cesta;
@@ -1142,7 +1143,7 @@ int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 	return 0;
 }
 
-void sde_cesta_unbind(struct device *dev, struct device *master, void *data)
+static void sde_cesta_unbind(struct device *dev, struct device *master, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sde_cesta *cesta;
@@ -1272,6 +1273,12 @@ static int sde_cesta_probe(struct platform_device *pdev)
 	cesta->scc_count = 0;
 	for (i = 0; i < MAX_SCC_BLOCK; i++) {
 		char blk_name[32];
+
+		/* Bounds check to prevent buffer overflow */
+		if (cesta->scc_count >= MAX_SCC_BLOCK) {
+			SDE_ERROR_CESTA("scc_count exceeded MAX_SCC_BLOCK limit\n");
+			break;
+		}
 
 		snprintf(blk_name, sizeof(blk_name), "scc_%u", i);
 		ret = msm_dss_ioremap_byname(pdev, &cesta->scc_io[cesta->scc_count], blk_name);

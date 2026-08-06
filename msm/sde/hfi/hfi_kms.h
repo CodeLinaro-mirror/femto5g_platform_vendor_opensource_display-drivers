@@ -22,6 +22,14 @@
 #define HFI_HWFENCE_MAX_DISPLAYS 10
 
 /*
+ * Qtimer runs at 19.2 MHz timer, the accurate conversion to ns is
+ * (qtimer * 10 * 1000) / 192
+ */
+#define QTIMER_TO_NS(qtimer) (((qtimer) * 10 * 1000) / 192)
+#define QTIMER_TO_US(qtimer) (QTIMER_TO_NS(qtimer)  / 1000)
+#define NS_TO_QTIMER(ns) (((ns) * 192) / (10 * 1000))
+
+/*
  * hfi_catalog_base - base struct for sde HW information
  *
  * @hw_rev	    HW version
@@ -38,6 +46,9 @@
  * @max_display_count	Max display count
  * @wb_count		Number of writeback blocks
  * @wb_indices		Writeback block indices
+ * @wb_dnsc_indices	Writeback DNSC support indices
+ * @wb_dnsc_range	Valid range of scale ratio for WB DNSC
+ * @wb_dnsc_integer_only	Whether WB DNSC supports only integer scaling
  * @csc_wb_count	Number of CSC writeback blocks
  * @csc_wb_indices	CSC writeback block indices
  * @repro_wb_count	Number of Repro writeback blocks
@@ -54,6 +65,7 @@
  * @ds_count		count of destination scaler blocks
  * @ds_indices		DS block indices
  * @max_ds_resolution	Max resolution support of DS
+ * @active_pipes_mask	Array of active pipes mask
  */
 struct hfi_catalog_base {
 	u32 dcp_hw_rev;
@@ -74,6 +86,9 @@ struct hfi_catalog_base {
 	u32 max_display_count;
 	u32 wb_count;
 	u32 wb_indices[MAX_BLOCKS];
+	u32 wb_dnsc_indices[MAX_BLOCKS];
+	u32 wb_dnsc_range;
+	u32 wb_dnsc_integer_only;
 	u32 csc_wb_count;
 	u32 csc_wb_indices[MAX_BLOCKS];
 	u32 repro_wb_count;
@@ -89,6 +104,7 @@ struct hfi_catalog_base {
 	u32 ds_count;
 	u32 ds_indices[MAX_BLOCKS];
 	u32 max_ds_resolution;
+	u32 active_pipes_mask[MAX_SPLASH_DISPLAYS];
 };
 
 #if IS_ENABLED(CONFIG_QTI_HW_FENCE)
@@ -137,6 +153,7 @@ struct hfi_kms {
 	struct hfi_prop_listener device_init_listener;
 	struct hfi_prop_listener resource_vote_listener;
 	struct hfi_prop_listener trace_cfg_listener;
+	struct hfi_prop_listener debug_set_prop_listener;
 	atomic_t cat_init_done;
 	struct hfi_catalog_base *catalog;
 	struct hfi_connector *primary_connector;
@@ -252,7 +269,8 @@ int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms);
  * @crtc_state: Pointer to DRM CRTC state
  * Return: 0 on success or error code
  */
-int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state);
+int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state,
+	enum hfi_device_res_state vm_state);
 
 /**
  * hfi_kms_send_trace_cfg - enable/disable trace logs
@@ -293,5 +311,27 @@ int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffe
  * Returns 0 on success, negative error code on failure.
  */
 int hfi_kms_get_uidle_status(struct hfi_kms *hfi_kms, bool *uidle_enabled, u32 *uidle_state);
+
+/**
+ * hfi_kms_recover_hwfence - Recovers hwfence
+ * @hfi_kms: Pointer to hfi_kms structure
+ */
+void hfi_kms_recover_hwfence(struct hfi_kms *hfi_kms);
+
+/**
+ * hfi_kms_set_uidle_disable - disable/re-enable uidle feature via HFI
+ * @hfi_kms: pointer to hfi_kms
+ * @disable: true to disable uidle, false to re-enable
+ */
+int hfi_kms_set_uidle_disable(struct hfi_kms *hfi_kms, bool disable);
+
+/**
+ * hfi_kms_set_uidle_perf_cnt - enable/disable uidle performance counters via HFI
+ * @hfi_kms: Pointer to hfi kms structure
+ * @val: Counter enable value to send to FW (1 to enable, 0 to disable)
+ *
+ * Returns 0 on success, negative error code on failure.
+ */
+int hfi_kms_set_uidle_perf_cnt(struct hfi_kms *hfi_kms, u32 val);
 
 #endif // _HFI_KMS_H_

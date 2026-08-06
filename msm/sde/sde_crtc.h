@@ -529,6 +529,7 @@ struct sde_crtc_hal_funcs {
  * @cached_encoder_mask : cached encoder_mask for vblank work
  * @line_time_in_ns : current mode line time in nano sec is needed for QOS update
  * @frame_data      : Framedata data structure
+ * @frame_data_lock : spinlock to protect framedata allocation, free and access
  * @previous_opr_value : store previous opr values
  * @opr_event_notify_enabled : Flag to indicate if opr event notify is enabled or not
  * @hwfence_features_mask : u32 mask to enable/disable hw fence features. See enum
@@ -667,6 +668,7 @@ struct sde_crtc {
 	u32 line_time_in_ns;
 
 	struct sde_frame_data frame_data;
+	spinlock_t frame_data_lock;
 
 	struct sde_opr_value previous_opr_value;
 	bool opr_event_notify_enabled;
@@ -683,7 +685,7 @@ struct sde_crtc {
 
 	struct sde_aiqe_top_level aiqe_top_level;
 	struct sde_io_res ai_scaler_res;
-	struct sde_cp_skip_blend_plane skip_blend_planes[SB_PLANE_MAX];
+	struct sde_cp_skip_blend_plane skip_blend_planes[SB_PIPE_MAX][SB_PLANE_MAX];
 
 	struct sde_cesta_client *cesta_client;
 	u32 mdnie_art_frame_count;
@@ -1517,8 +1519,9 @@ static inline bool sde_crtc_is_power_on_frame(struct drm_crtc *crtc)
 /**
  * sde_crtc_copr_status_event_notify - notify copr status to userspace
  * @crtc: Pointer to drm_crtc.
+ * @arg: Pointer to copr status argument
  */
-void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc);
+void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc, void *arg);
 
 /**
  * sde_crtc_get_disp_op - Returns the display op index - default: MSM_DISP_OP_HWIO

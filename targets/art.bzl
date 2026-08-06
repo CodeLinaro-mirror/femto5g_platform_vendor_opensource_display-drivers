@@ -32,6 +32,7 @@ def define_art():
                     "CONFIG_THERMAL_OF",
                     "CONFIG_QCOM_SPEC_SYNC",
                     "CONFIG_MSM_EXT_DISPLAY",
+                    "CONFIG_SMMU_PROXY",
                     "CONFIG_DRM_SDE_CESTA",
                     "CONFIG_QTI_HW_FENCE",
                     "CONFIG_DSI_EXTENDED_MODES"

@@ -6,7 +6,16 @@
 #ifndef _DP_HDCP_H_
 #define _DP_HDCP_H_
 
+#include <linux/device.h>
+
 #include "sde_hdcp.h"
+
+/**
+ * dp_hdcp_get_msm_hdcp_dev() - get msm-hdcp device from device tree
+ *
+ * Return: pointer to msm-hdcp device on success, NULL otherwise
+ */
+struct device *dp_hdcp_get_msm_hdcp_dev(void);
 
 /**
  * dp_hdcp1x_init() - Initialize DP HDCP TrustZone bridge
@@ -124,15 +133,18 @@ int dp_hdcp2x_start(void *input, uint8_t **ake_init, uint32_t *ake_init_len);
  * @req_len: Length of request message
  * @resp_buf: Pointer to store response message buffer
  * @resp_len: Pointer to store response message length
+ * @repeater_flag: Pointer to store repeater flag as determined by TrustZone
+ * @timeout_ms: Pointer to store timeout value as determined by TrustZone
  *
  * Called when DCP sends HDCP2X_PROCESS_MSG event. Forwards the message
  * from the sink to TrustZone for processing and returns the response
- * message to be sent back to the sink.
+ * message to be sent back to the sink. The repeater_flag and timeout_ms
+ * are populated from app_data after TrustZone processes the message.
  *
  * Return: 0 on success, negative error code on failure
  */
 int dp_hdcp2x_process_msg(void *input, uint8_t *req_buf, uint32_t req_len, uint8_t **resp_buf,
-	uint32_t *resp_len);
+	uint32_t *resp_len, bool *repeater_flag, uint32_t *timeout_ms);
 
 /**
  * dp_hdcp2x_feature_supported() - Check if HDCP 2.x is supported
@@ -176,5 +188,31 @@ void dp_hdcp2x_stop(void *input);
  * Return: 0 on success, negative error code on failure
  */
 int dp_hdcp2x_enable_encryption(void *input);
+
+/**
+ * dp_hdcp2x_force_encryption() - Force HDCP 2.x encryption in TrustZone
+ * @input: HDCP 2.x context handle
+ * @enable: true to force encryption, false otherwise
+ *
+ * Calls TrustZone to force HDCP 2.x encryption. This is invoked after
+ * encryption has been enabled when the force_encryption debug flag is set,
+ * for CTS testing.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_hdcp2x_force_encryption(void *input, bool enable);
+
+/**
+ * dp_hdcp2x_query_stream() - Query stream management from TrustZone
+ * @input: HDCP 2.x context handle
+ * @resp_buf: Pointer to store response buffer (REP_STREAM_MANAGE from TZ)
+ * @resp_len: Pointer to store response length
+ *
+ * Called after REP_SEND_ACK is written to the sink. Issues
+ * HDCP2_CMD_QUERY_STREAM to TrustZone, which generates REP_STREAM_MANAGE.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_hdcp2x_query_stream(void *input, uint8_t **resp_buf, uint32_t *resp_len);
 
 #endif /* _DP_HDCP_H_ */

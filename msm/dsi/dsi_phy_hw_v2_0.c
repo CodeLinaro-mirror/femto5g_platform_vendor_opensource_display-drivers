@@ -4,6 +4,7 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
+#include <drm/drm_print.h>
 #include "dsi_catalog.h"
 
 #define DSIPHY_CMN_REVISION_ID0                   0x0000

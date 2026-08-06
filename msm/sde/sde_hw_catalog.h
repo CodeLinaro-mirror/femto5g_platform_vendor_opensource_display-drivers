@@ -58,12 +58,14 @@
 #define SDE_HW_VER_820	SDE_HW_VER(8, 2, 0) /* diwali */
 #define SDE_HW_VER_830	SDE_HW_VER(8,  3, 0) /* parrot*/
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
+#define SDE_HW_VER_860  SDE_HW_VER(8, 6, 0) /* ravelin */
 #define SDE_HW_VER_870	SDE_HW_VER(8, 7, 0) /* malabar */
 #define SDE_HW_VER_880  SDE_HW_VER(8, 8, 0) /* vienna */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
 #define SDE_HW_VER_920  SDE_HW_VER(9, 2, 0) /* x1e80100 */
 #define SDE_HW_VER_970  SDE_HW_VER(9, 7, 0) /* x1p42100 */
 #define SDE_HW_VER_980	SDE_HW_VER(9, 8, 0) /* seraph */
+#define SDE_HW_VER_990	SDE_HW_VER(9, 9, 0) /* pikachu */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 #define SDE_HW_VER_A30  SDE_HW_VER(10, 3, 0) /* chora */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
@@ -75,7 +77,9 @@
 #define SDE_HW_VER_E00  SDE_HW_VER(14, 0, 0) /* art */
 #define SDE_HW_VER_E30  SDE_HW_VER(14, 3, 0) /* pebble */
 
+#define SDE_QULTIVATE_SW_NONE 0x0
 #define SDE_QULTIVATE_SW_REV1 0x1
+#define SDE_QULTIVATE_SW_REV2 0x2
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
 #define IS_SDE_MAJOR_SAME(rev1, rev2)   \
@@ -107,12 +111,14 @@
 #define IS_DIWALI_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_820)
 #define IS_PARROT_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_830)
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
+#define IS_RAVELIN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_860)
 #define IS_MALABAR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_870)
 #define IS_VIENNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_880)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
 #define IS_X1E80100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_920)
 #define IS_X1P42100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_970)
 #define IS_SERAPH_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_980)
+#define IS_PIKACHU_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_990)
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
 #define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
@@ -278,6 +284,7 @@ enum {
  * SDE_SYS_CACHE_DISP: System cache for static display read/write path use case
  * SDE_SYS_CACHE_DISP_1: System cache for static display write path use case
  * SDE_SYS_CACHE_DISP_WB: System cache for IWE use case
+ * SDE_SYS_CACHE_LSR_MODE: System cache for LSR render-mode input planes (LLCC_DCP)
  * SDE_SYS_CACHE_MAX:  Maximum number of system cache users
  * SDE_SYS_CACHE_NONE: System cache not used
  */
@@ -285,6 +292,7 @@ enum sde_sys_cache_type {
 	SDE_SYS_CACHE_DISP,
 	SDE_SYS_CACHE_DISP_1,
 	SDE_SYS_CACHE_DISP_WB,
+	SDE_SYS_CACHE_LSR_MODE,
 	SDE_SYS_CACHE_MAX,
 	SDE_SYS_CACHE_NONE = SDE_SYS_CACHE_MAX
 };
@@ -547,6 +555,7 @@ enum {
  * @SDE_DSPP_SPR_DITHER      SPR Dither block
  * @SDE_DSPP_SPR_DITHER_LUMA SPR Dither block (Luma supported)
  * @SDE_DSPP_DEMURA          Demura block
+ * @SDE_DSPP_DEMURA_PU       Demura block (pu)
  * @SDE_DSPP_RC              RC block (mask)
  * @SDE_DSPP_RC_PU           RC block (pu)
  * @SDE_DSPP_SB              SB LUT DMA
@@ -575,6 +584,7 @@ enum {
 	SDE_DSPP_SPR_DITHER,
 	SDE_DSPP_SPR_DITHER_LUMA,
 	SDE_DSPP_DEMURA,
+	SDE_DSPP_DEMURA_PU,
 	SDE_DSPP_RC,
 	SDE_DSPP_RC_PU,
 	SDE_DSPP_SB,
@@ -947,6 +957,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_LSR            Support Display LSR
  * @SDE_FEATURE_FRAME_SEQ_CHECK	 Add check on frame sequence number to avoid duplicate frame events
  * @SDE_FEATURE_QRTC           QRTC supported
+ * @SDE_FEATURE_A10_Y10        A10/Y10 pipe format supported
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -1005,6 +1016,10 @@ enum sde_mdss_features {
 	SDE_FEATURE_LSR,
 	SDE_FEATURE_FRAME_SEQ_CHECK,
 	SDE_FEATURE_QRTC,
+	SDE_FEATURE_A10_Y10,
+	SDE_FEATURE_ALLOW_SEC_CAM_CONCURRENCY,
+	SDE_FEATURE_BATCH_COMMIT,
+	SDE_FEATURE_GMU_REPROJ,
 	SDE_FEATURE_MAX
 };
 
@@ -1553,6 +1568,7 @@ struct sde_uidle_cfg {
 	u32 uidle_rev;
 	u32 debugfs_perf;
 	bool debugfs_ctrl;
+	bool debugfs_ctrl_initialized;
 	bool perf_cntr_en;
 	bool dirty;
 	bool fal10_override;
@@ -1785,18 +1801,21 @@ struct sde_dnsc_blur_filter_info {
 };
 
 /**
- * struct sde_qultivate_config_v1 - information of display_qultivate fuse config
- * @qultivate_enabled  display_qultivate fuse is enabled.
+ * struct sde_qultivate_config - information of display_qultivate fuse config
+ * @enabled            display_qultivate fuse is enabled.
  * @gdsc2_blocked      gdsc2 operation is blocked when display_qultivate fuse present
  * @vig_count          number of vig blocks when display_qultivate fuse present
  * @dma_count          number of dma blocks when display_qultivate fuse present
-
+ * @mixer_count        number of mixer blocks when display_qultivate fuse present (rev2+)
+ * @dsc_count          number of dsc blocks when display_qultivate fuse present (rev2+)
  */
-struct sde_qultivate_config_v1 {
+struct sde_qultivate_config {
 	bool enabled;
 	bool gdsc2_blocked;
 	u32 vig_count;
 	u32 dma_count;
+	u32 mixer_count;
+	u32 dsc_count;
 };
 
 /**
@@ -2186,6 +2205,8 @@ struct sde_perf_cfg {
  * @cwb_blk_stride      offset between each CWB blk
  * @dcwb_count          number of dcwb hardware instances
  * @qultivate_cfg       pointer to display_qultivate configurations
+ * @ddr_count           number of ddr types supported
+ * @ddr_list_index      Index of supported ddr type
  * @reg_dma_count       number of valid reg dma blocks available
  * @dma_cfg             pointer to config containing reg dma blocks
  * @ad_count            number of AD4 hardware instances
@@ -2214,6 +2235,7 @@ struct sde_perf_cfg {
  * @max_display_height  minimum display height
  * @min_display_width   maximum display width
  * @min_display_height  maximum display height
+ * @in_rot_maxheight    max pre rotated height for inline rotation.
  * @max_sspp_linewidth  max source pipe line width
  * @vig_sspp_linewidth  max vig source pipe line width support
  * @scaling_linewidth   max vig source pipe linewidth for scaling usecases
@@ -2263,6 +2285,7 @@ struct sde_perf_cfg {
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
  * @controlled_SR       Controls AP self refresh handling of early ept only when there is overlap.
  *                      If not set it is immediate self refresh
+ * @has_demura_single_rect_support   supported demura surface with single rect
  * @virtual_mixers_mask bitmask of virtual mixers
  * @repro_excluded_props   Pointer to 2D array [obj_type][props] of excluded
 			   properties for reprojection
@@ -2290,6 +2313,8 @@ struct sde_mdss_cfg {
 
 	/* HW Blocks */
 	u32 mdss_count;
+	u32 ddr_count;
+	u32 ddr_list_index;
 	struct sde_mdss_base_cfg mdss[MAX_BLOCKS];
 	u32 mdss_hw_block_size;
 	u32 mdp_count;
@@ -2331,7 +2356,7 @@ struct sde_mdss_cfg {
 	struct sde_hfi_cfg hfi_cfg;
 	u32 cwb_blk_stride;
 	u32 dcwb_count;
-	void *qultivate_cfg;
+	struct sde_qultivate_config *qultivate_cfg;
 
 	u32 reg_dma_count;
 	struct sde_reg_dma_cfg dma_cfg;
@@ -2365,6 +2390,7 @@ struct sde_mdss_cfg {
 	u32 max_display_height;
 	u32 min_display_width;
 	u32 min_display_height;
+	u32 in_rot_maxheight;
 	u32 max_sspp_linewidth;
 	u32 vig_sspp_linewidth;
 	u32 scaling_linewidth;
@@ -2422,6 +2448,7 @@ struct sde_mdss_cfg {
 	u32 controlled_SR;
 	u32 early_EPT_handling;
 
+	bool has_demura_single_rect_support;
 	bool disable_multirect;
 
 	u32 **repro_excluded_props;

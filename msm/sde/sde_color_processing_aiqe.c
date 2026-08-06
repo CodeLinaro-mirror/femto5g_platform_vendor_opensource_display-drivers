@@ -45,6 +45,11 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 	struct sde_mdss_cfg *catalog = NULL;
 	u32 major_version, version;
 
+	if (!crtc) {
+		DRM_ERROR("invalid crtc %pK\n", crtc);
+		return;
+	}
+
 	kms = get_kms(crtc);
 	catalog = kms->catalog;
 	if (!catalog->ssip_allowed) {
@@ -145,6 +150,28 @@ int set_mdnie_art_feature(struct sde_hw_dspp *hw_dspp,
 	} else
 		hw_dspp->ops.setup_mdnie_art[hw_dspp->hw.disp_op](hw_dspp, hw_cfg,
 							      &hw_crtc->aiqe_top_level);
+
+	return ret;
+}
+
+int set_mdnie_ipc(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
+			     struct sde_crtc *hw_crtc)
+{
+	int ret = 0;
+
+	if (!hw_dspp)
+		return -EINVAL;
+
+	if (!IS_DISP_OP_HFI(hw_dspp->hw.disp_op))
+		return 0;
+
+	if (!hw_dspp->ops.setup_mdnie_ipc[hw_dspp->hw.disp_op]) {
+		if (!hw_dspp->cap->sblk->aiqe.mdnie_supported)
+			DRM_DEBUG_DRIVER("MDNIE not supported in dspp idx %d", hw_dspp->idx);
+		else
+			ret = -EINVAL;
+	} else
+		hw_dspp->ops.setup_mdnie_ipc[hw_dspp->hw.disp_op](hw_dspp, hw_cfg);
 
 	return ret;
 }
@@ -251,6 +278,11 @@ int sde_dspp_copr_read_status(struct sde_hw_dspp *hw_dspp,
 
 	if (!copr_status || !hw_dspp)
 		return -EINVAL;
+
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
+		return -EINVAL;
+	}
 
 	if (!hw_dspp->ops.read_copr_status[hw_dspp->hw.disp_op])
 		return IS_DISP_OP_HFI(hw_dspp->hw.disp_op) ? 0 : -EINVAL;

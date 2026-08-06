@@ -111,34 +111,59 @@ static bool _hfi_crtc_is_prop_excluded_for_repro(u32 drm_prop, enum wb_opmode op
 }
 #endif
 
-static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate,
-		struct hfi_util_u32_prop_helper *prop_collector, u32 hfi_prop)
+static inline int get_num_mixers(struct sde_crtc_state *cstate,
+			struct sde_crtc *sde_crtc)
 {
-	struct hfi_resource_cfg lm_cfg;
-	int rc = 0;
+	if (!sde_crtc->num_mixers)
+		return 0;
 
-	/*
-	 * DS Config (Other types of configs can also be added below with respective checks and
-	 * their corresponding res_type)
-	 */
-	if (cstate->num_ds > 0) {
-		lm_cfg.res_type = HFI_RESOURCE_LM;
-		lm_cfg.resource_idx = cstate->ds_cfg[0].idx;
-		lm_cfg.width = cstate->ds_cfg[0].lm_width;
-		lm_cfg.height = cstate->ds_cfg[0].lm_height;
-
-		if (lm_cfg.width && lm_cfg.height) {
-			rc = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
-				HFI_VAL_U32_ARRAY, &lm_cfg, sizeof(struct hfi_resource_cfg));
-
-			return rc;
-		}
-	}
-
-	return 0;
+	return cstate->is_loopback_mode ? cstate->num_prim_mixers :
+			sde_crtc->num_mixers;
 }
 
-int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
+static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate, struct sde_crtc *sde_crtc,
+		struct hfi_util_u32_prop_helper *prop_collector, u32 hfi_prop)
+{
+	struct hfi_resource_cfg lm_cfg = {0, };
+	int rc = 0;
+	int num_mixers;
+	bool is_cmd;
+
+	is_cmd = (sde_crtc_get_intf_mode(&sde_crtc->base, &cstate->base) == INTF_MODE_CMD);
+
+	num_mixers = get_num_mixers(cstate, sde_crtc);
+
+	if (sde_crtc->ai_scaler_res.enabled && num_mixers) {
+		lm_cfg.res_type = HFI_RESOURCE_LM;
+		lm_cfg.resource_idx = 0;
+		lm_cfg.width = sde_crtc->ai_scaler_res.src_w / num_mixers;
+		lm_cfg.height = sde_crtc->ai_scaler_res.src_h;
+	} else if (cstate->num_ds_enabled) {
+		lm_cfg.res_type = HFI_RESOURCE_LM;
+		lm_cfg.resource_idx = cstate->ds_cfg[0].idx;
+		lm_cfg.width = cstate->lm_roi[0].w;
+		lm_cfg.height = cstate->lm_roi[0].h;
+		lm_cfg.reserved = ((u32)cstate->lm_roi[0].x << 16) | (cstate->lm_roi[0].y);
+	} else if (is_cmd) {
+		lm_cfg.res_type = HFI_RESOURCE_LM;
+		lm_cfg.resource_idx = 0;
+		lm_cfg.width = cstate->lm_roi[0].w;
+		lm_cfg.height = cstate->lm_roi[0].h;
+		lm_cfg.reserved = ((u32)cstate->lm_roi[0].x << 16) | (cstate->lm_roi[0].y);
+	} else {
+		lm_cfg.res_type = HFI_RESOURCE_LM;
+		lm_cfg.resource_idx = 0;
+		lm_cfg.width = 0;
+		lm_cfg.height = 0;
+	}
+
+	rc = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop, HFI_VAL_U32_ARRAY,
+		&lm_cfg, sizeof(struct hfi_resource_cfg));
+
+	return rc;
+}
+
+static int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 		struct sde_crtc_state *cstate,
 		struct hfi_util_u32_prop_helper *prop_collector, u32 drm_prop)
 {
@@ -176,6 +201,15 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 	case HFI_PROPERTY_DISPLAY_CORE_AB:
 	case HFI_PROPERTY_DISPLAY_CORE_CLK:
 		prop_val = sde_crtc_get_property(cstate, drm_prop);
+
+		/*
+		 * In SDE_PERF_MODE_FIXED (perf_mode=2), enforce the fixed core clock floor.
+		 */
+		if (hfi_prop == HFI_PROPERTY_DISPLAY_CORE_CLK &&
+				hfi_kms->base->perf.perf_tune.mode == SDE_PERF_MODE_FIXED) {
+			prop_val = max(hfi_kms->base->perf.fix_core_clk_rate, prop_val);
+			SDE_EVT32(hfi_prop, prop_val);
+		}
 
 		prop_u64.val_lo = HFI_VAL_L32(prop_val);
 		prop_u64.val_hi = HFI_VAL_H32(prop_val);
@@ -218,7 +252,7 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 		kfree(dim_layers);
 		break;
 	case HFI_PROPERTY_DISPLAY_SET_RESOURCE_DATA:
-		hfi_crtc_setup_resource_cfg(cstate, prop_collector, hfi_prop);
+		hfi_crtc_setup_resource_cfg(cstate, crtc, prop_collector, hfi_prop);
 		break;
 	default:
 		HFI_ERROR_CRTC(crtc_hfi, "unsupported HFI property\n");
@@ -394,10 +428,13 @@ static void _hfi_crtc_setup_sys_cache(struct sde_crtc_state *cstate, struct sde_
 	if (sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP])
 		sde_crtc->llcc_stale_frame_trigger = true;
 
+	sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_LSR_MODE] =
+		(sde_crtc_get_property(cstate, CRTC_PROP_LSR_MODE) == MSM_DISP_LSR_MODE_ENABLED);
+
 	sde_core_perf_crtc_update_llcc(crtc);
 }
 
-int hfi_crtc_populate_custom_kv_setter_props(struct sde_crtc *crtc, u32 disp_id,
+static int hfi_crtc_populate_custom_kv_setter_props(struct sde_crtc *crtc, u32 disp_id,
 		struct sde_crtc_state *cstate, struct hfi_cmdbuf_t *cmd_buf)
 {
 	int i, ret = 0;
@@ -449,7 +486,7 @@ end:
 	return ret;
 }
 
-int _hfi_crtc_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
+static int _hfi_crtc_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 		struct sde_crtc *crtc, struct sde_crtc_state *old_state)
 {
 	int ret = 0;
@@ -542,7 +579,7 @@ u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_s
 	return disp_id;
 }
 
-void hfi_crtc_destroy(struct sde_crtc *crtc)
+static void hfi_crtc_destroy(struct sde_crtc *crtc)
 {
 	int ret = 0;
 	struct hfi_crtc *crtc_hfi;
@@ -634,7 +671,7 @@ int hfi_crtc_atomic_check(struct sde_crtc *crtc, struct sde_crtc_state *state)
 	return ret;
 }
 
-int hfi_crtc_atomic_begin(struct sde_crtc *sde_crtc, struct sde_crtc_state *cstate)
+static int hfi_crtc_atomic_begin(struct sde_crtc *sde_crtc, struct sde_crtc_state *cstate)
 {
 	int ret = 0;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
@@ -680,7 +717,7 @@ int hfi_crtc_atomic_begin(struct sde_crtc *sde_crtc, struct sde_crtc_state *csta
 }
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
-int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
+static int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
 {
 	int rc = 0;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
@@ -737,7 +774,7 @@ int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
 	return rc;
 }
 
-void hfi_crtc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload, u32 size,
+static void hfi_crtc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload, u32 size,
 			struct hfi_prop_listener *hfi_listener)
 {
 	struct hfi_crtc *hfi_crtc;
@@ -777,7 +814,7 @@ void hfi_crtc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload,
 	misr_read_values->count = max_count;
 }
 
-int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
+static int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 {
 	int rc = 0;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
@@ -785,7 +822,7 @@ int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 	struct drm_crtc *crtc;
 	struct hfi_crtc *hfi_crtc;
 	struct misr_read_data misr_read;
-	u32 disp_id;
+	u32 disp_id, packet_id = 0;
 
 	hfi_kms = sde_crtc_get_kms(sde_crtc);
 	if (!hfi_kms)
@@ -820,7 +857,7 @@ int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 			HFI_COMMAND_DEBUG_MISR_READ, disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &misr_read, sizeof(misr_read),
 			&hfi_crtc->misr_read_listener, (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
-			HFI_HOST_FLAGS_NON_DISCARDABLE));
+			HFI_HOST_FLAGS_NON_DISCARDABLE), true, &packet_id);
 	if (rc)
 		SDE_ERROR("Failed to add MISR read command!\n");
 
@@ -832,12 +869,12 @@ int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 
 }
 #else
-int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
+static int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
 {
 	return 0;
 }
 
-int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
+static int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 {
 	return 0;
 }
@@ -866,6 +903,10 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 
 	switch (cmd_id) {
 	case HFI_COMMAND_DISPLAY_EVENT_LTM:
+		if (!payload) {
+			SDE_ERROR("Invalid LTM event payload %pK\n", payload);
+			return;
+		}
 		event_payload = (struct hfi_display_ltm_event_resp *)payload;
 		if (event_payload->event_type == HFI_LTM_HIST_DONE)
 			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_LTM_HIST, event_payload);
@@ -877,6 +918,10 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 			SDE_ERROR("unknown LTM event type %d\n", event_payload->event_type);
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_RGB_HIST: {
+		if (!payload) {
+			SDE_ERROR("Invalid RGB hist event payload %pK\n", payload);
+			return;
+		}
 		struct hfi_display_rgb_hist_event_resp *event_payload;
 
 		event_payload = payload;
@@ -897,6 +942,10 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 	}
 	case HFI_COMMAND_DISPLAY_EVENT_PA_HIST:
 	{
+		if (!payload) {
+			SDE_ERROR("Invalid PA hist event payload %pK\n", payload);
+			return;
+		}
 		struct hfi_display_pa_hist_event_resp *event_payload;
 
 		event_payload = (struct hfi_display_pa_hist_event_resp *)payload;
@@ -904,10 +953,7 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 			SDE_ERROR("Invalid size for pa hist event, size %d\n", size);
 			return;
 		}
-		if (event_payload)
-			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_HISTOGRAM, event_payload);
-		else
-			SDE_ERROR("Invalid PA Hist event payload\n");
+		sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_HISTOGRAM, event_payload);
 		break;
 	}
 	case HFI_COMMAND_DISPLAY_EVENT_SPR_OPR: {
@@ -927,6 +973,22 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 		sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_OPR_VALUE, data);
 		break;
 	}
+	case HFI_COMMAND_DISPLAY_EVENT_AIQE_COPR_READ:
+		if (!payload) {
+			SDE_ERROR("Invalid COPR event payload %pK\n", payload);
+			return;
+		}
+
+		data = (u32 *)payload;
+		ex_size = (1 + data[0]) * sizeof(u32);
+		if (size != ex_size) {
+			SDE_ERROR("Invalid COPR event payload size %d expected size %d\n",
+				size, ex_size);
+			return;
+		}
+
+		sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_COPR, payload);
+		break;
 	default:
 		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
 	}
@@ -938,7 +1000,7 @@ static int _hfi_crtc_hw_event_set_buff(struct sde_crtc *crtc, u32 payload,
 	struct hfi_crtc *hfi_crtc = to_hfi_crtc(crtc);
 	struct hfi_kms *hfi_kms = sde_crtc_get_kms(crtc);
 	struct hfi_cmdbuf_t *cmd_buf;
-	u32 cmd, display_id = 0;
+	u32 cmd, display_id = 0, packet_id = 0;
 	int ret = 0;
 
 	if (!hfi_crtc || !hfi_kms) {
@@ -964,7 +1026,7 @@ static int _hfi_crtc_hw_event_set_buff(struct sde_crtc *crtc, u32 payload,
 	ret = hfi_adapter_add_get_property(cmd_buf->ctx, cmd_buf, cmd,
 			display_id, HFI_PAYLOAD_TYPE_U32,
 			&payload, sizeof(payload), &hfi_crtc->hfi_cb_obj,
-			HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_NON_DISCARDABLE, false, &packet_id);
 	if (ret) {
 		SDE_ERROR("failed to update event: 0x%x\n", payload);
 		return ret;
@@ -981,6 +1043,25 @@ static int _hfi_crtc_hw_event_set_buff(struct sde_crtc *crtc, u32 payload,
 	}
 
 	return 0;
+}
+
+static bool _is_hfi_crtc_enable_hw_event_required(struct sde_crtc *crtc,
+		enum hfi_crtc_event event, bool enable)
+{
+	struct hfi_crtc *hfi_crtc = to_hfi_crtc(crtc);
+
+	/* avoid redundant register/unregister events */
+	if ((enable && hfi_crtc->hw_events_state[event].state)
+			|| (!enable && !hfi_crtc->hw_events_state[event].state)) {
+		SDE_DEBUG("crtc:%d redundant event register - event:0x%x, enable:%d, state:%d\n",
+			DRMID(&crtc->base), event, enable,
+			hfi_crtc->hw_events_state[event].state);
+		SDE_EVT32(DRMID(&crtc->base), event, enable,
+			hfi_crtc->hw_events_state[event].state, SDE_EVTLOG_ERROR);
+		return false;
+	}
+
+	return true;
 }
 
 static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enable)
@@ -1001,6 +1082,9 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 
 	switch (event) {
 	case HFI_EVENT_LTM:
+		if (!_is_hfi_crtc_enable_hw_event_required(crtc, HFI_CRTC_EVENT_LTM, enable))
+			break;
+
 		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("event registration failed: event %d, enable %d\n",
@@ -1012,6 +1096,9 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_LTM].pending = false;
 		break;
 	case HFI_EVENT_RGB_HIST:
+		if (!_is_hfi_crtc_enable_hw_event_required(crtc, HFI_CRTC_EVENT_RGB_HIST, enable))
+			break;
+
 		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("event registration failed: event %d, enable %d\n",
@@ -1023,6 +1110,9 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_RGB_HIST].pending = false;
 		break;
 	case HFI_EVENT_PA_HIST:
+		if (!_is_hfi_crtc_enable_hw_event_required(crtc, HFI_CRTC_EVENT_PA_HIST, enable))
+			break;
+
 		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("event registration failed: event %d, enable %d\n",
@@ -1034,6 +1124,9 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_PA_HIST].pending = false;
 		break;
 	case HFI_EVENT_SPR_OPR:
+		if (!_is_hfi_crtc_enable_hw_event_required(crtc, HFI_CRTC_EVENT_SPR_OPR, enable))
+			break;
+
 		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("event registration failed: event %d, enable %d\n",
@@ -1044,6 +1137,21 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_SPR_OPR].state = enable;
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_SPR_OPR].pending = false;
 		break;
+
+	case HFI_EVENT_AIQE_COPR:
+		if (!_is_hfi_crtc_enable_hw_event_required(crtc, HFI_CRTC_EVENT_AIQE_COPR, enable))
+			break;
+
+		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
+		if (ret) {
+			SDE_ERROR("event registration failed: event %d, enable %d\n",
+				event, enable);
+			return ret;
+		}
+
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_AIQE_COPR].state = enable;
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_AIQE_COPR].pending = false;
+		break;
 	default:
 		break;
 	}
@@ -1051,7 +1159,7 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 	return ret;
 }
 
-int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
+static int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
 {
 	if (!crtc) {
 		SDE_ERROR("invalid args\n");
@@ -1141,6 +1249,9 @@ int hfi_crtc_init(struct sde_crtc *sde_crtc)
 	crtc->hfi_cb_obj.hfi_prop_handler = hfi_crtc_prop_handler;
 	crtc->sde_base = sde_crtc;
 	sde_crtc->hfi_crtc = crtc;
+
+	memset(&crtc->hw_events_state, 0, sizeof(struct crtc_hw_event_state) * HFI_CRTC_EVENT_MAX);
+
 	return 0;
 
 free_kv:

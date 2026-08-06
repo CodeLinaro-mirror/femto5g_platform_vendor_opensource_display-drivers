@@ -498,7 +498,7 @@ void sde_rm_set_disp_op(struct sde_rm *rm, enum msm_disp_op disp_op_idx)
 		}
 
 		list_for_each_entry(blk, blk_list, list) {
-			if (!blk || !blk->hw) {
+			if (!blk->hw) {
 				SDE_ERROR("invalid hw blk\n");
 				continue;
 			}
@@ -745,6 +745,11 @@ static int _sde_rm_hw_blk_create(
 	struct sde_hw_blk_reg_map *hw;
 	struct sde_kms *sde_kms = to_sde_kms(ddev_to_msm_kms(rm->dev));
 	struct sde_vbif_clk_client clk_client = {0};
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde_kms\n");
+		return -EINVAL;
+	}
 
 	hw_mdp = rm->hw_mdp;
 
@@ -1299,7 +1304,7 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 		u32 conn_lm_mask)
 {
 	const struct sde_lm_cfg *lm_cfg = to_sde_hw_mixer(lm->hw)->cap;
-	const struct sde_pingpong_cfg *pp_cfg;
+	const struct sde_pingpong_cfg *pp_cfg = NULL;
 	bool ret, is_conn_primary, is_conn_secondary;
 	u32 lm_primary_pref, lm_secondary_pref, cwb_pref, dcwb_pref;
 	u32 cac_lb_pref, cac_primary_pref;
@@ -2085,11 +2090,42 @@ static int _sde_rm_reserve_cdm(
 	return 0;
 }
 
+static int _reassign_dp_intf(struct sde_rm *rm, uint32_t id)
+{
+	struct sde_kms *sde_kms = container_of(rm, struct sde_kms, rm);
+	struct sde_mdss_cfg *cat = sde_kms->catalog;
+	int curr_intf_ind, next_intf_ind;
+	struct sde_intf_cfg curr_intf, next_intf;
+
+	for (curr_intf_ind = 0; curr_intf_ind < cat->intf_count; curr_intf_ind++) {
+		curr_intf = cat->intf[curr_intf_ind];
+
+		if (curr_intf.type != INTF_DP || curr_intf.id != id)
+			continue;
+
+		SDE_DEBUG("intf %d id %d already assigned to DP\n", curr_intf_ind, curr_intf.id);
+
+		for (next_intf_ind = 0; next_intf_ind < cat->intf_count; next_intf_ind++) {
+			next_intf = cat->intf[next_intf_ind];
+			if (next_intf.type == INTF_DP && next_intf.id != id) {
+				id = next_intf.id;
+				SDE_DEBUG("reassign to intf %d id %d\n", next_intf_ind,
+						next_intf.id);
+				break;
+			}
+		}
+		break;
+	}
+
+	return id;
+}
+
 static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm, struct sde_rm_rsvp *rsvp,
 		uint32_t id, enum sde_hw_blk_type type, struct sde_rm_requirements *reqs)
 {
 	struct sde_encoder_hw_resources *hw_res = &reqs->hw_res;
 	struct sde_rm_hw_iter iter;
+	uint32_t new_id;
 	int ret = 0;
 
 	/* Find the block entry in the rm, and note the reservation */
@@ -2099,6 +2135,12 @@ static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm, struct sde_rm_rsvp *rsv
 			continue;
 
 		if (RESERVED_BY_OTHER(iter.blk, rsvp)) {
+			new_id = _reassign_dp_intf(rm, id);
+			if (new_id != id) {
+				id = new_id;
+				continue;
+			}
+			SDE_EVT32(iter.blk->type, rsvp->enc_id, iter.blk->id, 0xebad);
 			SDE_ERROR("type %d id %d already reserved\n", type, id);
 			return -ENAVAIL;
 		}
@@ -2422,7 +2464,7 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 	struct sde_rm_hw_iter iter_lm, iter_dsc;
 	struct sde_kms *sde_kms;
 	struct sde_hw_mixer *mixer;
-	size_t pipes_per_lm, pipe_count;
+	size_t pipes_per_lm = 0, pipe_count;
 
 	if (!rm || !ctl || !splash_display) {
 		SDE_ERROR("invalid input parameters\n");
@@ -3035,7 +3077,7 @@ static void _sde_rm_populate_dp_lm_mask(struct sde_rm *rm,
 }
 
 /* call this only after rm_mutex held */
-struct sde_rm_rsvp *_sde_rm_poll_get_rsvp_nxt_locked(struct sde_rm *rm,
+static struct sde_rm_rsvp *_sde_rm_poll_get_rsvp_nxt_locked(struct sde_rm *rm,
 		struct drm_encoder *enc)
 {
 	int i;

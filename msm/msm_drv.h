@@ -56,6 +56,7 @@
 #endif
 #include <drm/drm_bridge.h>
 #include <drm/drm_framebuffer.h>
+#include <drm/drm_print.h>
 
 #include "sde_power_handle.h"
 
@@ -187,6 +188,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_REPROJ_RENDER_FRUSTUM,
 	PLANE_PROP_REPROJ_ALPHA_BUFFER,
 	PLANE_PROP_REPROJ_LAYER_GAMMA,
+	PLANE_PROP_DISPARITY_PHASE,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
@@ -231,6 +233,9 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_FLUSH_SYNC_EN,
 	CRTC_PROP_DISPLAY_OP,
 	CRTC_PROP_LSR_MODE,
+	CRTC_PROP_BATCH_SIZE,
+	CRTC_PROP_BATCH_INDEX,
+	CRTC_PROP_BATCH_TYPE,
 
 	/* total # of properties */
 	CRTC_PROP_COUNT
@@ -249,6 +254,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_DIMMING_BL_LUT,
 	CONNECTOR_PROP_DNSC_BLUR,
 	CONNECTOR_PROP_WB_CSC_CONFIG,
+	CONNECTOR_PROP_WB_DNSC,
 
 	/* reprojection blob properties */
 	CONNECTOR_PROP_REPROJ_SPARSE_GRID,
@@ -281,6 +287,8 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_EMSYNC_FPS,
 	CONNECTOR_PROP_PRIVACY_LAYER_V1,
 	CONNECTOR_PROP_PRIVACY_LAYER_V2,
+	CONNECTOR_PROP_VSYNC_OFFSET,
+	CONN_PROP_GMU_DCP_INTF_MEM,
 
 	/* enum/bitmask properties */
 	CONNECTOR_PROP_TOPOLOGY_NAME,
@@ -302,6 +310,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_WB_ROT_TYPE,
 	CONNECTOR_PROP_WB_ROT_BYTES_PER_CLK,
 	CONNECTOR_PROP_BPP_MODE,
+	CONNECTOR_PROP_SPR_MODE,
 
 	/* LSR connector properties*/
 	CONNECTOR_PROP_OUT_FB_LIST,
@@ -490,6 +499,20 @@ enum msm_display_dsc_mode {
 };
 
 /**
+ * enum msm_display_spr_mode - panel spr chroma format mode
+ * @MSM_DISPLAY_SPR_DISABLED: SPR chroma format disabled (RGB 4:4:4)
+ * @MSM_DISPLAY_SPR_YUV_422: SPR chroma format YUV 4:2:2
+ * @MSM_DISPLAY_SPR_YUV_420: SPR chroma format YUV 4:2:0
+ * @MSM_DISPLAY_SPR_MAX: max and invalid SPR chroma foramt
+ */
+enum msm_display_spr_mode {
+	MSM_DISPLAY_SPR_DISABLED,
+	MSM_DISPLAY_SPR_YUV_422,
+	MSM_DISPLAY_SPR_YUV_420,
+	MSM_DISPLAY_SPR_MAX,
+};
+
+/**
  * struct msm_display_mode - wrapper for drm_display_mode
  * @base: drm_display_mode attached to this msm_mode
  * @private_flags: integer holding private driver mode flags
@@ -506,11 +529,13 @@ struct msm_display_mode {
  * @dsc_enabled: boolean used to indicate if dsc should be enabled
  * @pixel_format_mode: used to indicate pixel format mode
  * @emsync_fps: used to indicate emsync fps
+ * @spr_mode: used to indicate spr mode
  */
 struct msm_sub_mode {
 	enum msm_display_dsc_mode dsc_mode;
 	enum msm_display_pixel_format pixel_format_mode;
 	u32 emsync_fps;
+	enum msm_display_spr_mode spr_mode;
 };
 
 /**
@@ -1315,6 +1340,16 @@ enum lsr_mode {
 	MSM_DISP_LSR_MODE_ENABLED,
 };
 
+/**
+ * enum msm_mdp_batch_type: batch submission type for Pikachu
+ * @MSM_MDP_BATCH_TYPE_NONE: no batching
+ * @MSM_MDP_BATCH_TYPE_LSR:  LSR batch submission
+ */
+enum msm_mdp_batch_type {
+	MSM_MDP_BATCH_TYPE_NONE = 0,
+	MSM_MDP_BATCH_TYPE_LSR  = 1,
+};
+
 struct msm_drm_private {
 
 	struct drm_device *dev;
@@ -1804,18 +1839,6 @@ static inline void __exit sde_shd_unregister(void)
 }
 #endif /* CONFIG_DRM_SDE_SHD */
 
-#if IS_ENABLED(CONFIG_HDCP_QSEECOM)
-void __init msm_hdcp_register(void);
-void __exit msm_hdcp_unregister(void);
-#else
-static inline void __init msm_hdcp_register(void)
-{
-}
-static inline void __exit msm_hdcp_unregister(void)
-{
-}
-#endif /* CONFIG_HDCP_QSEECOM */
-
 #if IS_ENABLED(CONFIG_DRM_MSM_DP)
 void __init dp_drv_register(void);
 void __exit dp_drv_unregister(void);
@@ -2023,4 +2046,22 @@ bool msm_iommu_present_on_bus(const struct bus_type *bus);
  * Return: true if the IOMMU is present, false otherwise.
  */
 bool mdss_iommu_present(struct drm_device *dev);
+
+/**
+ * msm_ioctl_rmfb2 - Handle RMFB2 DRM ioctl request
+ * @dev: Pointer to the DRM device
+ * @data: Pointer to the ioctl-specific data structure
+ * @file_priv: DRM file private data associated with the caller
+ *
+ * This function handles the RMFB2 (remove framebuffer) ioctl issued
+ * from userspace. It validates the input parameters and performs the
+ * necessary cleanup to remove the specified framebuffer object from
+ * the DRM subsystem.
+ *
+ * The function is typically used to release framebuffer resources
+ * that were previously created via the ADD_FB2 ioctl.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
+int msm_ioctl_rmfb2(struct drm_device *dev, void *data, struct drm_file *file_priv);
 #endif /* __MSM_DRV_H__ */

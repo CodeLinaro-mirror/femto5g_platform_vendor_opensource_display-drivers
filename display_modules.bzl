@@ -237,24 +237,28 @@ module_entry(
             "msm/msm_smmu.c",
             "msm/msm_prop.c",
         ],
-        "CONFIG_MSM_SDE_ROTATOR": [
-            "rotator/sde_rotator_dev.c",
-            "rotator/sde_rotator_core.c",
-            "rotator/sde_rotator_base.c",
-            "rotator/sde_rotator_formats.c",
-            "rotator/sde_rotator_util.c",
-            "rotator/sde_rotator_io_util.c",
-            "rotator/sde_rotator_smmu.c",
-            "rotator/sde_rotator_r1_wb.c",
-            "rotator/sde_rotator_r1_pipe.c",
-            "rotator/sde_rotator_r1_ctl.c",
-            "rotator/sde_rotator_r1.c",
-            "rotator/sde_rotator_r3.c",
-            "rotator/sde_rotator_sync.c",
-            "rotator/sde_rotator_debug.c",
-            "rotator/sde_rotator_r1_debug.c",
-            "rotator/sde_rotator_r3_debug.c",
-        ],
+        "CONFIG_MSM_SDE_ROTATOR": {
+            True: [
+                "rotator/sde_rotator_dev.c",
+                "rotator/sde_rotator_core.c",
+                "rotator/sde_rotator_base.c ",
+                "rotator/sde_rotator_formats.c",
+                "rotator/sde_rotator_util.c",
+                "rotator/sde_rotator_io_util.c",
+                "rotator/sde_rotator_smmu.c",
+                "rotator/sde_rotator_r1_wb.c",
+                "rotator/sde_rotator_r1_pipe.c ",
+                "rotator/sde_rotator_r1_ctl.c",
+                "rotator/sde_rotator_r1.c",
+                "rotator/sde_rotator_r3.c",
+            ],
+            "CONFIG_SYNC_FILE": ["rotator/sde_rotator_sync.c"],
+            "CONFIG_DEBUG_FS": [
+                "rotator/sde_rotator_debug.c",
+                "rotator/sde_rotator_r1_debug.c",
+                "rotator/sde_rotator_r3_debug.c",
+            ],
+        },
     },
 
     # Configs are handled by config_options = []
@@ -283,6 +287,23 @@ module_entry(
         "CONFIG_QTI_HFI_CORE": [
             "//vendor/qcom/opensource/mm-drivers/hfi_core:%b_msm_hfi_core",
             "//vendor/qcom/opensource/mm-drivers/hfi_core:hfi_core_headers"
+        ],
+    },
+)
+
+# ---------- LT9611UXD BRIDGE MODULE ----------
+module_entry(
+    name = "lt9611uxd",
+    config_option = "CONFIG_DRM_LT9611UXD",
+    path = None,
+    config_srcs = {
+        "CONFIG_DRM_LT9611UXD": [
+            "bridge-drivers/lt9611uxd.c",
+        ],
+    },
+    config_deps = {
+        "CONFIG_MSM_EXT_DISPLAY": [
+            "//vendor/qcom/opensource/mm-drivers/msm_ext_display:%b_msm_ext_display",
         ],
     },
 )

@@ -8,6 +8,7 @@
 
 #include "lsr_hfi.h"
 #include "msm_lsr_res_parse.h"
+#include "msm_lsr_synx.h"
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/mutex.h>
@@ -261,6 +262,12 @@ struct lsr_hal_ops {
 	int (*reset_control_release_name)(struct lsr_device *device, const char *name);
 };
 
+enum lsr_panel_topology {
+	LSR_PANEL_TOPOLOGY_UNKNOWN = 0,
+	LSR_PANEL_TOPOLOGY_MONO,
+	LSR_PANEL_TOPOLOGY_BINO,
+};
+
 struct lsr_device {
 	u32 version;
 	u32 intr_status;
@@ -293,7 +300,9 @@ struct lsr_device {
 	u32 ref_count;
 	struct msm_lsr_synx_ops *synx_ftbl;
 	struct sde_lsr_hw_fence_data hwfence_data;
-	u32 lsr_reusable_hsynx;
+	atomic_t lsr_ssr_in_progress;
+	u32 lsr_reusable_hsynx[LSR_REUSABLE_FENCE_MAX];
+	enum lsr_panel_topology panel_topology;
 };
 
 int msm_lsr_init_reg_and_irq(struct lsr_device *device,	struct msm_lsr_platform_resources *res);

@@ -25,6 +25,7 @@
 #define TIMELINE_VAL_LENGTH		128
 #define SPEC_FENCE_FLAG_FENCE_ARRAY	0x10
 #define SPEC_FENCE_FLAG_ARRAY_BIND	0x11
+#define DMA_FENCE_SET_DEADLINE		0x12 /* dma_fence_set_deadline has already been invoked */
 #define HW_FENCE_DIR_WRITE_SIZE	0x2
 #define HW_FENCE_DIR_WRITE_MASK	0xFFFFFFFF
 #define HW_FENCE_HFI_MMAP_DPU_BA	0x200000
@@ -113,7 +114,7 @@ struct sde_hw_fence_data hw_fence_data_dpu_client_with_soccp[SDE_HW_FENCE_CLIENT
 		{5, 11}, 0, 46, 25, 0, {0}, 0}
 };
 
-void msm_hw_fence_error_cb(u32 handle, int error, void *cb_data)
+static void msm_hw_fence_error_cb(u32 handle, int error, void *cb_data)
 {
 	struct msm_hw_fence_cb_data *msm_hw_fence_cb_data;
 	struct sde_hw_fence_error_cb_data *sde_hw_fence_error_data;
@@ -154,6 +155,8 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 	int iommu_flags;
 
 	if (!hw_ctl)
+		return -EINVAL;
+	if (hw_ctl->hw.disp_op >= MSM_DISP_OP_MAX)
 		return -EINVAL;
 	if (!hw_ctl->ops.hw_fence_output_fence_dir_write_init[hw_ctl->hw.disp_op])
 		return IS_DISP_OP_HFI(hw_ctl->hw.disp_op) ? 0 : -EINVAL;
@@ -379,7 +382,7 @@ static void _cleanup_fences_refcount(struct dma_fence **fences, u32 num_fences)
 		dma_fence_put(fences[i]);
 }
 
-int _register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, void *hw_fence_handle,
+static int _register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, void *hw_fence_handle,
 	struct dma_fence **fences, u32 num_fences, u64 dma_context, atomic_t *hw_fence_array_seqno,
 	u32 *input_h_synx)
 {
@@ -846,7 +849,8 @@ int sde_fence_update_input_fence_id(struct sde_hw_ctl *hw_ctl)
 	int ctl_id;
 	u64 qtime;
 
-	if (!hw_ctl || !hw_ctl->ops.hw_fence_update_input_fence[hw_ctl->hw.disp_op])
+	if (!hw_ctl || hw_ctl->hw.disp_op >= MSM_DISP_OP_MAX ||
+			!hw_ctl->ops.hw_fence_update_input_fence[hw_ctl->hw.disp_op])
 		return -EINVAL;
 
 	ctl_id = hw_ctl->idx - CTL_0;
@@ -873,6 +877,12 @@ int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugf
 {
 	if (!hw_mdp || !hw_ctl)
 		return -EINVAL;
+
+	if (hw_ctl->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_ctl->hw.disp_op);
+		return -EINVAL;
+	}
+
 	/* we must support sw_override as well, so check both functions */
 	if (!hw_ctl->ops.hw_fence_update_input_fence[hw_ctl->hw.disp_op] ||
 			!hw_ctl->ops.hw_fence_trigger_sw_override[hw_ctl->hw.disp_op]) {
@@ -1555,3 +1565,21 @@ void sde_debugfs_timeline_dump(struct sde_fence_context *ctx,
 	}
 	spin_unlock(&ctx->list_lock);
 }
+
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
+void sde_fence_set_input_deadline(struct dma_fence *fence, ktime_t deadline)
+{
+	if (!fence || !deadline || test_bit(DMA_FENCE_SET_DEADLINE, &fence->flags) ||
+			(test_bit(SPEC_FENCE_FLAG_FENCE_ARRAY, &fence->flags) &&
+			!test_bit(SPEC_FENCE_FLAG_ARRAY_BIND, &fence->flags)))
+		return;
+
+	dma_fence_set_deadline(fence, deadline);
+	set_bit(DMA_FENCE_SET_DEADLINE, &fence->flags);
+}
+#else
+void sde_fence_set_input_deadline(struct dma_fence *fence, ktime_t deadline)
+{
+	/* do nothing */
+}
+#endif /* (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE) */

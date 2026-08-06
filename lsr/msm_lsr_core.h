@@ -14,6 +14,7 @@
 #include "sde_wb_lsr.h"
 #include "msm_lsr_res_parse.h"
 #include "msm_lsr_synx.h"
+#include "hfi_kms.h"
 
 #define MAX_DEBUGFS_NAME 50
 
@@ -37,6 +38,12 @@ enum smem_prop {
 	SMEM_LSR_HFI = 0x200,
 };
 
+enum lsr_subsytem_error_type {
+	LSR_SUBSYSTEM_ERROR_TYPE_SYSTEM_ERROR = 1,
+	LSR_SUBSYSTEM_ERROR_TYPE_DIV_BY_ZERO = 2,
+	LSR_SUBSYSTEM_ERROR_TYPE_WATCHDOG_TIMEOUT = 3,
+};
+
 struct msm_lsr_common_data {
 	char key[128];
 	int value;
@@ -47,6 +54,7 @@ struct msm_lsr_qos_setting {
 	u32 prioritylut_low;
 	u32 prioritylut_high;
 	u32 urgency_low;
+	u32 urgency_low_wr;
 	u32 urgency_low_ro;
 	u32 dangerlut_low;
 	u32 safelut_low;

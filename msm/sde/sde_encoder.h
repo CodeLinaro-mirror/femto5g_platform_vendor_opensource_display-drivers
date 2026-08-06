@@ -479,6 +479,15 @@ struct sde_encoder_hal_funcs {
 	 * @frame_count: number of frames for which MISR needs to run
 	 */
 	int (*misr_setup[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc, bool en, u32 frame_count);
+
+	/**
+	 * deregister_cwb_events - called after wait_for_commit_done completes; used
+	 * to perform teardown work (e.g. HFI event deregister) that must not
+	 * block the primary commit path.
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: Zero on success
+	 */
+	int (*deregister_cwb_events[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 };
 
 /**
@@ -961,6 +970,7 @@ bool sde_encoder_recovery_events_enabled(struct drm_encoder *encoder);
  * @enable:     enable/disable hw recovery event
  */
 void sde_encoder_setup_hw_recovery_event(struct drm_encoder *encoder, bool enable);
+
 /**
  * sde_encoder_in_clone_mode - checks if underlying phys encoder is in clone
  *	mode or independent display mode. ref@ WB in Concurrent writeback mode.
@@ -968,6 +978,14 @@ void sde_encoder_setup_hw_recovery_event(struct drm_encoder *encoder, bool enabl
  * @Return:     true if successful in updating the encoder structure
  */
 bool sde_encoder_in_clone_mode(struct drm_encoder *enc);
+
+/**
+ * sde_encoder_get_ept - return expected present time
+ *
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     the expected present time if successful in getting this data or 0 if failed
+ */
+ktime_t sde_encoder_get_ept(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_is_self_refresh_completed - checks if self refresh is completed

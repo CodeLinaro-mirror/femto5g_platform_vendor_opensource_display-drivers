@@ -92,8 +92,8 @@ void sde_connector_add_roi_v1(u32 hfi_prop, struct sde_connector *conn,
 	struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf);
 
 void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
-	struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf,
-	bool is_cont_splash);
+	struct sde_connector_state *old_state, bool is_cont_splash,
+	struct hfi_util_u32_prop_helper *prop_collector);
 
 /**
  * hfi_conn_send_panel_init - send panel config and opertaing modes to fw
@@ -110,6 +110,18 @@ int hfi_conn_send_panel_init(struct drm_connector *drm_conn);
  */
 int hfi_connector_set_debug_prop(struct drm_connector *drm_conn,
 	struct hfi_display_dbg_property *dbg_prop);
+
+/**
+ * hfi_connector_get_dsi_panel - helper to get dsi panel
+ * @c_conn: Pointer to sde_connector struct
+ */
+struct dsi_panel *hfi_connector_get_dsi_panel(struct sde_connector *c_conn);
+
+/**
+ * hfi_connector_set_esd_recovery_pending - set ESD recovery pending
+ * @c_conn: Pointer to sde_connector struct
+ */
+void hfi_connector_set_esd_recovery_pending(struct sde_connector *c_conn);
 
 /**
  * hfi_connector_report_panel_dead - report panel dead
@@ -135,6 +147,21 @@ static inline struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(
 static inline int hfi_conn_send_panel_init(struct drm_connector *drm_conn)
 {
 	return 0;
+}
+
+static inline struct dsi_panel *hfi_connector_get_dsi_panel(struct sde_connector *sde_conn)
+{
+	return NULL;
+}
+
+static inline void hfi_connector_set_esd_recovery_pending(struct sde_connector *sde_conn)
+{
+}
+
+static inline void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
+	struct sde_connector_state *old_state, bool is_cont_splash,
+	struct hfi_util_u32_prop_helper *prop_collector)
+{
 }
 
 static inline void hfi_connector_report_panel_dead(

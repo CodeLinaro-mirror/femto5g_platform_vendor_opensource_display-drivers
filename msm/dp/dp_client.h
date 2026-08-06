@@ -118,6 +118,9 @@ struct dp_client {
 	bool ext_hpd_en;
 	bool ctl_op_sync;
 	bool is_cont_splash_enabled;
+	u32 streams; /* only used in HFI mode */
+	struct drm_connector *connectors[DP_STREAMS_MAX]; /* only used in HFI mode */
+	struct dp_bridge *bridges[DP_STREAMS_MAX]; /* only used in HFI mode */
 
 	struct dp_client_drm_ops {
 		int (*enable)(struct dp_client *client, int panel_id);
@@ -179,10 +182,15 @@ struct dp_client {
 
 		int (*edp_detect)(struct dp_client *client);
 
+		int (*get_mode_info)(struct dp_client *client, int panel_id,
+				const struct drm_display_mode *drm_mode,
+				struct msm_mode_info *mode_info);
+
 		struct dp_display_mode *(*get_display_mode)(struct dp_client *client,
 				int panel_id);
 		int (*cont_splash_config)(struct dp_client *client);
 		int (*cont_splash_disable)(struct dp_client *client);
+		bool (*hpd_detect)(struct dp_client *client, int panel_id);
 	} drm_ops;
 
 	struct dp_client_mst_ops {

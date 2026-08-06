@@ -525,15 +525,22 @@ static int sde_md_notify_handler(struct notifier_block *this,
 	struct platform_device *pdev = to_platform_device(dev);
 	struct drm_device *ddev = platform_get_drvdata(pdev);
 	struct msm_drm_private *priv = ddev->dev_private;
-	struct sde_kms *sde_kms = to_sde_kms(priv->kms);
+	struct sde_kms *sde_kms;
 	struct sde_dbg_base *dbg_base = &sde_dbg_base;
 	u32 reg_dump_size = _sde_dbg_get_reg_dump_size();
+
+	if (!priv) {
+		SDE_ERROR("Invalid priv\n");
+		return -EINVAL;
+	}
+
+	sde_kms = to_sde_kms(priv->kms);
 
 	sde_mini_dump_add_va_region("msm_drm_priv", sizeof(*priv), priv);
 	sde_mini_dump_add_va_region("sde_evtlog",
 			sizeof(*sde_dbg_base_evtlog), sde_dbg_base_evtlog);
 
-	if (priv && IS_DISP_OP_HWIO(priv->disp_op)) {
+	if (IS_DISP_OP_HWIO(priv->disp_op)) {
 		sde_mini_dump_add_va_region("sde_reglog",
 				sizeof(*sde_dbg_base_reglog), sde_dbg_base_reglog);
 
@@ -541,7 +548,7 @@ static int sde_md_notify_handler(struct notifier_block *this,
 
 		sde_dbg_add_dbg_buses_to_minidump_va();
 
-	} else if (priv && IS_DISP_OP_HFI(priv->disp_op)) {
+	} else if (IS_DISP_OP_HFI(priv->disp_op)) {
 		if (sde_dbg_base.hal_ops.add_minidump_va[priv->disp_op])
 			sde_dbg_base.hal_ops.add_minidump_va[priv->disp_op]();
 	}
@@ -1193,7 +1200,7 @@ void sde_evtlog_dump_all(struct sde_dbg_evtlog *evtlog)
 
 }
 
-void sde_dbg_dbg_dump(bool do_panic, const char *name, bool dump_secure, u64 dump_blk_mask)
+static void sde_dbg_dbg_dump(bool do_panic, const char *name, bool dump_secure, u64 dump_blk_mask)
 {
 	int rc;
 	ktime_t start, end;
@@ -2759,8 +2766,13 @@ int sde_dbg_setup(struct device *dev)
 		return -EINVAL;
 	}
 
-	if (priv && IS_DISP_OP_HFI(priv->disp_op))
+	if (priv && IS_DISP_OP_HFI(priv->disp_op)) {
 		ret = hfi_dbg_init(dev, dbg_base);
+		if (ret) {
+			pr_err("hfi dbg init failed  %d, debug disabled.\n", ret);
+			return ret;
+		}
+	}
 
 	return ret;
 }
@@ -2819,11 +2831,20 @@ int sde_dbg_init(struct device *dev)
 		sde_dbg_base.evtlog->enable, sde_dbg_base.panic_on_err,
 		sde_dbg_base.dump_option);
 
+	/*
+	 * pre-allocate core dump buffer only on non-low memory targets.
+	 * This buffer can also be allocated on-demand during dev core
+	 * dump as well, so we can skip pre-allocating this buffer for
+	 * low-memory targets to save memory
+	 */
+#if !IS_ENABLED(CONFIG_DRM_MSM_LOW_MEM_FOOTPRINT)
 	if (priv && IS_DISP_OP_HFI(priv->disp_op)) {
 		sde_dbg_base.read_buf = kvzalloc(MAX_BUFF_SIZE, GFP_KERNEL);
 		if (!sde_dbg_base.read_buf)
 			return -ENOMEM;
 	}
+#endif
+
 	sde_dbg_base.is_dumped = false;
 
 	sde_dbg_base.hal_ops.dbg_dump[MSM_DISP_OP_HWIO] = sde_dbg_dbg_dump;

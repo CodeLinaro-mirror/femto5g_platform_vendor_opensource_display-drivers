@@ -747,7 +747,7 @@ static int hfi_write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_id
 	struct hfi_buff_dpu hfi_cfg = {0};
 	int ret = 0;
 
-	if (!cfg || dpu_idx >= DPU_MAX) {
+	if (!cfg || dpu_idx >= DPU_MAX || (cfg->dspp_start_idx + cfg->num_of_mixers) > DSPP_MAX) {
 		DRM_ERROR("invalid params cfg - %p, dpu idx %d\n", cfg, dpu_idx);
 		return -EINVAL;
 	}
@@ -838,7 +838,8 @@ static int hfi_write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_id
 			else
 				DRM_DEBUG("non-broadcast feature: submitted to prop_helper\n");
 			/* reset the cached struct after submitting to FW */
-			memset(&hfi_cfg_cached[dpu_idx][0], 0, sizeof(hfi_cfg_cached[dpu_idx]));
+			memset(&hfi_cfg_cached[dpu_idx][cfg->dspp_start_idx], 0,
+				sizeof(hfi_cfg_cached[dpu_idx][0]) * cfg->num_of_mixers);
 			return ret;
 		}
 	} else {
@@ -861,7 +862,7 @@ static int write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 
 	memset(&hw, 0, sizeof(hw));
 	msm_gem_sync(cfg->dma_buf->buf);
-	cmd1 = (cfg->op == REG_DMA_READ) ?
+	cmd1 = (cfg->op == REG_DMA_READ && cfg->block_select < DSPP_HIST_MAX) ?
 		(dspp_read_sel[cfg->block_select] << 30) : 0;
 	cmd1 |= (cfg->last_command) ? BIT(24) : 0;
 	cmd1 |= (cfg->op == REG_DMA_READ) ? (2 << 22) : 0;
@@ -1220,6 +1221,7 @@ int init_v12(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 			GRP_MDSS_HW_BLK_SELECT);
 	v1_supported[DEMURA_CFG] = MDSS | DSPP0 | DSPP1;
 	v1_supported[DEMURA_CFG0_PARAM2] = MDSS | DSPP0 | DSPP1;
+	v1_supported[DEMURA_PU_CFG] = MDSS | DSPP0 | DSPP1;
 
 	ret = write_last_cmd_buffer(dpu_idx);
 	if (ret) {
@@ -1382,6 +1384,7 @@ int init_v3(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 
 	v1_supported[DEMURA_CFG] = v1_supported[DEMURA_CFG] | DSPP2 | DSPP3;
 	v1_supported[DEMURA_CFG0_PARAM2] = v1_supported[DEMURA_CFG0_PARAM2] | DSPP2 | DSPP3;
+	v1_supported[DEMURA_PU_CFG] = v1_supported[DEMURA_PU_CFG] | DSPP2 | DSPP3;
 	v1_supported[AIQE_MDNIE] = MDSS | DSPP0 | DSPP2;
 	v1_supported[AIQE_SSRC_CONFIG] = MDSS | DSPP0 | DSPP2;
 	v1_supported[AIQE_SSRC_DATA] = MDSS | DSPP0 | DSPP2;

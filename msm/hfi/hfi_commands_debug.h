@@ -429,6 +429,92 @@
  */
 #define HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY                       0xFF000012
 
+/*!
+ * HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY is sent from Host to DCP to
+ * set debug property of a subsystem.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi packet layout                   | Value
+ *-------------------------------------|-------------------------------------
+ * hfi_packet.payload_info (type)      | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                      | HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY
+ * hfi_packet.flags                    | HFI_TX_FLAGS_RESPONSE_REQUIRED(optional)
+ * hfi_packet.payload[0..n]            | struct hfi_debug_subsystem_property
+ */
+#define HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY                       0xFF000013
+
+/*
+ * HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY is sent from host to DCP to
+ * set common debug properties
+ *
+ * Host sends this command to DCP to configure debug features at runtime.
+ * Supports flexible key-value pair properties for enabling/disabling debug
+ * features and configuring debug buffers.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ *(u32) hfi_packet.payload_info : HFI_PAYLOAD_U32_ARRAY
+ *(u32) hfi_packet.cmd          : HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY
+ *(u32) hfi_packet.flags        : HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *                                HFI_TX_FLAGS_NON_DISCARDABLE
+ *(u32) hfi_packet.payload      : <key/value> pairs of debug properties
+ *
+ * Supported Properties:
+ *
+ * @HFI_PROPERTY_DEBUG_ENABLE (dsize=2):
+ *   Enables or disables debug feature capture.
+ *   Payload: struct hfi_debug_enable_payload
+ *   word 0: feature (enum hfi_debug_feature)
+ *   word 1: enable  (HFI_TRUE/HFI_FALSE)
+ *
+ * @HFI_PROPERTY_DEBUG_BUFFER_ADDR (dsize=6):
+ *   Configures buffer address and size for debug data capture.
+ *   Payload: struct hfi_debug_buffer_addr_payload
+ *   word 0: feature (enum hfi_debug_feature)
+ *   word 1-5: struct hfi_buff (addr_l, addr_h, size, version, flags)
+ *
+ * Example Payload (trace enable + log buffer addr):
+ *   payload[0]  = 2 (num_properties)
+ *   payload[1]  = HFI_PACKKEY(HFI_PROPERTY_DEBUG_ENABLE, 0, 2)
+ *   payload[2]  = HFI_DEBUG_FEATURE_TRACE
+ *   payload[3]  = HFI_TRUE
+ *   payload[4]  = HFI_PACKKEY(HFI_PROPERTY_DEBUG_BUFFER_ADDR, 0, 6)
+ *   payload[5]  = HFI_DEBUG_FEATURE_LOG
+ *   payload[6]  = addr_l
+ *   payload[7]  = addr_h
+ *   payload[8]  = size
+ *   payload[9]  = version
+ *   payload[10] = flags
+ */
+#define HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY                      0xFF000014
+
+/*
+ * HFI_COMMAND_DEBUG_DUMP_ALL is sent from Host to DCP to trigger a dump of all debug data
+ * into the pre-allocated memory buffers. Upon receiving this command, DCP will dump all
+ * properties that were previously configured via HFI_COMMAND_DEBUG_SETUP into their
+ * respective memory locations. Once the dump is complete, DCP replies with success to Host.
+ *
+ * Prerequisites:
+ *  Before sending this command, Host must first send HFI_COMMAND_DEBUG_SETUP to establish
+ *  the memory buffer addresses for all properties to be dumped. If this setup command is
+ *  not sent beforehand, HFI_COMMAND_DEBUG_DUMP_ALL will fail.
+
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_NONE
+ *           .cmd                      : HFI_COMMAND_DEBUG_DUMP_ALL
+ *           .flags                    : HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_NONE
+ *           .cmd                      : HFI_COMMAND_DEBUG_DUMP_ALL
+ *           .flags                    : HFI_RX_FLAGS_SUCCESS
+ */
+#define HFI_COMMAND_DEBUG_DUMP_ALL                                   0xFF000015
+
 /*
  * DP Simulation HFI commands
  */
@@ -487,8 +573,11 @@
  *                                 From host to DCP, this command provides EDID data
  *                                 that will be used for subsequent hotplug events.
  *
+ * The target display is identified by hfi_header.object_id
+ *
  * Host to DCP:
  * hfi_header.num_packets                 : 1
+ * hfi_header.object_id                   : HFI display object ID of the target display
  *
  *     Hfi Packet layout        : Value
  *     hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
@@ -751,6 +840,48 @@
  */
 
 #define HFI_COMMAND_DEBUG_DP_READ_BW_CODE                              0xFF00050B
+
+/*
+ * HFI_COMMAND_DEBUG_DP_MST_CONFIG - This command configures MST (Multi-Stream Transport) mode.
+ *                                 From host to DCP, this command enables or disables MST mode
+ *                                 and sets the number of MST streams.
+ *
+ *                                 On receipt, DCP calls dp_sim_mst_enable() and updates the
+ *                                 following DPCD registers in the simulation:
+ *                                   - DP_MSTM_CAP (0x021): set to 1 if MST enabled, 0 if SST
+ *                                   - DP_SINK_COUNT: set to num_streams if MST enabled, 1 if SST
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Data Contents:
+ *  struct hfi_dp_mst_config {
+ *      u32 mst_enable;    // 1 = MST enabled, 0 = SST only
+ *      u32 num_streams;   // Number of MST streams (1 to DP_SIM_MAX_STREAMS); ignored when
+ *                         // mst_enable = 0
+ *  }
+ *
+ * Hfi Packet layout                      | Value
+ *----------------------------------------|-------------------------------------
+ * hfi_packet.payload_info (size)         | sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                         | HFI_COMMAND_DEBUG_DP_MST_CONFIG
+ * hfi_packet.flags (Host to DCP)         | HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                          | DP instance id
+ * hfi_packet.packet_id                   | unique id
+ * hfi_packet.payload                     | struct hfi_dp_mst_config
+ *
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi Packet layout                      | Value
+ *----------------------------------------|-------------------------------------
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_NONE
+ * hfi_packet.cmd                         | HFI_COMMAND_DEBUG_DP_MST_CONFIG
+ * hfi_packet.flags (DCP to Host)         | HFI_RX_FLAGS_SUCCESS
+ */
+#define HFI_COMMAND_DEBUG_DP_MST_CONFIG                                0xFF00050C
 
 #define HFI_COMMAND_DEBUG_DP_END                                       0xFF0005FF
 

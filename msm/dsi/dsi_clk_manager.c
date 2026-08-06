@@ -293,7 +293,7 @@ void dsi_clk_disable_unprepare(struct dsi_clk_link_set *clk)
 	clk_disable_unprepare(clk->byte_clk);
 }
 
-int dsi_core_clk_start(struct dsi_core_clks *c_clks)
+static int dsi_core_clk_start(struct dsi_core_clks *c_clks)
 {
 	int rc = 0;
 
@@ -367,7 +367,7 @@ error:
 	return rc;
 }
 
-int dsi_core_clk_stop(struct dsi_core_clks *c_clks)
+static int dsi_core_clk_stop(struct dsi_core_clks *c_clks)
 {
 	int rc = 0;
 
@@ -933,8 +933,15 @@ error:
 
 static int dsi_clk_esync_clk_enable(struct dsi_clk_mngr *mngr, int index)
 {
-	struct dsi_esync_clk *esync_clk = &mngr->esync_clks[index];
+	struct dsi_esync_clk *esync_clk;
 	int rc;
+
+	if (index < 0 || index >= MAX_DSI_CTRL) {
+		DSI_ERR("invalid esync clk index %d\n", index);
+		return -EINVAL;
+	}
+
+	esync_clk = &mngr->esync_clks[index];
 
 	if (IS_ERR_OR_NULL(esync_clk->clks.clk)) {
 		DSI_WARN("esync clock enable attempt with null clock handle\n");
@@ -961,7 +968,14 @@ static int dsi_clk_esync_clk_enable(struct dsi_clk_mngr *mngr, int index)
 
 static void dsi_clk_esync_clk_disable(struct dsi_clk_mngr *mngr, int index)
 {
-	struct dsi_esync_clk *esync_clk = &mngr->esync_clks[index];
+	struct dsi_esync_clk *esync_clk;
+
+	if (index < 0 || index >= MAX_DSI_CTRL) {
+		DSI_ERR("invalid esync clk index %d\n", index);
+		return;
+	}
+
+	esync_clk = &mngr->esync_clks[index];
 
 	if (IS_ERR_OR_NULL(esync_clk->clks.clk)) {
 		DSI_WARN("esync clock disable attempt with null clock handle\n");
@@ -978,6 +992,12 @@ static int dsi_clk_update_esync_clk_state(struct dsi_clk_mngr *mngr, bool enable
 
 	if (!mngr)
 		return -EINVAL;
+
+	if (mngr->master_ndx >= MAX_DSI_CTRL || mngr->dsi_ctrl_count > MAX_DSI_CTRL) {
+		DSI_ERR("invalid master_ndx %d or dsi_ctrl_count %d\n",
+			mngr->master_ndx, mngr->dsi_ctrl_count);
+		return -EINVAL;
+	}
 
 	/* master needs to be enabled first and disabled last */
 
@@ -1374,7 +1394,7 @@ error:
 	return rc;
 }
 
-int dsi_clk_req_state(void *client, enum dsi_clk_type clk,
+static int dsi_clk_req_state(void *client, enum dsi_clk_type clk,
 	enum dsi_clk_state state, bool take_lock)
 {
 	int rc = 0;
@@ -1804,6 +1824,8 @@ void *dsi_display_clk_mngr_register(struct dsi_clk_info *info, enum msm_disp_op 
 	mngr->dsi_ctrl_count = info->dsi_ctrl_count;
 	mngr->master_ndx = info->master_ndx;
 
+	INIT_LIST_HEAD(&mngr->client_list);
+
 	if (disp_op == MSM_DISP_OP_HFI) {
 		mngr->disp_op = disp_op;
 		return mngr;
@@ -1830,7 +1852,6 @@ void *dsi_display_clk_mngr_register(struct dsi_clk_info *info, enum msm_disp_op 
 	memcpy(&mngr->osc_clk.clks, &info->o_clk,
 		sizeof(struct dsi_osc_clk_info));
 
-	INIT_LIST_HEAD(&mngr->client_list);
 	mngr->pre_clkon_cb = info->pre_clkon_cb;
 	mngr->post_clkon_cb = info->post_clkon_cb;
 	mngr->pre_clkoff_cb = info->pre_clkoff_cb;

@@ -382,6 +382,54 @@ disable:
 	return ret;
 }
 
+/**
+ * sde_wb_connector_set_wb_dnsc_cfg - extract WB DNSC config from blob to connector state
+ * @wb_dev: Pointer to writeback device
+ * @connector: Pointer to drm connector
+ * @state: Pointer to connector state
+ * Returns: 0 on success, negative error code on failure
+ *
+ * This function extracts the WB downscaler configuration from the blob
+ * already stored in the connector property state by msm_property_atomic_set,
+ * and copies it into the connector state for later use during commit.
+ */
+static int sde_wb_connector_set_wb_dnsc_cfg(struct sde_wb_device *wb_dev,
+		struct drm_connector *connector, struct drm_connector_state *state)
+{
+	struct sde_connector *c_conn = to_sde_connector(connector);
+	struct sde_connector_state *cstate = to_sde_connector_state(state);
+	struct sde_drm_wb_dnsc_cfg *wb_dnsc_cfg;
+	size_t cfg_sz = 0;
+
+	if (!wb_dev || !connector || !state) {
+		SDE_ERROR("invalid params\n");
+		return -EINVAL;
+	}
+
+	/* Clear existing config */
+	memset(&cstate->wb_dnsc_cfg, 0, sizeof(cstate->wb_dnsc_cfg));
+
+	wb_dnsc_cfg = msm_property_get_blob(&c_conn->property_info,
+			&cstate->property_state, &cfg_sz, CONNECTOR_PROP_WB_DNSC);
+	if (!wb_dnsc_cfg) {
+		SDE_DEBUG("wb_dnsc config cleared\n");
+		return 0;
+	}
+
+	if (cfg_sz < sizeof(*wb_dnsc_cfg)) {
+		SDE_ERROR("invalid wb_dnsc blob size: %zu\n", cfg_sz);
+		return -EINVAL;
+	}
+
+	memcpy(&cstate->wb_dnsc_cfg, wb_dnsc_cfg, sizeof(cstate->wb_dnsc_cfg));
+
+	SDE_DEBUG("wb_dnsc: stored config dst=%ux%u flags=%u\n",
+		wb_dnsc_cfg->dst_width, wb_dnsc_cfg->dst_height,
+		wb_dnsc_cfg->flags);
+
+	return 0;
+}
+
 static int _sde_wb_connector_set_out_fb(struct sde_wb_device *wb_dev,
 		struct drm_connector_state *state)
 {
@@ -432,6 +480,9 @@ int sde_wb_connector_set_property(struct drm_connector *connector,
 	case CONNECTOR_PROP_DNSC_BLUR:
 		rc = _sde_wb_connector_set_dnsc_blur(wb_dev, state,
 				(void __user *)(uintptr_t)value);
+		break;
+	case CONNECTOR_PROP_WB_DNSC:
+		rc = sde_wb_connector_set_wb_dnsc_cfg(wb_dev, connector, state);
 		break;
 	default:
 		/* nothing to do */
@@ -645,6 +696,19 @@ int sde_wb_connector_set_info_blob(struct drm_connector *connector,
 	if (catalog->cdm_count)
 		sde_kms_info_add_keyint(info, "cdm_count", catalog->cdm_count);
 
+	if (sde_kms->hfi_kms) {
+		sde_kms_info_add_keyint(info, "wb_dnsc_supported",
+				wb_dev->wb_dnsc_supported ? 1 : 0);
+		if (wb_dev->wb_dnsc_supported) {
+			sde_kms_info_add_keyint(info, "wb_dnsc_min_ratio",
+					wb_dev->wb_dnsc_min_ratio);
+			sde_kms_info_add_keyint(info, "wb_dnsc_max_ratio",
+					wb_dev->wb_dnsc_max_ratio);
+			sde_kms_info_add_keyint(info, "wb_dnsc_integer_only",
+					wb_dev->wb_dnsc_integer_only);
+		}
+	}
+
 	if (catalog->dnsc_blur_count && catalog->dnsc_blur_filters) {
 		sde_kms_info_add_keyint(info, "dnsc_blur_count", catalog->dnsc_blur_count);
 
@@ -778,6 +842,15 @@ int sde_wb_connector_post_init(struct drm_connector *connector, void *display)
 	if (catalog->dnsc_blur_count && catalog->dnsc_blur_filters)
 		msm_property_install_range(&c_conn->property_info, "dnsc_blur",
 			0x0, 0, ~0, 0, CONNECTOR_PROP_DNSC_BLUR);
+
+	if (sde_kms->hfi_kms) {
+		sde_kms_populate_wb_dnsc_caps(sde_kms, wb_dev);
+
+		if (wb_dev->wb_dnsc_supported) {
+			msm_property_install_blob(&c_conn->property_info, "wb_dnsc",
+				DRM_MODE_PROP_BLOB, CONNECTOR_PROP_WB_DNSC);
+		}
+	}
 
 	if (wb_dev->wb_cfg->features & BIT(SDE_WB_LINEAR_ROTATION)) {
 		msm_property_install_enum(&c_conn->property_info, "wb_rotate_type",
@@ -936,6 +1009,9 @@ int sde_wb_config(struct drm_device *drm_dev, void *data,
 	}
 
 	mutex_lock(&wb_dev->wb_lock);
+
+	// Store the DSPP hint from UserMode
+	wb_dev->needs_dspp = (flags & SDE_DRM_WB_CFG_FLAGS_DSPP) ? true : false;
 
 	rc = sde_wb_connector_set_modes(wb_dev, count_modes,
 		(struct drm_mode_modeinfo __user *) (uintptr_t) modes,

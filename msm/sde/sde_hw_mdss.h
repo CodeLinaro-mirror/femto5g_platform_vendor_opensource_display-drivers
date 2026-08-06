@@ -44,6 +44,10 @@
 #define SDE_MAX_DE_CURVES		3
 #endif
 
+#ifndef SB_PIPE_MAX
+#define SB_PIPE_MAX		2
+#endif
+
 #define MAX_DSI_DISPLAYS		2
 #define MAX_SPLASH_DISPLAYS		2
 #define MAX_DATA_PATH_PER_DSIPLAY	4
@@ -845,6 +849,8 @@ static u32 hfi_dspp_idx_map[DSPP_MAX] = {
  * @flags: color proc feature flag indicating enable, broadcast, dspp index
  * @dspp_start_idx: starting index of dspp pipes
  * @dspp_idx: current dspp index
+ * @demura_slot_idx: slot index of demura surface in the skip_planes
+ * @demura_rect_idx: rect index of the demura surface
  * @hfi_buff_map: pointer to hfi_buff map object of shared memory
  * @vig_gamut_mode: top-level structure maintaining state of VIG Gamut mode
  * @dspp_pa_mode: top-level bitmask maintaining state of PA block
@@ -862,7 +868,7 @@ struct sde_hw_cp_cfg {
 	bool broadcast_disabled;
 	u32 panel_height;
 	u32 panel_width;
-	struct sde_cp_skip_blend_plane skip_planes[SB_PLANE_MAX];
+	struct sde_cp_skip_blend_plane skip_planes[SB_PIPE_MAX][SB_PLANE_MAX];
 	u32 num_ds_enabled;
 	u32 overfetch_lines_on_top;
 	u32 overfetch_lines_on_bottom;
@@ -872,6 +878,8 @@ struct sde_hw_cp_cfg {
 	u32 flags;
 	u32 dspp_start_idx;
 	u32 dspp_idx;
+	u32 demura_slot_idx;
+	u32 demura_rect_idx;
 	struct hfi_shared_addr_map *hfi_buff_map;
 
 	struct cp_vig_gamut_mode *vig_gamut_mode;
@@ -1133,6 +1141,6 @@ struct sde_hw_repro_conn_cfg {
 struct sde_view_descriptor {
 	u32 num_views;
 	u32 num_fbs;
-	struct drm_framebuffer *fb_id[MAX_BUFFERS_PER_VIEW];
+	struct drm_framebuffer *fb[MAX_BUFFERS_PER_VIEW];
 };
 #endif  /* _SDE_HW_MDSS_H */

@@ -85,7 +85,9 @@ static inline bool _msm_seamless_for_crtc(struct drm_atomic_state *state,
 	if (msm_is_mode_seamless(msm_mode) ||
 		msm_is_mode_seamless_vrr(msm_mode) ||
 		msm_is_mode_seamless_emsync_fps_switch(msm_mode) ||
+		msm_is_mode_seamless_spr_mode_switch(msm_mode) ||
 		msm_is_mode_seamless_poms(msm_mode) ||
+		msm_is_mode_seamless_dms_vid(msm_mode) ||
 		msm_is_mode_seamless_dyn_clk(msm_mode))
 		return true;
 
@@ -144,6 +146,8 @@ static inline bool _msm_seamless_for_conn(struct drm_connector *connector,
 		msm_is_mode_seamless_vrr(msm_mode) ||
 		msm_is_mode_seamless_dyn_clk(msm_mode) ||
 		msm_is_mode_seamless_emsync_fps_switch(msm_mode) ||
+		msm_is_mode_seamless_spr_mode_switch(msm_mode) ||
+		msm_is_mode_seamless_dms_vid(msm_mode) ||
 		msm_is_mode_seamless_dms(msm_mode))
 		return true;
 
@@ -165,8 +169,7 @@ static void commit_destroy(struct msm_commit *c)
 	wake_up_all_locked(&priv->pending_crtcs_event);
 	spin_unlock(&priv->pending_crtcs_event.lock);
 
-	if (c->nonblock)
-		kfree(c);
+	kfree(c);
 }
 
 static void msm_atomic_wait_for_commit_done(
@@ -388,7 +391,7 @@ msm_crtc_set_mode(struct drm_device *dev, struct drm_atomic_state *old_state)
  * and do the plane commits at the end. This is useful for drivers doing runtime
  * PM since planes updates then only happen when the CRTC is actually enabled.
  */
-void msm_atomic_helper_commit_modeset_disables(struct drm_device *dev,
+static void msm_atomic_helper_commit_modeset_disables(struct drm_device *dev,
 		struct drm_atomic_state *old_state)
 {
 	msm_disable_outputs(dev, old_state);
@@ -565,7 +568,7 @@ static void msm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
-struct dma_fence *msm_dma_resv_get_excl(struct drm_plane_state *new_plane_state,
+static struct dma_fence *msm_dma_resv_get_excl(struct drm_plane_state *new_plane_state,
 		struct msm_gem_object *msm_obj)
 {
 	enum dma_resv_usage usage;
@@ -779,13 +782,11 @@ static void msm_atomic_commit_dispatch(struct drm_device *dev,
 		 * ensure that SW and HW state don't get out of sync.
 		 */
 		complete_commit(commit);
-	} else if (!nonblock) {
-		kthread_flush_work(&commit->commit_work);
+		return;
 	}
 
-	/* free nonblocking commits in this context, after processing */
 	if (!nonblock)
-		kfree(commit);
+		kthread_flush_work(&commit->commit_work);
 }
 
 /**

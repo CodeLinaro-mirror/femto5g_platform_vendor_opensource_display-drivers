@@ -210,16 +210,19 @@ static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_CONFIG,
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_DATA,
 	[SDE_CP_CRTC_DSPP_MDNIE] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE,
+	[SDE_CP_CRTC_DSPP_MDNIE_IPC] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_IPC,
 	[SDE_CP_CRTC_DSPP_MDNIE_ART] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART,
 	[SDE_CP_CRTC_DSPP_AIQE_ABC] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC,
 	[SDE_CP_CRTC_DSPP_HIST_CTRL] = HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL,
 	[SDE_CP_CRTC_DSPP_HIST_IRQ] = HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER,
 	[SDE_CP_CRTC_DSPP_QRTC_CONFIG] = HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG,
+	[SDE_CP_CRTC_DSPP_COPR] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_COPR,
 };
 
 static enum sde_cp_crtc_pu_features
 	sde_cp_crtc_pu_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_PU_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_RC_PU] = HFI_PROPERTY_DISPLAY_COLOR_RC_PU,
+	[SDE_CP_CRTC_DSPP_SPR_PU] = HFI_PROPERTY_DISPLAY_COLOR_SPR_PU,
 };
 #endif
 
@@ -1572,6 +1575,7 @@ do { \
 	wrappers[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = _set_demura_cfg0_param2; \
 	wrappers[SDE_CP_CRTC_DSPP_MDNIE] = set_mdnie_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_MDNIE_ART] = set_mdnie_art_feature; \
+	wrappers[SDE_CP_CRTC_DSPP_MDNIE_IPC] = set_mdnie_ipc; \
 	wrappers[SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG] = set_aiqe_ssrc_config; \
 	wrappers[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = set_aiqe_ssrc_data; \
 	wrappers[SDE_CP_CRTC_DSPP_COPR] = set_copr_feature; \
@@ -1807,7 +1811,7 @@ static int _sde_cp_crtc_cache_property_helper(struct drm_crtc *crtc,
 	return ret;
 }
 
-u32 _sde_cp_get_num_dspp_mixers(struct sde_crtc *sde_crtc)
+static u32 _sde_cp_get_num_dspp_mixers(struct sde_crtc *sde_crtc)
 {
 	int i;
 	u32 num_mixers = 0;
@@ -1923,6 +1927,11 @@ static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc, struct sde_h
 		ret = hfi_cp_crtc_queue_pa_hist_buffer(sde_crtc, hw_dspp, hw_cfg);
 		if (ret)
 			DRM_ERROR("buffer is not queued.\n");
+		return;
+	}
+
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
 		return;
 	}
 
@@ -2281,7 +2290,8 @@ static void _sde_cp_dspp_flush_helper(struct sde_crtc *sde_crtc, u32 feature)
 	for (i = 0; i < num_mixers; i++) {
 		ctl = sde_crtc->mixers[i].hw_ctl;
 		dspp = sde_crtc->mixers[i].hw_dspp;
-		if (ctl && dspp && ctl->ops.update_bitmask_dspp_subblk[disp_op]) {
+		if (ctl && dspp && disp_op < MSM_DISP_OP_MAX &&
+		    ctl->ops.update_bitmask_dspp_subblk[disp_op]) {
 			if (feature == SDE_CP_CRTC_DSPP_SB) {
 				if (!dspp->sb_dma_in_use)
 					continue;
@@ -2530,6 +2540,8 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 	hw_cfg.broadcast_disabled = catalog->dma_cfg.broadcast_disabled;
 	hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
 	hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
+	memcpy(hw_cfg.skip_planes, sde_crtc->skip_blend_planes, sizeof(hw_cfg.skip_planes));
+
 	for (i = 0; i < hw_cfg.num_of_mixers; i++) {
 		hw_dspp = sde_crtc->mixers[i].hw_dspp;
 		if (!hw_dspp || i >= DSPP_MAX)
@@ -2770,7 +2782,7 @@ exit:
 		sde_cp_disable_features(crtc);
 }
 
-void sde_cp_reset_unsupported_feature_wrappers(struct sde_mdss_cfg *catalog)
+static void sde_cp_reset_unsupported_feature_wrappers(struct sde_mdss_cfg *catalog)
 {
 	if (!catalog) {
 		DRM_ERROR("invalid catalog\n");
@@ -3322,6 +3334,7 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 	if (IS_DISP_OP_HFI(disp_op)) {
 		_sde_cp_mark_active_dirty_internal(sde_crtc);
 		_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_RC_PU, false);
+		_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_SPR_PU, false);
 		return;
 	}
 
@@ -3406,6 +3419,9 @@ void sde_cp_crtc_clear(struct drm_crtc *crtc)
 	sde_crtc_cp_unmap_ltm_buffers(sde_crtc, sde_crtc->ltm_buffer_cnt);
 	sde_crtc_cp_unmap_rgb_hist_buffers(sde_crtc);
 	_sde_cp_crtc_unmap_qrtc_buffer(sde_crtc);
+
+	_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_RC_PU, false);
+	_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_SPR_PU, false);
 
 	sde_crtc->do_clear_buf = true;
 	sde_crtc->ltm_buffer_cnt = 0;
@@ -4106,6 +4122,7 @@ static void _sde_cp_update_list(struct sde_cp_node *prop_node,
 	case SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF:
 	case SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF2:
 	case SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF3:
+	case SDE_CP_CRTC_DSPP_QRTC_BUFF:
 		if (cp_dirty_list)
 			list_add_tail(&prop_node->cp_dirty_list,
 					&crtc->cp_dirty_list);
@@ -4130,7 +4147,7 @@ static int _sde_cp_ad_validate_prop(struct sde_cp_node *prop_node,
 	enum msm_disp_op disp_op;
 
 	disp_op = sde_crtc_get_disp_op(&crtc->base);
-	for (i = 0; i < crtc->num_mixers && !ret; i++) {
+	for (i = 0; i < crtc->num_mixers && i < ARRAY_SIZE(crtc->mixers) && !ret; i++) {
 		if (!crtc->mixers[i].hw_dspp) {
 			ret = -EINVAL;
 			continue;
@@ -4284,6 +4301,12 @@ int sde_cp_ad_interrupt(struct drm_crtc *crtc_drm, bool en,
 
 	if (!hw_dspp) {
 		DRM_ERROR("invalid dspp\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
 		ret = -EINVAL;
 		goto exit;
 	}
@@ -4603,6 +4626,12 @@ void sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg)
 	}
 
 	irq_idx = *(int *)arg;
+
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
+		return;
+	}
+
 	spin_lock_irqsave(&node->state_lock, state_flags);
 	if (node->state == IRQ_ENABLED) {
 		ret = sde_core_irq_disable_nolock(kms, irq_idx);
@@ -4718,6 +4747,11 @@ int sde_cp_hist_interrupt(struct drm_crtc *crtc_drm, bool en,
 			DRM_ERROR("failed to enable/disable pa hist event %d\n", ret);
 
 		return ret;
+	}
+
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
+		return -EINVAL;
 	}
 
 	irq_idx = sde_core_irq_idx_lookup(kms, SDE_IRQ_TYPE_HIST_DSPP_DONE,
@@ -5511,7 +5545,7 @@ int sde_cp_ltm_hist_interrupt(struct drm_crtc *crtc, bool en,
 		return -ENODEV;
 	}
 
-	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op)) {
+	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op) && hw_dspp->hw.disp_op < MSM_DISP_OP_MAX) {
 		if (en) {
 			ret = _sde_cp_ltm_register_irq(kms, sde_crtc, hw_dspp,
 					ltm_irq, SDE_IRQ_TYPE_LTM_STATS_DONE);
@@ -5564,7 +5598,7 @@ int sde_cp_ltm_wb_pb_interrupt(struct drm_crtc *crtc, bool en,
 		return -ENODEV;
 	}
 
-	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op)) {
+	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op) && hw_dspp->hw.disp_op < MSM_DISP_OP_MAX) {
 		if (en) {
 			ret = _sde_cp_ltm_register_irq(kms, sde_crtc, hw_dspp,
 					ltm_irq, SDE_IRQ_TYPE_LTM_STATS_WB_PB);
@@ -6097,8 +6131,10 @@ void sde_cp_set_skip_blend_plane_info(struct drm_crtc *drm_crtc,
 	mutex_lock(&crtc->crtc_cp_lock);
 	plane_valid = skip_blend->valid_plane;
 
-	skip_plane = (!skip_blend->is_virtual) ? &crtc->skip_blend_planes[SB_PLANE_REAL] :
-		&crtc->skip_blend_planes[SB_PLANE_VIRT];
+	int slot_idx = (skip_blend->plane == SSPP_DMA1) ? 0 : 1;
+
+	skip_plane = (!skip_blend->is_virtual) ? &crtc->skip_blend_planes[slot_idx][SB_PLANE_REAL] :
+		&crtc->skip_blend_planes[slot_idx][SB_PLANE_VIRT];
 
 	skip_plane->valid = plane_valid;
 	skip_plane->plane = (plane_valid) ? skip_blend->plane : SSPP_NONE;

@@ -76,11 +76,15 @@ struct regdump_info {
  * @HFI_DEBUG_MISR_DSI      :   Dsi module
  * @HFI_DEBUG_MISR_MIXER    :   Mixer module
  * @HFI_DEBUG_MISR_INTF     :   Interface module
+ * @HFI_DEBUG_MISR_DP_CTRL  :   DP controller module
+ * @HFI_DEBUG_MISR_DP_PHY   :   DP PHY module
  */
 enum hfi_debug_misr_module_type {
 	HFI_DEBUG_MISR_DSI                     = 0x0,
 	HFI_DEBUG_MISR_MIXER                   = 0x1,
 	HFI_DEBUG_MISR_INTF                    = 0x2,
+	HFI_DEBUG_MISR_DP_CTRL                 = 0x3,
+	HFI_DEBUG_MISR_DP_PHY                  = 0x4,
 };
 
 /*!
@@ -88,9 +92,13 @@ enum hfi_debug_misr_module_type {
  * @brief Features for which DCP supports different debug levels
  *
  * @var HFI_DEBUG_FEATURE_LSR: Setup debug logs levels for LSR feature
+ * @var HFI_DEBUG_FEATURE_TRACE: Trace events capture feature
+ * @var HFI_DEBUG_FEATURE_LOG: Debug log string capture feature
  */
 enum hfi_debug_feature {
 	HFI_DEBUG_FEATURE_LSR = 0x0,
+	HFI_DEBUG_FEATURE_TRACE = 0x1,
+	HFI_DEBUG_FEATURE_LOG = 0x2,
 };
 
 /*!
@@ -235,11 +243,15 @@ struct hfi_debug_log_level_info {
  * @HFI_DISPLAY_DEBUG_ESD_CHECK_MODE     :  Property ID for esd check mode update
  * @HFI_DISPLAY_DEBUG_ESD_CHECK_INTERVAL :  Property ID for status check interval update.
  * @HFI_DISPLAY_DEBUG_UIDLE              :  Property ID for micro-idle (uidle) state query.
+ * @HFI_DISPLAY_DEBUG_UIDLE_CNTR         :  Property ID for uidle gate counter enable bitmask.
+ * @HFI_DISPLAY_DEBUG_UIDLE_DISABLE      :  Property ID for uidle feature disable/re-enable.
  */
 enum hfi_display_dbg_property_id {
 	HFI_DISPLAY_DEBUG_ESD_CHECK_MODE           = 0x1,
 	HFI_DISPLAY_DEBUG_ESD_CHECK_INTERVAL       = 0x2,
 	HFI_DISPLAY_DEBUG_UIDLE                    = 0x3,
+	HFI_DISPLAY_DEBUG_UIDLE_CNTR               = 0x4,
+	HFI_DISPLAY_DEBUG_UIDLE_DISABLE            = 0x5,
 };
 
 /**
@@ -263,4 +275,68 @@ struct hfi_display_dbg_property {
 	u32 reserved2;
 };
 
+/*!
+ * @enum hfi_debug_subsystem_property_id
+ * @brief Subsystem property id's.
+ *
+ * @var HFI_DEBUG_SUBSYSTEM_PROPERTY_TRIGGER_ERROR
+ *   Trigger subsystem error.
+ */
+enum hfi_debug_subsystem_property_id  {
+	HFI_DEBUG_SUBSYSTEM_PROPERTY_TRIGGER_ERROR,
+};
+
+/*!
+ * @struct hfi_debug_subsystem_property
+ * @brief HFI DCP receive subsystem debug property.
+ *
+ * @var subsystem_type
+ *   Subsystem type specified in enum hfi_subsystem_type.
+ * @var prop_id
+ *   Property id specified in enum hfi_debug_subsystem_property_id.
+ * @var value_lsb
+ *   Data value / LSB of payload address.
+ * @var value_msb
+ *   Data value / MSB of payload address.
+ * @var reserved1
+ *   Reserved for future use.
+ * @var reserved2
+ *   Reserved for future use.
+ */
+struct hfi_debug_subsystem_property {
+	enum hfi_subsystem_type subsystem_type;
+	enum hfi_debug_subsystem_property_id prop_id;
+
+	u32 value_lsb;
+	u32 value_msb;
+
+	u32 reserved1;
+	u32 reserved2;
+};
+
+/**
+ * @struct hfi_debug_enable_payload
+ * @brief Payload structure for HFI_PROPERTY_DEBUG_ENABLE
+ *
+ * Encapsulates both the feature type and enable flag in a single structured value.
+ * Used with HFI_PROPERTY_DEBUG_ENABLE property to enable/disable debug features.
+ *
+ * @var feature: Debug feature type (enum hfi_debug_feature)
+ * @var enable: Enable (HFI_TRUE=1) or disable (HFI_FALSE=0) the feature
+ */
+struct hfi_debug_enable_payload {
+	u32 feature;
+	u32 enable;
+};
+
+/**
+ * struct hfi_debug_buffer_addr_payload
+ * @brief Payload for HFI_PROPERTY_DEBUG_BUFFER_ADDR
+ * @var feature: enum hfi_debug_feature - feature this buffer is configured for
+ * @var buff:    buffer descriptor (address, size, version, flags)
+ */
+struct hfi_debug_buffer_addr_payload {
+	u32 feature;
+	struct hfi_buff buff;
+};
 #endif // __H_HFI_DEFS_DEBUG_H__

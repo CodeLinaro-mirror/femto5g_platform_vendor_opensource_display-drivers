@@ -25,26 +25,12 @@
 
 int dsi_display_hfi_panel_enable_supplies(struct dsi_display *display, bool enable)
 {
-	struct sde_kms *sde_kms;
-	struct msm_kms *msm_kms;
-	bool is_cont_splash = false;
 	int rc = 0;
 
 	if (!display->panel) {
 		DSI_ERR("invalid panel\n");
 		return -EINVAL;
 	}
-
-	sde_kms = sde_connector_get_kms(display->drm_conn);
-	if (!sde_kms)
-		return -EINVAL;
-
-	msm_kms = &sde_kms->base;
-	if (!msm_kms)
-		return -EINVAL;
-
-	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
-		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
 
 	mutex_lock(&display->panel->panel_lock);
 
@@ -54,7 +40,7 @@ int dsi_display_hfi_panel_enable_supplies(struct dsi_display *display, bool enab
 			goto error;
 
 		DSI_DEBUG("powering on panel\n");
-		rc = dsi_panel_power_on(display->panel, is_cont_splash);
+		rc = dsi_panel_power_on(display->panel, display->is_cont_splash_enabled);
 		if (rc) {
 			DSI_ERR("dsi panel failed to enable power supplies\n");
 			goto error;
@@ -62,7 +48,7 @@ int dsi_display_hfi_panel_enable_supplies(struct dsi_display *display, bool enab
 
 		display->panel->powered = true;
 	} else {
-		if (!display->panel->powered)
+		if (!display->panel->powered || display->poms_pending)
 			goto error;
 
 		DSI_DEBUG("powering off panel\n");
@@ -123,7 +109,11 @@ static int dsi_display_hfi_set_mode(struct dsi_display *display, struct dsi_disp
 	hfi_mode_info->refresh_rate =		mode->timing.refresh_rate;
 	hfi_mode_info->clk_rate_hz_lo =		HFI_VAL_L32(mode->timing.clk_rate_hz);
 	hfi_mode_info->clk_rate_hz_hi =		HFI_VAL_H32(mode->timing.clk_rate_hz);
-	hfi_mode_info->flags_lo =		mode->dsi_mode_flags;
+	if (mode->mode_idx > 0xFFFF)
+		DSI_WARN("mode_idx %u exceeds 16-bit limit, truncating to %u\n",
+			 mode->mode_idx, mode->mode_idx & 0xFFFF);
+	hfi_mode_info->flags_lo =		mode->dsi_mode_flags | DSI_MODE_FLAG_MODE_IDX_VALID;
+	hfi_mode_info->reserved1 =		mode->mode_idx & 0xFFFF;
 
 	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client, hfi_cmd, display->display_type,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, hfi_mode_info, hfi_mode_info->size,
@@ -139,6 +129,8 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 {
 	int rc = 0;
 	bool hfi_power_enable = true;
+	struct dsi_display_mode poms_mode;
+	struct dsi_display_mode *mode;
 
 	if (!display) {
 		DSI_ERR("Invalid params\n");
@@ -148,6 +140,36 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 	if (display->trusted_vm_env)
 		return rc;
 
+	/*
+	 * For POMS (Panel Operating Mode Switch) transitions, display_prepare
+	 * is called from dsi_bridge_disable() before dsi_display_set_mode() has
+	 * run, so cur_mode->dsi_mode_flags does not yet carry POMS flags.
+	 * Derive the correct flag from the current panel_mode:
+	 *   CMD mode now  => switching TO video  => DSI_MODE_FLAG_POMS_TO_VID
+	 *   VIDEO mode now => switching TO cmd   => DSI_MODE_FLAG_POMS_TO_CMD
+	 * This notifies the firmware to skip panel off DCS commands and handle
+	 * the mode switch appropriately during the disable sequence.
+	 * Panel power supplies are already on; the enable-supplies call below
+	 * is a no-op when display->panel->powered is true.
+	 */
+	if (display->poms_pending) {
+		if (!display->panel->cur_mode) {
+			DSI_ERR("[%s] cur_mode is NULL during POMS\n", display->name);
+			rc = -EINVAL;
+			goto end;
+		}
+		poms_mode = *display->panel->cur_mode;
+		if (display->config.panel_mode == DSI_OP_CMD_MODE)
+			poms_mode.dsi_mode_flags = DSI_MODE_FLAG_POMS_TO_VID;
+		else if (display->config.panel_mode == DSI_OP_VIDEO_MODE)
+			poms_mode.dsi_mode_flags = DSI_MODE_FLAG_POMS_TO_CMD;
+		mode = &poms_mode;
+		DSI_DEBUG("[%s] POMS pending: SET_MODE flags=0x%x\n",
+			  display->name, mode->dsi_mode_flags);
+	} else {
+		mode = display->panel->cur_mode;
+	}
+
 	rc = dsi_display_hfi_panel_enable_supplies(display, hfi_power_enable);
 	if (rc) {
 		DSI_ERR("[%s] dsi panel power supply %s failed, rc=%d\n", display->name,
@@ -155,7 +177,15 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 			goto end;
 	}
 
-	rc = dsi_display_hfi_set_mode(display, display->panel->cur_mode);
+	if (!display->is_cont_splash_enabled) {
+		rc = dsi_panel_i2c_tx_cmd_set(display->panel);
+		if (rc) {
+			DSI_ERR("[%s] failed to send i2c cmds, rc=%d\n",
+				display->panel->name, rc);
+		}
+	}
+
+	rc = dsi_display_hfi_set_mode(display, mode);
 	if (rc)
 		DSI_ERR("set mode failed, rc=%d\n", rc);
 
@@ -167,28 +197,24 @@ end:
 int dsi_display_hfi_enable(struct dsi_display *display)
 {
 	struct sde_kms *sde_kms;
-	struct msm_kms *msm_kms;
-	bool is_cont_splash = false;
 	struct hfi_kms *hfi_kms;
 	struct hfi_client_t *hfi_client;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_ENABLE;
 	int rc = 0;
-
-	if (display->trusted_vm_env)
-		return rc;
 
 	if (!display->panel) {
 		DSI_ERR("invalid panel\n");
 		return -EINVAL;
 	}
 
+	if (display->trusted_vm_env) {
+		display->panel->panel_initialized = true;
+		return rc;
+	}
+
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)
 		return -EINVAL;
-
-	msm_kms = &sde_kms->base;
-	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
-		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
 
 	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms)
@@ -211,8 +237,11 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 	 */
 	mutex_lock(&display->panel->panel_lock);
 	if (display->panel->lp11_init && !display->panel->powered) {
+		struct dsi_display_mode_priv_info *priv_info;
+		enum dsi_cmd_set_type cmd_type;
+
 		DSI_DEBUG("powering on panel\n");
-		rc = dsi_panel_power_on(display->panel, is_cont_splash);
+		rc = dsi_panel_power_on(display->panel, display->is_cont_splash_enabled);
 		if (rc) {
 			DSI_ERR("dsi panel failed to enable power supplies\n");
 			mutex_unlock(&display->panel->panel_lock);
@@ -221,9 +250,23 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 
 		display->panel->powered = true;
 
-		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_SET_CUSTOM_ON, false);
-		if (rc)
-			DSI_ERR("Could not send custom dcs on cmd, rc=%d\n", rc);
+		/* For continuous splash case - avoid sending custom DCS ON */
+		if (!display->is_cont_splash_enabled) {
+			if (!display->panel->cur_mode || !display->panel->cur_mode->priv_info) {
+				mutex_unlock(&display->panel->panel_lock);
+				return -EINVAL;
+			}
+
+			priv_info = display->panel->cur_mode->priv_info;
+
+			/* If custom on command is not defined, fallback to default on command */
+			cmd_type = (priv_info->cmd_sets[DSI_CMD_SET_CUSTOM_ON].count > 0) ?
+				   DSI_CMD_SET_CUSTOM_ON : DSI_CMD_SET_ON;
+
+			rc = dsi_hfi_exec_dcs_cmd_type(display, cmd_type, true);
+			if (rc)
+				DSI_ERR("Could not send dcs on cmd, rc=%d\n", rc);
+		}
 	}
 	mutex_unlock(&display->panel->panel_lock);
 
@@ -299,8 +342,15 @@ int dsi_display_hfi_disable(struct dsi_display *display)
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_POST_DISABLE;
 	int rc = 0;
 
-	if (display->trusted_vm_env)
+	if (!display->panel) {
+		DSI_ERR("invalid panel\n");
+		return -EINVAL;
+	}
+
+	if (display->trusted_vm_env) {
+		display->panel->panel_initialized = false;
 		return rc;
+	}
 
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)

@@ -674,6 +674,9 @@ struct sde_drm_dim_layer_v1 {
 /* SDE_DRM_WB_CONFIG_FLAGS - Writeback configuration flags */
 #define SDE_DRM_WB_CFG_FLAGS_CONNECTED	(1<<0)
 
+/* SDE_DRM_WB_CFG_FLAGS_DSPP - Request DSPP allocation for WB display */
+#define SDE_DRM_WB_CFG_FLAGS_DSPP	(1<<1)
+
 /**
  * struct sde_drm_wb_cfg - Writeback configuration structure
  * @flags:		see DRM_MSM_WB_CONFIG_FLAGS
@@ -1096,6 +1099,21 @@ struct sde_drm_dnsc_blur_cfg {
 	__u32 c2_bitdepth;
 	__u32 c3_bitdepth;
 	__u32 dither_matrix[DNSC_BLUR_DITHER_MATRIX_SZ];
+};
+
+#define FEATURE_WB_DNSC
+#define WB_DNSC_DISABLE		(1 << 0)
+
+/**
+ * struct sde_drm_dnsc_blur_cfg - Downscale Blur config structure
+ * @flags: Flags
+ * @dst_width: Destination width configuration
+ * @dst_height: Destination height configuration
+ */
+struct sde_drm_wb_dnsc_cfg {
+	__u32 flags;
+	__u32 dst_width;
+	__u32 dst_height;
 };
 
 /**

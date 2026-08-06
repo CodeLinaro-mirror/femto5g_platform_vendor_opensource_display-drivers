@@ -248,18 +248,27 @@ static int msm_smmu_unmap(struct msm_mmu *mmu, uint64_t iova,
 static void msm_smmu_destroy(struct msm_mmu *mmu)
 {
 	struct msm_smmu *smmu = to_msm_smmu(mmu);
-	struct platform_device *pdev = to_platform_device(smmu->client_dev);
-	struct iommu_domain *domain = iommu_get_domain_for_dev(smmu->client_dev);
+	struct platform_device *pdev;
+	struct iommu_domain *domain;
 
-	if (domain)
-		iommu_set_fault_handler(domain, NULL, NULL);
+	if (smmu->client_dev) {
+		pdev = to_platform_device(smmu->client_dev);
+		domain = iommu_get_domain_for_dev(smmu->client_dev);
 
-	if (smmu->client_dev)
+		if (domain) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+			qcom_iommu_set_fault_handler(domain, NULL, NULL);
+#else
+			iommu_set_fault_handler(domain, NULL, NULL);
+#endif
+		}
+
 		platform_device_unregister(pdev);
+	}
 	kfree(smmu);
 }
 
-struct device *msm_smmu_get_dev(struct msm_mmu *mmu)
+static struct device *msm_smmu_get_dev(struct msm_mmu *mmu)
 {
 	struct msm_smmu *smmu = to_msm_smmu(mmu);
 
@@ -321,10 +330,10 @@ static void msm_smmu_unmap_dma_buf(struct msm_mmu *mmu, struct sg_table *sgt,
 				dir);
 		SDE_EVT32(sgt->sgl->dma_address, sgt->sgl->dma_length,
 				dir, client->secure, flags);
-	}
 
-	if (!(flags & MSM_BO_EXTBUF))
-		dma_unmap_sg(client->dev, sgt->sgl, sgt->nents, dir);
+		if (!(flags & MSM_BO_EXTBUF))
+			dma_unmap_sg(client->dev, sgt->sgl, sgt->nents, dir);
+	}
 }
 
 static bool msm_smmu_is_domain_secure(struct msm_mmu *mmu)
@@ -587,8 +596,13 @@ static int msm_smmu_probe(struct platform_device *pdev)
 	dma_set_max_seg_size(client->dev, (unsigned int)DMA_BIT_MASK(32));
 	dma_set_seg_boundary(client->dev, (unsigned long)DMA_BIT_MASK(64));
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+	qcom_iommu_set_fault_handler(client->domain,
+			msm_smmu_fault_handler, (void *)client);
+#else
 	iommu_set_fault_handler(client->domain,
 			msm_smmu_fault_handler, (void *)client);
+#endif
 
 	DRM_INFO("Created domain %s, secure=%d\n",
 			domain->label, domain->secure);
@@ -600,10 +614,15 @@ static int msm_smmu_probe(struct platform_device *pdev)
 	mutex_unlock(&smmu_list_lock);
 
 	ret = component_add(&pdev->dev, &msm_smmu_comp_ops);
-	if (ret)
+	if (ret) {
 		pr_err("component add failed\n");
+		mutex_lock(&smmu_list_lock);
+		list_del(&client->smmu_list);
+		mutex_unlock(&smmu_list_lock);
+		return ret;
+	}
 
-	return ret;
+	return 0;
 }
 
 #if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)

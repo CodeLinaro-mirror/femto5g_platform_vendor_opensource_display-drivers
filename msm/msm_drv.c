@@ -61,6 +61,7 @@
 #include "sde_wb.h"
 #include "sde_dbg.h"
 #include "hfi_msm_drv.h"
+#include <linux/msm_hdcp.h>
 
 /*
  * MSM driver version:
@@ -151,7 +152,7 @@ static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
  * RETURNS
  * Zero for success or -errorno.
  */
-int msm_atomic_check(struct drm_device *dev,
+static int msm_atomic_check(struct drm_device *dev,
 			    struct drm_atomic_state *state)
 {
 	struct msm_drm_private *priv;
@@ -619,7 +620,7 @@ static int get_mdp_ver(struct platform_device *pdev)
  * Return: 1 if an IOMMU is mapped for the device (stops iteration),
  * 0 otherwise (continues iteration).
  */
-int msm_check_device_iommu_mapped(struct device *dev, void *data)
+static int msm_check_device_iommu_mapped(struct device *dev, void *data)
 {
 	if (!dev || !data) {
 		pr_err("msm check device iommu_mapped invalid input [%s] is null\n",
@@ -1241,6 +1242,20 @@ static void msm_lastclose(struct drm_device *dev)
 
 	kms = priv->kms;
 
+	/* Prevent concurrent lastclose execution */
+	if (atomic_xchg(&kms->lastclose_active, 1)) {
+		SDE_DEBUG("lastclose already running, waiting...\n");
+		/* poll until prior lastclose finishes or timeout */
+		unsigned long timeout = jiffies +
+				msecs_to_jiffies(LASTCLOSE_TIMEOUT_MS);
+		while (atomic_read(&kms->lastclose_active) &&
+				time_before(jiffies, timeout))
+			msleep(20);
+		if (atomic_read(&kms->lastclose_active))
+			DRM_INFO("wait for lastclose active timeout\n");
+		return;
+	}
+
 	/* check for splash status before triggering cleanup
 	 * if we end up here with splash status ON i.e before first
 	 * commit then ignore the last close call
@@ -1255,7 +1270,7 @@ static void msm_lastclose(struct drm_device *dev)
 
 		rc = kms->funcs->trigger_null_flush(kms);
 		if (rc)
-			return;
+			goto end;
 	}
 
 	/*
@@ -1310,6 +1325,10 @@ static void msm_lastclose(struct drm_device *dev)
 
 	if (kms->funcs && kms->funcs->lastclose)
 		kms->funcs->lastclose(kms);
+
+end:
+	/* Release lastclose guard */
+	atomic_set(&kms->lastclose_active, 0);
 }
 
 static void msm_postclose(struct drm_device *dev, struct drm_file *file)
@@ -1857,7 +1876,7 @@ EXPORT_SYMBOL_GPL(msm_ioctl_rmfb2);
  * @file_priv: drm file for the ioctl call
  *
  */
-int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
+static int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
 {
 	struct msm_file_private *ctx = file_priv->driver_priv;
@@ -1917,7 +1936,7 @@ int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
  * @file_priv: drm file for the ioctl call
  *
  */
-int msm_ioctl_display_hint_ops(struct drm_device *dev, void *data,
+static int msm_ioctl_display_hint_ops(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
 {
 	struct drm_msm_display_hint *display_hint = data;
@@ -1969,7 +1988,7 @@ int msm_ioctl_display_hint_ops(struct drm_device *dev, void *data,
  * @file_priv: drm file for the ioctl call
  *
  */
-int msm_ioctl_display_early_ept(struct drm_device *dev, void *data,
+static int msm_ioctl_display_early_ept(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
 {
 	struct drm_msm_display_early_ept *early_ept = data;
@@ -2448,11 +2467,11 @@ msm_gem_smmu_address_space_get(struct drm_device *dev,
 	const struct msm_kms_funcs *funcs;
 	struct msm_gem_address_space *aspace;
 
-	if (!mdss_iommu_present(dev))
-		return ERR_PTR(-ENODEV);
-
 	if ((!dev) || (!dev->dev_private))
 		return ERR_PTR(-EINVAL);
+
+	if (!mdss_iommu_present(dev))
+		return ERR_PTR(-ENODEV);
 
 	priv = dev->dev_private;
 	kms = priv->kms;
