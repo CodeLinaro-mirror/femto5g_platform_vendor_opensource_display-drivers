@@ -7560,8 +7560,10 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 		goto end;
 	}
 
-	ret = _sde_encoder_prepare_for_kickoff_processing(drm_enc, params, sde_enc, sde_kms,
+	rc = _sde_encoder_prepare_for_kickoff_processing(drm_enc, params, sde_enc, sde_kms,
 			needs_hw_reset, is_cmd_mode);
+	if (rc)
+		ret = rc;
 
 end:
 	SDE_ATRACE_END("sde_encoder_prepare_for_kickoff");
