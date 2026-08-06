@@ -177,6 +177,7 @@ struct dp_display_private {
 	bool aux_switch_ready;
 	struct dp_aux_bridge *aux_bridge;
 	struct dentry *root;
+	struct completion notification_comp;
 	struct completion attention_comp;
 
 	struct dp_hpd     *hpd;
@@ -945,6 +946,7 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp)
 	}
 
 	dp->aux->state |= DP_STATE_NOTIFICATION_SENT;
+	reinit_completion(&dp->notification_comp);
 
 	if (!dp->mst.mst_active) {
 		dp->dp_display.is_sst_connected = hpd;
@@ -967,6 +969,10 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp)
 		dp_display_state_add(DP_STATE_DISCONNECT_NOTIFIED);
 		dp_display_state_remove(DP_STATE_CONNECT_NOTIFIED);
 	}
+
+	// wait 4 seconds
+	if (wait_for_completion_timeout(&dp->notification_comp, HZ * 4))
+		goto skip;
 
 skip:
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state, hpd, ret);
@@ -2741,6 +2747,7 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 
 	dp->aux->state &= ~DP_STATE_CTRL_POWERED_OFF;
 	dp->aux->state |= DP_STATE_CTRL_POWERED_ON;
+	complete_all(&dp->notification_comp);
 	DP_DEBUG("display post enable complete. state: 0x%x\n", dp->state);
 end:
 	mutex_unlock(&dp->session_lock);
@@ -2967,6 +2974,8 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 
 	dp->aux->state &= ~DP_STATE_CTRL_POWERED_ON;
 	dp->aux->state |= DP_STATE_CTRL_POWERED_OFF;
+
+	complete_all(&dp->notification_comp);
 
 	/* log this as it results from user action of cable dis-connection */
 	DP_INFO("[OK]\n");
@@ -3820,6 +3829,7 @@ static int dp_display_probe(struct platform_device *pdev)
 		goto bail;
 	}
 
+	init_completion(&dp->notification_comp);
 	init_completion(&dp->attention_comp);
 
 	dp->pdev = pdev;
