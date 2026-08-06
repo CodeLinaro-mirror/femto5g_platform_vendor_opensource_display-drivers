@@ -970,6 +970,9 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp)
 		dp_display_state_remove(DP_STATE_CONNECT_NOTIFIED);
 	}
 
+	if (hpd && dp->mst.mst_active)
+		goto skip;
+
 	// wait 4 seconds
 	if (wait_for_completion_timeout(&dp->notification_comp, HZ * 4))
 		goto skip;
