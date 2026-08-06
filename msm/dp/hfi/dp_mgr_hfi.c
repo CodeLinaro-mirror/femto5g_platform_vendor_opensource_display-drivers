@@ -1664,7 +1664,8 @@ static enum drm_mode_status dp_mgr_hfi_validate_mode(struct dp_client *client, i
 	return MODE_ERROR;
 }
 
-static int _add_drm_mode(struct drm_connector *connector, struct hfi_display_mode_info *m)
+static int _add_drm_mode(struct drm_connector *connector, struct hfi_display_mode_info *m,
+		bool is_preferred)
 {
 	struct drm_display_mode *mode;
 	u32 htotal, vtotal;
@@ -1710,6 +1711,8 @@ static int _add_drm_mode(struct drm_connector *connector, struct hfi_display_mod
 		mode->flags |= DRM_MODE_FLAG_PVSYNC;
 
 	mode->type = DRM_MODE_TYPE_DRIVER;
+	if (is_preferred)
+		mode->type |= DRM_MODE_TYPE_PREFERRED;
 	mode->status = MODE_OK;
 	drm_mode_set_name(mode);
 	drm_mode_probed_add(connector, mode);
@@ -1795,7 +1798,7 @@ static int dp_mgr_hfi_get_modes(struct dp_client *client, int panel_id,
 			if (override_match)
 				override_found = true;
 
-			if (_add_drm_mode(connector, m))
+			if (_add_drm_mode(connector, m, override_found))
 				continue;
 
 			cnt++;
@@ -1820,7 +1823,7 @@ static int dp_mgr_hfi_get_modes(struct dp_client *client, int panel_id,
 		for (i = 0; i < hfi->mode_count; i++) {
 			m = &hfi->mode_list[i].base;
 
-			if (_add_drm_mode(connector, m))
+			if (_add_drm_mode(connector, m, (i == 0)))
 				continue;
 			cnt++;
 			DP_DEBUG("DP%d:conn%d: Mode[%d]: %ux%u@%uHz\n", hfi->stream_id,
