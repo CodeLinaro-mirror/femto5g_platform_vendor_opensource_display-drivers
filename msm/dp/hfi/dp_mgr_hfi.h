@@ -108,6 +108,7 @@ struct dp_mgr_hfi_priv {
 	struct dp_hpd *hpd;
 	struct dp_hpd_cb hpd_cb;
 	struct dp_parser *parser;
+	struct mutex hpd_mutex;
 
 	struct dp_aux_switch *aux_switch;
 	struct dp_display_mode default_mode;
@@ -137,7 +138,10 @@ struct dp_mgr_hfi_priv {
 	bool soft_unplug;
 
 	struct dp_audio *audio;
+	bool audio_supported;
 	u8 min_enc_level;
+
+	bool stream_manage_inflight;
 
 	u32 active_streams;
 

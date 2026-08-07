@@ -38,7 +38,224 @@
 
 static u32 _hfi_kms_read_lsr_init_caps(struct hfi_catalog_base *catalog,
 		u32 hfi_prop, u32 *payload, u32 max_words);
+static int _hfi_kms_send_hfi_subsystem_config(struct hfi_kms *hfi_kms,
+		struct drm_crtc *crtc, u32 disp_id, u32 iova, u32 size);
 
+
+/* Map MSM batch type to HFI usecase id. */
+static enum hfi_batch_usecase_id _hfi_kms_batch_type_to_usecase(u32 batch_type)
+{
+	switch (batch_type) {
+	case MSM_MDP_BATCH_TYPE_LSR:
+		return HFI_BATCH_USECASE_GMU_REPROJ;
+	default:
+		return HFI_BATCH_USECASE_NONE;
+	}
+}
+
+/* Return true if @batch belongs to the GMU LSR (reprojection) usecase. */
+bool hfi_kms_is_gmu_lsr_batch(const struct hfi_kms_batch_info *batch)
+{
+	return batch->usecase_id == HFI_BATCH_USECASE_GMU_REPROJ;
+}
+
+/* Populate @info from the CRTC state batch properties. */
+void hfi_kms_get_batch_info(struct hfi_kms *hfi_kms, struct drm_crtc_state *crtc_state,
+		struct hfi_kms_batch_info *info)
+{
+	u32 batch_type;
+	struct sde_crtc_state *sde_crtc_state;
+
+	if (!crtc_state) {
+		SDE_ERROR("Invalid crtc state");
+		return;
+	}
+
+	if (!hfi_kms || !hfi_kms->base || !hfi_kms->base->catalog) {
+		SDE_ERROR("invalid hfi_kms base or catalog\n");
+		return;
+	}
+
+	if (!test_bit(SDE_FEATURE_BATCH_COMMIT, hfi_kms->base->catalog->features))
+		return;
+
+	sde_crtc_state = to_sde_crtc_state(crtc_state);
+	if (!sde_crtc_state) {
+		SDE_ERROR("Invalid crtc state");
+		return;
+	}
+
+	memset(info, 0, sizeof(*info));
+	info->index      = sde_crtc_get_property(sde_crtc_state, CRTC_PROP_BATCH_INDEX);
+	info->size       = sde_crtc_get_property(sde_crtc_state, CRTC_PROP_BATCH_SIZE);
+	batch_type = sde_crtc_get_property(sde_crtc_state, CRTC_PROP_BATCH_TYPE);
+	info->usecase_id = _hfi_kms_batch_type_to_usecase(batch_type);
+	info->is_batch   = (info->usecase_id != HFI_BATCH_USECASE_NONE &&
+			info->size > 0 && info->index > 0);
+
+	if (info->is_batch)
+		SDE_EVT32(info->index, info->size, info->usecase_id, info->is_batch);
+
+}
+
+static int _hfi_kms_add_batch_mode_cmd(struct hfi_kms *hfi_kms,
+		struct drm_crtc *crtc, u32 disp_id,
+		enum hfi_batch_mode mode, const struct hfi_kms_batch_info *batch)
+{
+	struct hfi_batch_mode_info batch_info = {
+		.mode       = mode,
+		.usecase_id = batch->usecase_id,
+	};
+	struct hfi_crtc *hfi_crtc = to_sde_crtc(crtc)->hfi_crtc;
+	struct hfi_cmdbuf_t *cmd_buf;
+	int ret, packet_id = 0;
+
+	if (!hfi_crtc) {
+		SDE_ERROR("crtc:%d hfi_crtc is NULL\n", DRMID(crtc));
+		return -EINVAL;
+	}
+
+	if (mode == HFI_BATCH_MODE_START && hfi_kms_is_gmu_lsr_batch(batch)) {
+		if (hfi_kms->primary_connector &&
+				hfi_kms->primary_connector->sde_base &&
+				hfi_kms->primary_connector->sde_base->gmu_dcp_iova) {
+			struct sde_connector *pconn = hfi_kms->primary_connector->sde_base;
+
+			ret = _hfi_kms_send_hfi_subsystem_config(hfi_kms, crtc, disp_id,
+					pconn->gmu_dcp_iova, pconn->gmu_dcp_size);
+			if (ret) {
+				SDE_ERROR("crtc:%d failed to send subsystem config rc:%d\n",
+						DRMID(crtc), ret);
+				goto out;
+			}
+		} else {
+			SDE_ERROR("crtc:%d invalid gmu_dcp_iova for GMU LSR batch\n", DRMID(crtc));
+			ret = -EINVAL;
+			goto out;
+		}
+	}
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			disp_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		SDE_ERROR("crtc:%d failed to get cmd_buf for batch mode disp_id:%u\n",
+				DRMID(crtc), disp_id);
+		return -EINVAL;
+	}
+
+	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DISPLAY_BATCH_MODE, disp_id,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &batch_info,
+			sizeof(batch_info), &hfi_crtc->hfi_cb_obj,
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE,
+			true, &packet_id);
+	if (ret) {
+		SDE_ERROR("crtc:%d failed to add batch mode:%d rc:%d\n",
+				DRMID(crtc), mode, ret);
+		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		goto out;
+	}
+
+	ret = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
+	if (ret)
+		SDE_ERROR("crtc:%d failed to send batch mode:%d rc:%d\n",
+				DRMID(crtc), mode, ret);
+
+out:
+	SDE_EVT32(HFI_COMMAND_DISPLAY_BATCH_MODE, mode, batch->index, batch->size, ret);
+	return ret;
+}
+
+static void _hfi_kms_handle_batch_mode(struct hfi_kms *hfi_kms,
+		struct drm_crtc *crtc, u32 disp_id, const struct hfi_kms_batch_info *batch)
+{
+	struct hfi_crtc *hfi_crtc;
+
+	if (!hfi_kms || !crtc || !batch) {
+		SDE_ERROR("invalid input hfi_kms:%d crtc:%d batch:%d\n",
+				!hfi_kms, !crtc, !batch);
+		return;
+	}
+
+	if (!hfi_kms->base || !hfi_kms->base->catalog) {
+		SDE_ERROR("invalid hfi_kms base or catalog\n");
+		return;
+	}
+
+	if (!test_bit(SDE_FEATURE_BATCH_COMMIT, hfi_kms->base->catalog->features))
+		return;
+
+	if (batch->is_batch && batch->index == 1) {
+		_hfi_kms_add_batch_mode_cmd(hfi_kms, crtc, disp_id,
+				HFI_BATCH_MODE_START, batch);
+		return;
+	}
+
+	if (!batch->is_batch) {
+		hfi_crtc = to_sde_crtc(crtc)->hfi_crtc;
+		if (hfi_crtc && hfi_crtc->batch_mode_running) {
+			struct hfi_kms_batch_info cancel_batch = {
+				.usecase_id = hfi_crtc->batch_type,
+			};
+
+			_hfi_kms_add_batch_mode_cmd(hfi_kms, crtc, disp_id,
+					HFI_BATCH_MODE_CANCEL, &cancel_batch);
+			hfi_crtc->batch_mode_running = false;
+		}
+	}
+}
+
+static int _hfi_kms_send_hfi_subsystem_config(struct hfi_kms *hfi_kms,
+		struct drm_crtc *crtc, u32 disp_id, u32 iova, u32 size)
+{
+	int packet_id = 0;
+	struct {
+		enum hfi_subsystem_type subsystem_type;
+		struct hfi_buff buff;
+	} payload = {
+		.subsystem_type = HFI_SUBSYSTEM_TYPE_GMU,
+		.buff = {
+			.addr_l  = iova,
+			.addr_h  = 0,
+			.size    = size,
+			.version = 0,
+			.flags   = 0,
+		},
+	};
+	struct hfi_crtc *hfi_crtc = to_sde_crtc(crtc)->hfi_crtc;
+	struct hfi_cmdbuf_t *cmd_buf;
+	int ret;
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			disp_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		SDE_ERROR("crtc:%d failed to get cmd_buf for hfi subsystem config disp_id:%u\n",
+				DRMID(crtc), disp_id);
+		return -EINVAL;
+	}
+
+	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG, disp_id,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &payload,
+			sizeof(payload), &hfi_crtc->hfi_cb_obj,
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE,
+			true, &packet_id);
+	if (ret) {
+		SDE_ERROR("crtc:%d failed to add hfi subsystem config cmd, rc:%d\n",
+				DRMID(crtc), ret);
+		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		goto out;
+	}
+
+	ret = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
+	if (ret)
+		SDE_ERROR("crtc:%d failed to send hfi subsystem config cmd, rc:%d\n",
+				DRMID(crtc), ret);
+
+out:
+	SDE_EVT32(HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG, iova, size, ret);
+	return ret;
+}
 
 static int hfi_kms_prepare_commit(struct sde_kms *kms,
 		struct drm_atomic_state *state)
@@ -52,6 +269,7 @@ static int hfi_kms_prepare_commit(struct sde_kms *kms,
 	struct sde_crtc *sde_crtc;
 	struct drm_crtc_state *cstate;
 	struct hfi_kms *hfi_kms;
+	struct hfi_kms_batch_info batch;
 
 	if (!kms)
 		return -EINVAL;
@@ -61,12 +279,14 @@ static int hfi_kms_prepare_commit(struct sde_kms *kms,
 	for_each_new_crtc_in_state(state, crtc, cstate, i) {
 		sde_crtc = to_sde_crtc(crtc);
 
+		disp_id = hfi_crtc_get_display_id(crtc, cstate);
+		hfi_kms_get_batch_info(hfi_kms, cstate, &batch);
+
 		encoder_mask = cstate->encoder_mask ?
 			cstate->encoder_mask : sde_crtc->cached_encoder_mask;
 		SDE_DEBUG("crtc:%d encoder_mask:0x%x\n", DRMID(crtc), encoder_mask);
 
 		drm_for_each_encoder_mask(encoder, kms->dev, encoder_mask) {
-			disp_id = hfi_crtc_get_display_id(crtc, cstate);
 			if (disp_id == U32_MAX || sde_encoder_in_clone_mode(encoder)) {
 				SDE_DEBUG("no display for encoder%p\n", encoder);
 				continue;
@@ -82,11 +302,64 @@ static int hfi_kms_prepare_commit(struct sde_kms *kms,
 			}
 		}
 		hfi_crtc_set_pending_enc_mask(sde_crtc, encoder_mask);
+		_hfi_kms_handle_batch_mode(hfi_kms, crtc, disp_id, &batch);
 	}
 
 	SDE_DEBUG("done\n");
 
 	return ret;
+}
+
+/*
+ * _hfi_kms_batch_commit_unblock - Unblock the commit thread for batch commits.
+ *
+ * Called once per batch frame.  Decrements pending_commit_cnt and wakes the
+ * kickoff wait-queue so the commit thread is not blocked waiting for a DCP
+ * FRAME_SCAN_START event.
+ *
+ * Also synthesizes a frame-done event per call.  DCP sends one real
+ * FRAME_SCAN_START which arrives after the first post-cancel frame's
+ * sde_fence_prepare has already run.  Synthesizing one event here per batch
+ * frame (batch->size total) ensures done_count stays in sync with
+ * commit_count; the real scan-start then covers the post-cancel frame normally.
+ */
+static void _hfi_kms_batch_commit_unblock(struct drm_device *dev,
+		struct drm_crtc *crtc)
+{
+	struct drm_encoder *encoder;
+	struct sde_encoder_virt *sde_enc;
+	struct hfi_encoder *hfi_enc;
+	unsigned long lock_flags;
+	u32 event = SDE_ENCODER_FRAME_EVENT_DONE |
+			SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE |
+			SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
+
+	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+		if (encoder->crtc != crtc)
+			continue;
+
+		sde_enc = to_sde_encoder_virt(encoder);
+		if (!sde_enc || !sde_enc->cur_master)
+			continue;
+
+		hfi_enc = to_hfi_encoder(sde_enc);
+		if (!hfi_enc)
+			continue;
+
+		spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
+		atomic_add_unless(&sde_enc->pending_commit_cnt, -1, 0);
+		spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
+
+		SDE_EVT32(DRMID(encoder), atomic_read(&sde_enc->pending_commit_cnt));
+		wake_up_all(&hfi_enc->pending_kickoff_wq);
+
+		if (sde_enc->crtc_frame_event_cb) {
+			sde_enc->crtc_frame_event_cb_data.connector =
+					sde_enc->cached_connector;
+			sde_enc->crtc_frame_event_cb(
+					&sde_enc->crtc_frame_event_cb_data, event, ktime_get());
+		}
+	}
 }
 
 static int hfi_kms_trigger_commit(struct sde_kms *kms,
@@ -101,8 +374,10 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 	struct hfi_kms *hfi_kms;
 	struct drm_encoder *encoder;
 	struct drm_device *dev;
+	struct hfi_crtc *hfi_crtc;
 	u32 pending_commit_count;
 	u32 lsr_mode;
+	struct hfi_kms_batch_info batch;
 	bool avoid_frame_trigger = false;
 
 	if (!kms || !state)
@@ -115,6 +390,9 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 		disp_id = hfi_crtc_get_display_id(crtc, crtc_state);
 		lsr_mode = sde_crtc_get_property(to_sde_crtc_state(crtc_state),
 			CRTC_PROP_LSR_MODE);
+		hfi_kms_get_batch_info(hfi_kms, crtc_state, &batch);
+		hfi_crtc = to_sde_crtc(crtc)->hfi_crtc;
+		avoid_frame_trigger = false;
 
 		if (disp_id == U32_MAX) {
 			SDE_DEBUG("no valid display for crtc:%d\n", DRMID(crtc));
@@ -123,7 +401,8 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 		SDE_DEBUG("getting cmd buffer for disp_id:%d\n", disp_id);
 
 		/* Avoid Frame trigger command on LSR mode commits on primary display*/
-		if (lsr_mode == MSM_DISP_LSR_MODE_ENABLED)
+		if (lsr_mode == MSM_DISP_LSR_MODE_ENABLED ||
+				(hfi_crtc && hfi_crtc->batch_mode_running))
 			avoid_frame_trigger = true;
 
 		cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id,
@@ -144,10 +423,12 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 			continue;
 		}
 
-		if (!avoid_frame_trigger)
+		/* Avoid Frame trigger command on LSR mode commits on primary display*/
+		if (!avoid_frame_trigger) {
 			ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
 					HFI_COMMAND_DISPLAY_FRAME_TRIGGER, MSM_DRV_HFI_ID,
 					HFI_PAYLOAD_TYPE_U32, &payload, sizeof(u32), 0);
+		}
 
 		dev = crtc->dev;
 		list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
@@ -168,6 +449,16 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 			return ret;
 		}
 		hfi_crtc_set_pending_enc_mask(to_sde_crtc(crtc), 0);
+
+		if (batch.is_batch && batch.index == batch.size) {
+			_hfi_kms_add_batch_mode_cmd(hfi_kms, crtc, disp_id,
+					HFI_BATCH_MODE_END, &batch);
+			hfi_crtc->batch_mode_running = true;
+			hfi_crtc->batch_type = batch.usecase_id;
+		}
+
+		if (batch.is_batch && batch.index < batch.size)
+			_hfi_kms_batch_commit_unblock(dev, crtc);
 	}
 
 	SDE_EVT32(HFI_COMMAND_DISPLAY_FRAME_TRIGGER, avoid_frame_trigger, SDE_EVTLOG_FUNC_EXIT);
@@ -752,16 +1043,28 @@ static int _hfi_kms_init_device_caps(struct hfi_catalog_base *catalog,
 	return ret;
 }
 
-static void hfi_kms_populate_catalog(u32 display_id, u32 cmd_id,
-		void *prop_data, u32 size, struct hfi_prop_listener *hfi_listener)
+static void hfi_kms_populate_catalog(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *hfi_listener)
 {
 	struct hfi_kms *hfi_kms = container_of(hfi_listener, struct hfi_kms, device_init_listener);
 	struct hfi_catalog_base *catalog;
+	u32 cmd_id;
+	void *prop_data;
+	u32 size;
+
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info from FW\n");
+		return;
+	}
 
 	if (!hfi_kms) {
 		SDE_ERROR("invalid object or listener from FW\n");
 		return;
 	}
+
+	cmd_id = packet_info->cmd;
+	prop_data = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	catalog = hfi_kms->catalog;
 	if (!catalog) {
@@ -846,16 +1149,26 @@ static int _send_device_init_cmd(struct hfi_kms *hfi_kms)
 	return ret;
 }
 
-static void hfi_kms_get_debug_set_common_property_resp(u32 cmd, u32 obj_id,
-						       void *payload,
-						       u32 payload_size,
+static void hfi_kms_get_debug_set_common_property_resp(struct hfi_packet_info *packet_info,
 						       struct hfi_prop_listener *listener)
 {
 	struct hfi_util_kv_parser kv_parser;
+	u32 cmd;
+	void *payload;
+	u32 payload_size;
 	u32 hfi_prop;
 	u32 *prop_payload;
 	u32 max_words;
 	int ret;
+
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info\n");
+		return;
+	}
+
+	cmd = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	payload_size = packet_info->payload_size;
 
 	if (!listener || !payload) {
 		SDE_ERROR("invalid listener or payload\n");
@@ -1248,11 +1561,21 @@ struct hfi_kms_uidle_status_ctx {
 	u32 uidle_state;
 };
 
-static void _hfi_kms_uidle_status_handler(u32 obj_id, u32 cmd_id,
-		void *payload, u32 size, struct hfi_prop_listener *listener)
+static void _hfi_kms_uidle_status_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *listener)
 {
 	struct hfi_kms_uidle_status_ctx *ctx;
 	struct hfi_display_dbg_property *prop;
+	void *payload;
+	u32 size;
+
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info from FW\n");
+		return;
+	}
+
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	if (!listener || !payload || size < sizeof(struct hfi_display_dbg_property)) {
 		SDE_ERROR("invalid uidle status response listener:%d payload:%d size:%d\n",
@@ -1629,12 +1952,15 @@ int hfi_kms_destroy(struct sde_kms *sde_kms)
 	return 0;
 }
 
-void hfi_kms_resource_vote_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload, u32 size,
+void hfi_kms_resource_vote_hfi_prop_handler(struct hfi_packet_info *packet_info,
 			struct hfi_prop_listener *resource_vote_listener)
 {
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
 	struct hfi_kms *hfi_kms;
+	u32 CMD_ID;
+	void *payload;
+	u32 size;
 	u32 bus_id, i, prop_count;
 	struct hfi_kv_pairs *kv_pairs;
 	struct hfi_bw_config bw_config = {0};
@@ -1644,7 +1970,21 @@ void hfi_kms_resource_vote_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *paylo
 	u32 rc;
 	u32 enable;
 
-	if (!payload || !resource_vote_listener)
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info\n");
+		return;
+	}
+
+	if (!resource_vote_listener) {
+		SDE_ERROR("invalid resource_vote_listener\n");
+		return;
+	}
+
+	CMD_ID = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
+
+	if (!payload)
 		return;
 
 	hfi_kms = container_of(resource_vote_listener, struct hfi_kms, resource_vote_listener);

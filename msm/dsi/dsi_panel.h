@@ -12,7 +12,6 @@
 #include <linux/bitops.h>
 #include <linux/errno.h>
 #include <linux/backlight.h>
-#include <linux/i2c.h>
 #include <drm/drm_panel.h>
 #include <drm/msm_drm.h>
 #include <drm/msm_drm_pp.h>
@@ -21,6 +20,7 @@
 #include "dsi_ctrl_hw.h"
 #include "dsi_clk.h"
 #include "dsi_pwr.h"
+#include "dsi_panel_i2c.h"
 #include "dsi_parser.h"
 #include "msm_drv.h"
 
@@ -152,6 +152,7 @@ struct dsi_backlight_config {
 	u32 bl_scale;
 	u32 bl_scale_sv;
 	u32 bl_dcs_subtype;
+	enum dsi_backlight_i2c_subtype bl_i2c_subtype;
 	bool bl_inverted_dbv;
 	/* digital dimming backlight LUT */
 	struct drm_msm_dimming_bl_lut *dimming_bl_lut;
@@ -327,26 +328,8 @@ enum AreaModeValid {
 	R1_VALID,
 };
 
-struct dsi_panel_i2c_cmd {
-	const u8 *data;
-	u32 len;
-	u32 post_wait_ms;
-	u8 slave_addr;
-};
-
-struct dsi_panel_i2c_cmd_set {
-	struct dsi_panel_i2c_cmd *cmds;
-	u32 count;
-};
-
-struct dsi_panel_i2c_config {
-	bool i2c_support;
-	struct i2c_adapter *left_adapter;
-	struct i2c_adapter *right_adapter;
-	struct dsi_panel_i2c_cmd_set cmd_set;
-};
-
 struct dsi_panel;
+struct mtd_info;
 
 struct dsi_panel_ops {
 	int (*pinctrl_init)(struct dsi_panel *panel);
@@ -366,9 +349,6 @@ struct dsi_panel {
 	struct device_node *panel_of_node;
 	struct mipi_dsi_device mipi_device;
 	bool panel_ack_disabled;
-	struct device_node *rgb_left_led_node;
-	struct device_node *rgb_right_led_node;
-
 	struct mutex panel_lock;
 	struct drm_panel drm_panel;
 	struct mipi_dsi_host *host;
@@ -408,6 +388,11 @@ struct dsi_panel {
 	bool allow_phy_power_off;
 	bool reset_gpio_always_on;
 	bool privacy_feature_enabled;
+
+	bool calibration_enabled;
+	struct mtd_info *calibration_mtd_left;
+	struct mtd_info *calibration_mtd_right;
+
 	atomic_t esd_recovery_pending;
 	atomic_t ssr_in_progress;
 
@@ -614,6 +599,8 @@ int dsi_panel_power_on(struct dsi_panel *panel, bool is_cont_splash);
 
 int dsi_panel_power_off(struct dsi_panel *panel);
 
+int dsi_panel_set_backlight_en_gpio(struct dsi_panel *panel, bool enable);
+
 int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel);
 
 int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
@@ -622,5 +609,4 @@ int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 int dsi_panel_set_brightness_prepare_dcs_cmds(struct dsi_panel *panel,
 		struct dsi_panel_cmd_set *set, u32 bl_lvl);
 
-int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel);
 #endif /* _DSI_PANEL_H_ */

@@ -524,6 +524,46 @@ static int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 	return 0;
 }
 
+int hfi_adapter_handle_hibernation_entry(struct hfi_client_t *hfi_client)
+{
+	int ret = 0;
+
+	if (!hfi_client) {
+		HFI_AD_ERROR("invalid hfi client handle\n");
+		return -EINVAL;
+	}
+
+	ret = hfi_core_hibernate_stop_fw_comm();
+	if (ret) {
+		HFI_AD_ERROR("failed to shutdown dcp %d\n", ret);
+		return ret;
+	}
+
+	hfi_core_close_session(hfi_client->host->session);
+	if (ret)
+		HFI_AD_ERROR("failed to close hfi session%d\n", ret);
+
+	return ret;
+}
+
+int hfi_adapter_handle_hibernation_exit(void)
+{
+	int ret = 0;
+
+	ret = hfi_smem_init();
+	if (ret) {
+		HFI_AD_ERROR("Failed sde_kms_resume_helper: %d\n", ret);
+		return ret;
+	}
+	ret = hfi_core_reinit_queues();
+	if (ret) {
+		HFI_AD_ERROR("Failed sde_kms_resume_helper: %d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
 struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance)
 {
 	struct hfi_adapter_t *hfi_host;
@@ -1570,18 +1610,17 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 			 */
 			if (packet_info.flags != HFI_RX_FLAGS_NONE &&
 					packet_info.flags != HFI_RX_FLAGS_SUCCESS) {
-				HFI_AD_ERROR("response packet error. cmd:0x%x resp:0x%x\n",
-						packet_info.cmd, packet_info.flags);
-				ret = -HFI_ERROR;
+				HFI_AD_WARN("response packet error. num_packets:%d id:0x%x cmd:0x%x"
+							" resp:0x%x\n", num_packets, packet_info.id,
+							packet_info.cmd, packet_info.flags);
 				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd,
 						packet_info.flags);
-				listener->hfi_prop_handler(packet_info.id,
-						packet_info.cmd, NULL, 0, listener);
+				packet_info.payload_ptr = NULL;
+				packet_info.payload_size = 0;
+				listener->hfi_prop_handler(&packet_info, listener);
 			} else {
 				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd);
-				listener->hfi_prop_handler(packet_info.id,
-						packet_info.cmd, packet_info.payload_ptr,
-						packet_info.payload_size, listener);
+				listener->hfi_prop_handler(&packet_info, listener);
 			}
 
 			/* Remove and free the temporary entry */

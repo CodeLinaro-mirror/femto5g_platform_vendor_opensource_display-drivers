@@ -58,7 +58,7 @@ static int _hfi_wb_add_roi_prop(struct sde_wb_device *wb_dev,
 	u32 prop_id;
 	const struct drm_display_mode *mode = cstate->msm_mode.base;
 	struct hfi_display_roi src_roi, dst_roi;
-	struct sde_rect roi;
+	struct sde_rect roi = {0};
 	struct sde_io_res dnsc_blur_res = {0, };
 	u32 out_width = 0, out_height = 0;
 	int ret = 0;
@@ -321,6 +321,13 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 		return -EINVAL;
 	}
 
+	if (wb_enc->old_fb && wb_enc->old_aspace) {
+		msm_framebuffer_cleanup(wb_enc->old_fb, wb_enc->old_aspace);
+		drm_framebuffer_put(wb_enc->old_fb);
+		wb_enc->old_fb = NULL;
+		wb_enc->old_aspace = NULL;
+	}
+
 	fmt.fourcc_format = fb->format->format;
 	fmt.modifier = fb->modifier;
 
@@ -356,6 +363,11 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 		SDE_ERROR("failed to get scan out info\n");
 		return ret;
 	}
+
+	wb_enc->old_fb = fb;
+	wb_enc->old_aspace = (wb_cfg.is_secure)
+		? wb_enc->aspace[SDE_IOMMU_DOMAIN_SECURE]
+		: wb_enc->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR;
 	memset(addr_payload, 0, sizeof(addr_payload));
@@ -425,11 +437,11 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 		tap_payload[1] = tap_point;
 		hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
 			HFI_VAL_U32_ARRAY, tap_payload, sizeof(tap_payload));
+	} else {
+		prop_id = HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT;
+		hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+			wb_id, HFI_VAL_U32, &tap_point, sizeof(u32));
 	}
-
-	prop_id = HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-		wb_id, HFI_VAL_U32, &tap_point, sizeof(u32));
 
 	_hfi_wb_add_dnsc_prop(wb_dev, cstate, hfi_conn->base_props);
 	_hfi_wb_add_wb_dnsc_prop(wb_dev, cstate, hfi_conn->base_props);

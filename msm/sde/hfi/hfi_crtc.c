@@ -637,6 +637,7 @@ int hfi_crtc_atomic_check(struct sde_crtc *crtc, struct sde_crtc_state *state)
 	struct hfi_crtc *crtc_hfi = NULL;
 	struct hfi_kms *hfi_kms;
 	struct drm_crtc_state *crtc_state;
+	struct hfi_kms_batch_info batch;
 	u32 disp_id;
 
 	if (!crtc) {
@@ -650,6 +651,14 @@ int hfi_crtc_atomic_check(struct sde_crtc *crtc, struct sde_crtc_state *state)
 	hfi_kms = sde_crtc_get_kms(crtc);
 	if (!hfi_kms)
 		return -EINVAL;
+
+	hfi_kms_get_batch_info(hfi_kms, crtc_state, &batch);
+	if (batch.is_batch && hfi_kms_is_gmu_lsr_batch(&batch) &&
+			(!hfi_kms->primary_connector || !hfi_kms->primary_connector->sde_base ||
+			!hfi_kms->primary_connector->sde_base->gmu_dcp_iova)) {
+		SDE_ERROR("crtc:%d invalid gmu_dcp_iova for GMU LSR batch\n", DRMID(&crtc->base));
+		return -EINVAL;
+	}
 
 	disp_id = hfi_crtc_get_display_id(&crtc->base, crtc_state);
 	if (disp_id == U32_MAX) {
@@ -776,18 +785,30 @@ static int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
 	return rc;
 }
 
-static void hfi_crtc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload, u32 size,
+static void hfi_crtc_misr_read_hfi_prop_handler(struct hfi_packet_info *packet_info,
 			struct hfi_prop_listener *hfi_listener)
 {
 	struct hfi_crtc *hfi_crtc;
 	struct misr_read_data_ret *misr_data;
 	struct sde_misr_values *misr_read_values;
+	void *payload;
+	u32 size;
 	u32 max_count = 0;
 	u32 module_type = 0;
 	u32 *misr_values;
 
-	if (!hfi_listener)
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info\n");
 		return;
+	}
+
+	if (!hfi_listener) {
+		SDE_ERROR("invalid hfi_listener\n");
+		return;
+	}
+
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	hfi_crtc = container_of(hfi_listener, struct hfi_crtc, misr_read_listener);
 
@@ -882,20 +903,32 @@ static int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 }
 #endif /* CONFIG_DEBUG_FS */
 
-static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
-		void *payload, u32 size, struct hfi_prop_listener *listener)
+static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *listener)
 {
-	struct hfi_crtc *hfi_crtc = container_of(listener,
-			struct hfi_crtc, hfi_cb_obj);
+	struct hfi_crtc *hfi_crtc;
 	struct sde_crtc *sde_crtc = NULL;
 	struct hfi_display_ltm_event_resp *event_payload = NULL;
+	u32 cmd_id;
+	void *payload;
+	u32 size;
 	u32 ex_size = 0;
 	u32 *data;
 
+	if (!packet_info) {
+		SDE_ERROR("packet_info is NULL\n");
+		return;
+	}
+
+	hfi_crtc = container_of(listener, struct hfi_crtc, hfi_cb_obj);
 	if (!hfi_crtc) {
 		SDE_ERROR("hfi_crtc is NULL\n");
 		return;
 	}
+
+	cmd_id = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	sde_crtc = hfi_crtc->sde_base;
 	if (!sde_crtc) {
@@ -990,6 +1023,10 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 		}
 
 		sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_COPR, payload);
+		break;
+	case HFI_COMMAND_DISPLAY_BATCH_MODE:
+	case HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG:
+		SDE_EVT32(cmd_id);
 		break;
 	default:
 		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);

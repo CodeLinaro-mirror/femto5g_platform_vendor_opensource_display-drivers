@@ -276,6 +276,7 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @clear_io_buf: function to be called by client to clear io buffers.
  * @mst_fixed_display_type: mst display_type reserved for fixed topology
  * @display_type: display type as defined in device tree.
+ * @dp_cec_feature: dp cec feature status.
  */
 struct dp_parser {
 	struct platform_device *pdev;
@@ -290,6 +291,7 @@ struct dp_parser {
 	struct dp_aux_cfg aux_cfg[AUX_CFG_LEN];
 	u32 max_pclk_khz;
 	u32 max_lclk_khz;
+	u32 max_lane_count;
 	struct dp_hw_cfg hw_cfg;
 	bool has_mst;
 	bool has_mst_sideband;
@@ -312,6 +314,8 @@ struct dp_parser {
 	unsigned long qos_cpu_latency;
 	u32 pixel_base_off[MAX_DP_MST_STREAMS];
 	const char *mst_fixed_display_type[MAX_DP_MST_STREAMS];
+	bool dp_cec_feature;
+
 	const char *display_type;
 
 	u8 *swing_hbr2_3;
@@ -380,6 +384,32 @@ int dp_parser_aux(struct dp_parser *parser);
  * tree properties are absent.
  */
 void dp_parser_link_training_params(struct dp_parser *parser);
+
+/**
+ * dp_parser_max_link_rate() - get the DP's max link rate from the device tree
+ *
+ * @parser: platform supported maximum link clock for the client
+ * return: void; unsuccessfully parsing max-lclk-frequency-khz
+ * sets the parser->max_lclk_khz to 0 preventing the HFI property
+ * from being sent.
+ *
+ * This function provides client capability to parse the device tree and
+ * set the max_link_rate supported by the platform in the parser data structure.
+ */
+void dp_parser_max_link_rate(struct dp_parser *parser);
+
+/**
+ * dp_parser_max_lane_count() - get the DP's max lane count from the device tree
+ *
+ * @parser: platform supported maximum numer of lanes for the client
+ * return: void; unsuccessfully parsing max-lane-count sets the
+ * parser->max_lane_count to 0 preventing the HFI property
+ * from being sent.
+ *
+ * This function provides client capability to parse the device tree and
+ * set the max_lane_count supported by the platform in the parser data structure.
+ */
+void dp_parser_max_lane_count(struct dp_parser *parser);
 
 /**
  * dp_parser_put() - cleans the dp_parser module

@@ -306,6 +306,37 @@ static int sde_encoder_update_pending_release_fence_cnt(struct sde_encoder_virt 
 	return 0;
 }
 
+static void hfi_encoder_dcs_cmd_error_callback(struct sde_encoder_virt *sde_enc, void *payload)
+{
+	struct hfi_display_dcs_cmd_error_data *err_data = payload;
+	struct drm_encoder *drm_enc;
+	ktime_t ts = 0;
+
+	if (!sde_enc) {
+		SDE_ERROR("invalid sde encoder\n");
+		return;
+	}
+
+	if (!err_data) {
+		SDE_ERROR("invalid DCS cmd error payload\n");
+		return;
+	}
+	drm_enc = &sde_enc->base;
+
+	ts = err_data->ts_hi;
+	ts =  (ts << 32) | (err_data->ts_lo);
+
+	/* convert into qtimer hw ticks & adjust */
+	ts = NS_TO_QTIMER(ts);
+	ts = sde_encoder_event_timestamp_adjust(DRMID(drm_enc), 1, ts);
+
+	SDE_EVT32(SDE_EVTLOG_ERROR, err_data->seq_no, err_data->cmd_type, err_data->cmd_index,
+		ktime_to_us(ts), err_data->error_code);
+	SDE_ERROR("DCS cmd error: seq_no=0x%x cmd_type=0x%x cmd_index:0x%x ts=%lld err=%d\n",
+		  err_data->seq_no, err_data->cmd_type, err_data->cmd_index,
+		  (long long)ts, err_data->error_code);
+}
+
 static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, void *payload)
 {
 	struct drm_connector *conn;
@@ -342,16 +373,31 @@ static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, vo
 	hfi_connector_report_panel_dead(sde_conn, false);
 }
 
-static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
-		void *payload, u32 size, struct hfi_prop_listener *listener)
+static void hfi_enc_hfi_prop_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *listener)
 {
 	struct hfi_encoder *hfi_enc;
 	struct sde_encoder_virt *sde_enc;
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
+	u32 obj_id;
+	u32 cmd_id;
+	void *payload;
+	u32 size;
 	u32 event = 0, exp_size = 0;
 	bool recovery_events;
-	u32 *data = payload;
+	u32 *data;
+
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info from FW\n");
+		return;
+	}
+
+	obj_id = packet_info->id;
+	cmd_id = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
+	data = payload;
 
 	if (!listener) {
 		SDE_ERROR("invalid listener from FW for cmd_id %x obj_id %x size %d\n",
@@ -420,6 +466,9 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD:
 		hfi_encoder_panel_dead_callback(sde_enc, payload);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_DCS_CMD_ERROR:
+		hfi_encoder_dcs_cmd_error_callback(sde_enc, payload);
 		break;
 	case HFI_COMMAND_DEBUG_PANIC_EVENT:
 		if (!data) {
@@ -575,6 +624,10 @@ static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_PANEL_DEAD,
 				enable, defer_to_commit);
 		break;
+	case MSM_ENC_DCS_CMD_ERROR:
+		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_DCS_CMD_ERROR,
+				enable, defer_to_commit);
+		break;
 	case MSM_ENC_MISR:
 		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_INTF_MISR,
 				enable, defer_to_commit);
@@ -676,7 +729,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 				hfi_enc->ps_listener_packet_id[1]);
 	}
 
-	SDE_EVT32(drm_enc->base.id, MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_PANIC_SUBSCRIBE, ret);
+	SDE_EVT32(drm_enc->base.id, MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_PANIC_SUBSCRIBE, enable, ret);
 	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 	if (ret) {
 		SDE_ERROR("failed to send panic subscribe command\n");
@@ -901,6 +954,18 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 			if (event != MSM_ENC_CAPTURE_COMPLETE || !enable)
 				return 0;
 
+			/* Skip deregister and re-register in any event is in flight */
+			if (!enc->cur_master ||
+					atomic_read(&enc->cur_master->pending_kickoff_cnt)) {
+				SDE_DEBUG("enc:%d CAPTURE_COMPLETE in-flight, skip redundant "
+						"deregister\n", DRMID(drm_enc));
+				SDE_EVT32(DRMID(drm_enc), event, enc->cur_master ?
+						atomic_read(&enc->cur_master->pending_kickoff_cnt)
+						: -1,
+						SDE_EVTLOG_FUNC_CASE2);
+				return 0;
+			}
+
 			/* Deregister first so FW clears its packet_id before re-registration */
 			ret = _hfi_enc_register_hw_event(enc, event, false, false);
 			if (ret)
@@ -935,6 +1000,27 @@ static int hfi_enc_register_panel_dead_event(struct sde_encoder_virt *enc, bool 
 	ret = _hfi_enc_register_hw_event(enc, MSM_ENC_PANEL_DEAD, enable, false);
 	if (ret)
 		SDE_ERROR("failed to register panel dead event ret:%d\n", ret);
+
+	return ret;
+}
+
+static int hfi_enc_register_dcs_cmd_error_event(struct sde_encoder_virt *enc, bool enable)
+{
+	int ret = 0;
+	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
+
+	if (!hfi_enc)
+		return -EINVAL;
+
+	/* Avoid redundant register/unregister */
+	if (hfi_enc->hw_events_state[MSM_ENC_DCS_CMD_ERROR].state == enable)
+		return 0;
+
+	ret = _hfi_enc_register_hw_event(enc, MSM_ENC_DCS_CMD_ERROR, enable, false);
+	if (ret)
+		SDE_ERROR("failed to register DCS cmd error event ret:%d\n", ret);
+	else
+		hfi_enc->hw_events_state[MSM_ENC_DCS_CMD_ERROR].state = enable;
 
 	return ret;
 }
@@ -1193,17 +1279,17 @@ static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 		return -EINVAL;
 	}
 
-	ret = hfi_enc_set_panic_events(enc, true);
-	if (ret) {
-		SDE_ERROR("failed to send debug-init command\n");
-		return ret;
-	}
-
 	/* Skip commit done events for clone mode encoders */
 	if (!sde_encoder_in_clone_mode(&enc->base)) {
 		ret = hfi_enc_enable_hw_event(enc, MSM_ENC_COMMIT_DONE, true);
 		if (ret) {
 			SDE_ERROR("failed to send commit wait command\n");
+			return ret;
+		}
+
+		ret = hfi_enc_set_panic_events(enc, true);
+		if (ret) {
+			SDE_ERROR("failed to send debug-init command\n");
 			return ret;
 		}
 	}
@@ -1322,6 +1408,75 @@ static int _hfi_enc_send_wb_detach_output_layer(struct sde_encoder_virt *enc)
 	return ret;
 }
 
+
+/*
+ * hfi_enc_deregister_cwb_events - called from sde_kms_wait_for_commit_done() after
+ * the FRAME_CAPTURE_COMPLETE wait has returned for a CWB disable commit.
+ * Deregisters the capture-complete HFI event.
+ */
+static int hfi_enc_deregister_cwb_events(struct sde_encoder_virt *enc)
+{
+	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
+	struct hfi_kms *hfi_kms;
+	struct hfi_cmdbuf_t *cmd_buf;
+	u32 display_id, packet_id = 0;
+	int ret = 0;
+	u32 capture_complete_event = HFI_EVENT_FRAME_CAPTURE_COMPLETE;
+
+	if (!enc) {
+		SDE_ERROR("invalid params\n");
+		return -EINVAL;
+	}
+
+	if (!sde_encoder_in_clone_mode(&enc->base)) {
+		SDE_DEBUG("encoder not in clone mode, skipping post disable\n");
+		return 0;
+	}
+
+	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi_kms\n");
+		return -EINVAL;
+	}
+
+	display_id = hfi_crtc_get_display_id(enc->crtc, enc->crtc ? enc->crtc->state : NULL);
+	if (display_id == U32_MAX) {
+		SDE_ERROR("failed to get display_id for cwb post disable\n");
+		return -EINVAL;
+	}
+
+	/* Deregister the FRAME_CAPTURE_COMPLETE event */
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			display_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		SDE_ERROR("enc:%d failed to get cmd buf for cwb post disable display:%d\n",
+				enc->base.base.id, display_id);
+		return -EINVAL;
+	}
+
+	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DISPLAY_EVENT_DEREGISTER, display_id,
+			HFI_PAYLOAD_TYPE_U32, &capture_complete_event,
+			sizeof(capture_complete_event), &hfi_enc->hfi_cb_obj,
+			HFI_HOST_FLAGS_NON_DISCARDABLE, false, &packet_id);
+	if (ret) {
+		SDE_ERROR("failed to deregister capture complete event\n");
+		return ret;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+	SDE_EVT32(enc->base.base.id, display_id, HFI_COMMAND_DISPLAY_EVENT_DEREGISTER, ret);
+	if (ret) {
+		SDE_ERROR("failed to send capture complete deregister command\n");
+		return ret;
+	}
+
+	hfi_enc->hw_events_state[MSM_ENC_CAPTURE_COMPLETE].state = false;
+	hfi_enc->hw_events_state[MSM_ENC_CAPTURE_COMPLETE].pending = false;
+
+	return ret;
+}
+
 static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 {
 	struct hfi_encoder *hfi_enc;
@@ -1351,12 +1506,12 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 			SDE_ERROR("failed to send commit wait command\n");
 			return ret;
 		}
-	}
 
-	ret = hfi_enc_set_panic_events(enc, false);
-	if (ret) {
-		SDE_ERROR("failed to send debug-init command\n");
-		return ret;
+		ret = hfi_enc_set_panic_events(enc, false);
+		if (ret) {
+			SDE_ERROR("failed to send debug-init command\n");
+			return ret;
+		}
 	}
 
 	if ((sde_encoder_check_curr_mode(&enc->base, MSM_DISPLAY_CMD_MODE)) ||
@@ -1364,13 +1519,17 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 		/* Disable exactly what we enabled in the enable path */
 		if (sde_encoder_in_clone_mode(&enc->base)) {
 			/*
-			 * For CWB clone mode: skip the wait and the
-			 * CAPTURE_COMPLETE deregister here.  The wait must
-			 * happen in sde_kms_wait_for_commit_done() so that the
-			 * primary display commit is not blocked inside
-			 * msm_disable.  hfi_enc_deregister_cwb_events() is called
-			 * from there after the wait completes.
+			 * For CWB clone mode: normally skip the deregister here
+			 * since the wait must happen in sde_kms_wait_for_commit_done()
+			 * first. But if the primary CRTC is already inactive, the wait
+			 * will be skipped and deregister_cwb_events() will never be
+			 * called from there, so handle it here instead.
 			 */
+			if (enc->crtc && !enc->crtc->state->active) {
+				ret = hfi_enc_deregister_cwb_events(enc);
+				if (ret)
+					SDE_ERROR("failed to deregister cwb events\n");
+			}
 		} else {
 			/* For regular WB: Disable TX complete */
 			ret = hfi_enc_enable_hw_event(enc, MSM_ENC_TX_COMPLETE, false);
@@ -1789,16 +1948,27 @@ static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 	return rc;
 }
 
-static void hfi_enc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload, u32 size,
+static void hfi_enc_misr_read_hfi_prop_handler(struct hfi_packet_info *packet_info,
 			struct hfi_prop_listener *hfi_listener)
 {
-	struct hfi_encoder *hfi_enc = container_of(hfi_listener,
-		struct hfi_encoder, misr_read_listener);
+	struct hfi_encoder *hfi_enc;
 	struct misr_read_data_ret *misr_data;
 	struct sde_misr_values *misr_read_values;
+	void *payload;
+	u32 size;
 	u32 max_count = 0;
 	u32 module_type = 0;
 	u32 *misr_values;
+
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info from fw\n");
+		return;
+	}
+
+	hfi_enc = container_of(hfi_listener,
+		struct hfi_encoder, misr_read_listener);
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	if (!hfi_enc) {
 		SDE_ERROR("invalid object or listener from fw\n");
@@ -1959,25 +2129,32 @@ static ktime_t hfi_enc_get_vblank_timestamp(struct sde_encoder_virt *enc)
 
 /**
  * _hfi_dbg_dump_handler - HFI property listener callback for debug dump response
- * @display_id: display identifier
- * @cmd_id:     HFI command identifier
- * @payload:    response payload from firmware
- * @size:       payload size in bytes
+ * @packet_info: HFI packet info for the response
  * @listener:   HFI property listener structure
  *
  * Invoked by the HFI framework when the firmware responds to
  * HFI_COMMAND_DEBUG_DUMP_ALL.  Triggers the local dump operations.
  */
-static void _hfi_dbg_dump_handler(u32 display_id, u32 cmd_id,
-		void *payload, u32 size, struct hfi_prop_listener *listener)
+static void _hfi_dbg_dump_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *listener)
 {
 	struct hfi_encoder *hfi_enc = container_of(listener,
 			struct hfi_encoder, dbg_dump_listener);
 	struct sde_encoder_virt *sde_enc;
 	struct drm_encoder *drm_enc;
+	u32 display_id;
+	u32 cmd_id;
 	bool recovery_events;
 	struct drm_connector *conn;
 	static u32 counter;
+
+	if (!packet_info) {
+		SDE_ERROR("invalid packet_info from FW\n");
+		return;
+	}
+
+	display_id = packet_info->id;
+	cmd_id = packet_info->cmd;
 
 	if (!hfi_enc) {
 		SDE_ERROR("invalid object or listener from FW\n");
@@ -2374,75 +2551,6 @@ int hfi_enc_debugfs_init(struct sde_encoder_virt *enc)
 }
 
 #endif /* CONFIG_DEBUG_FS */
-
-/*
- * hfi_enc_deregister_cwb_events - called from sde_kms_wait_for_commit_done() after
- * the FRAME_CAPTURE_COMPLETE wait has returned for a CWB disable commit.
- * Deregisters the capture-complete HFI event.
- */
-static int hfi_enc_deregister_cwb_events(struct sde_encoder_virt *enc)
-{
-	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
-	struct hfi_kms *hfi_kms;
-	struct hfi_cmdbuf_t *cmd_buf;
-	u32 display_id, packet_id = 0;
-	int ret = 0;
-	u32 capture_complete_event = HFI_EVENT_FRAME_CAPTURE_COMPLETE;
-
-	if (!enc) {
-		SDE_ERROR("invalid params\n");
-		return -EINVAL;
-	}
-
-	if (!sde_encoder_in_clone_mode(&enc->base)) {
-		SDE_DEBUG("encoder not in clone mode, skipping post disable\n");
-		return 0;
-	}
-
-	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
-	if (!hfi_kms) {
-		SDE_ERROR("failed to get hfi_kms\n");
-		return -EINVAL;
-	}
-
-	display_id = hfi_crtc_get_display_id(enc->crtc, enc->crtc ? enc->crtc->state : NULL);
-	if (display_id == U32_MAX) {
-		SDE_ERROR("failed to get display_id for cwb post disable\n");
-		return -EINVAL;
-	}
-
-	/* Deregister the FRAME_CAPTURE_COMPLETE event */
-	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
-			display_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
-	if (!cmd_buf) {
-		SDE_ERROR("enc:%d failed to get cmd buf for cwb post disable display:%d\n",
-				enc->base.base.id, display_id);
-		return -EINVAL;
-	}
-
-	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
-			HFI_COMMAND_DISPLAY_EVENT_DEREGISTER, display_id,
-			HFI_PAYLOAD_TYPE_U32, &capture_complete_event,
-			sizeof(capture_complete_event), &hfi_enc->hfi_cb_obj,
-			HFI_HOST_FLAGS_NON_DISCARDABLE, false, &packet_id);
-	if (ret) {
-		SDE_ERROR("failed to deregister capture complete event\n");
-		return ret;
-	}
-
-	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
-	SDE_EVT32(enc->base.base.id, display_id, HFI_COMMAND_DISPLAY_EVENT_DEREGISTER, ret);
-	if (ret) {
-		SDE_ERROR("failed to send capture complete deregister command\n");
-		return ret;
-	}
-
-	hfi_enc->hw_events_state[MSM_ENC_CAPTURE_COMPLETE].state = false;
-	hfi_enc->hw_events_state[MSM_ENC_CAPTURE_COMPLETE].pending = false;
-
-	return ret;
-}
-
 static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 {
 	sde_enc->hal_ops.kickoff[MSM_DISP_OP_HFI] = hfi_enc_kickoff;
@@ -2460,6 +2568,8 @@ static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 	sde_enc->hal_ops.early_wakeup_call[MSM_DISP_OP_HFI] = hfi_enc_early_wakeup_call;
 	sde_enc->hal_ops.register_panel_dead_event_notify[MSM_DISP_OP_HFI] =
 								hfi_enc_register_panel_dead_event;
+	sde_enc->hal_ops.register_dcs_cmd_error_event_notify[MSM_DISP_OP_HFI] =
+							hfi_enc_register_dcs_cmd_error_event;
 
 	sde_enc->hal_ops.misr_setup[MSM_DISP_OP_HFI] = hfi_enc_misr_setup;
 	sde_enc->hal_ops.deregister_cwb_events[MSM_DISP_OP_HFI] = hfi_enc_deregister_cwb_events;

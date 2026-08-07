@@ -1135,6 +1135,9 @@ static int _sde_connector_update_bl_scale(struct sde_connector *c_conn)
 	if (c_conn->unset_bl_level)
 		bl_config->bl_level = c_conn->unset_bl_level;
 
+	if (sde_connector_get_disp_op(&c_conn->base) == MSM_DISP_OP_HFI)
+		c_conn->bl_dirty_change = true;
+
 	SDE_DEBUG("bl_scale = %u, bl_scale_sv = %u, bl_level = %u\n",
 		bl_config->bl_scale, bl_config->bl_scale_sv,
 		bl_config->bl_level);
@@ -1443,7 +1446,14 @@ static int _sde_connector_update_dirty_properties(
 	}
 	mutex_unlock(&c_conn->property_info.property_lock);
 
-	if (disp_op == MSM_DISP_OP_HFI && is_roi_dirty) {
+	/*
+	 * Only forward the ROI to the HFI target when the panel actually supports
+	 * partial update. Otherwise a userspace CONNECTOR_PROP_ROI_V1 submission
+	 * (even a full-frame ROI) would re-mark the property dirty and get sent as
+	 * DEST_ROI, triggering an unnecessary ROI reprogram/DCS on the panel.
+	 */
+	if (disp_op == MSM_DISP_OP_HFI && is_roi_dirty &&
+			c_state->mode_info.roi_caps.enabled) {
 		msm_property_set_dirty(&c_conn->property_info,
 			&c_state->property_state, CONNECTOR_PROP_ROI_V1);
 	}
@@ -1984,8 +1994,10 @@ void sde_connector_helper_bridge_post_disable(struct drm_connector *connector)
 void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn = NULL;
+	struct sde_connector_state *c_state = NULL;
 	struct dsi_display *display;
 	struct sde_kms *sde_kms;
+	bool is_dms = false;
 
 	sde_kms = sde_connector_get_kms(connector);
 	if (!sde_kms) {
@@ -1997,6 +2009,28 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 	display = _sde_connector_get_display(c_conn);
 	if (!display)
 		return;
+
+	/*
+	 * On a seamless DMS (dynamic mode switch) the panel stays powered on
+	 * and the backlight level is unchanged, so the backlight re-update
+	 * (and the frame-wait it can trigger) is redundant. post_enable has
+	 * already run in the bridge; only skip the backlight refresh here.
+	 */
+	if (connector->state) {
+		c_state = to_sde_connector_state(connector->state);
+		is_dms = msm_is_mode_seamless_dms(&c_state->msm_mode) ||
+			 msm_is_mode_seamless_dms_vid(&c_state->msm_mode);
+	}
+
+	if (is_dms) {
+		/* keep updates armed so a later real BL change still applies */
+		c_conn->allow_bl_update = true;
+		SDE_EVT32(connector->base.id, is_dms, SDE_EVTLOG_FUNC_CASE1);
+		SDE_DEBUG("skip backlight update for DMS on conn %d\n",
+				connector->base.id);
+		return;
+	}
+
 	/*
 	 * Special handling for some panels which need atleast
 	 * one frame to be transferred to GRAM before enabling backlight.
@@ -2108,6 +2142,28 @@ int sde_connector_clk_get_rate_esync(struct drm_connector *connector,
 	return rc;
 }
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
+static void _sde_connector_cleanup_gmu_dcp_fb(struct sde_connector *c_conn)
+{
+	hfi_connector_cleanup_gmu_dcp_fb(c_conn);
+}
+
+static void _sde_connector_set_gmu_dcp_intf_mem(struct drm_connector *connector,
+		uint64_t val)
+{
+	hfi_connector_set_gmu_dcp_intf_mem(connector, val);
+}
+#else
+static void _sde_connector_cleanup_gmu_dcp_fb(struct sde_connector *c_conn)
+{
+}
+
+static void _sde_connector_set_gmu_dcp_intf_mem(struct drm_connector *connector,
+		uint64_t val)
+{
+}
+#endif /* CONFIG_QTI_HFI_CORE */
+
 void sde_connector_destroy(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
@@ -2119,6 +2175,8 @@ void sde_connector_destroy(struct drm_connector *connector)
 	}
 
 	c_conn = to_sde_connector(connector);
+
+	_sde_connector_cleanup_gmu_dcp_fb(c_conn);
 
 	if (c_conn->sysfs_dev)
 		device_unregister(c_conn->sysfs_dev);
@@ -2949,6 +3007,9 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 				c_conn->bl_scale_dirty = true;
 			}
 		}
+		break;
+	case CONN_PROP_GMU_DCP_INTF_MEM:
+		_sde_connector_set_gmu_dcp_intf_mem(connector, val);
 		break;
 	default:
 		break;
@@ -4055,7 +4116,8 @@ static int sde_connector_get_modes(struct drm_connector *connector)
 	if (c_conn->hdr_capable)
 		sde_connector_update_hdr_props(connector);
 
-	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DisplayPort)
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
+			c_conn->connector_type == DRM_MODE_CONNECTOR_HDMIA)
 		sde_connector_update_colorspace(connector);
 
 	return mode_count;
@@ -4682,7 +4744,8 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	/* install PP_DITHER properties */
 	_sde_connector_install_dither_property(dev, sde_kms, c_conn);
 
-	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort) {
+	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
+			connector_type == DRM_MODE_CONNECTOR_HDMIA) {
 		struct drm_msm_ext_hdr_properties hdr = {0};
 
 		c_conn->hdr_capable = true;
@@ -4790,7 +4853,8 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	c_conn->bl_scale = MAX_BL_SCALE_LEVEL;
 	c_conn->bl_scale_sv = MAX_SV_BL_SCALE_LEVEL;
 
-	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort)
+	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
+			connector_type == DRM_MODE_CONNECTOR_HDMIA)
 		msm_property_install_range(&c_conn->property_info,
 			"supported_colorspaces",
 			DRM_MODE_PROP_IMMUTABLE, 0, 0xffff, 0,

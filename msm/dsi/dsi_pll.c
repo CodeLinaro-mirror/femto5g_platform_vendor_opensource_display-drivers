@@ -304,6 +304,10 @@ int dsi_pll_init(struct platform_device *pdev, struct dsi_pll_resource **pll)
 	}
 	else if (!strcmp(label, "dsi_pll_4nm"))
 		pll_res->pll_revision = DSI_PLL_4NM;
+	else if (!strcmp(label, "dsi_pll_4nm_hfi")) {
+		pll_res->pll_revision = DSI_PLL_4NM_HFI;
+		pll_res->disp_op = MSM_DISP_OP_HFI;
+	}
 	else if (!strcmp(label, "dsi_pll_5nm"))
 		pll_res->pll_revision = DSI_PLL_5NM;
 	else if (!strcmp(label, "dsi_pll_14nm"))

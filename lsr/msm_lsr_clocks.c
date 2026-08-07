@@ -21,9 +21,11 @@ static int msm_lsr_set_data_bus_vote(struct msm_lsr_core *core)
 	struct bus_info *llcc_bus1 = NULL;
 	unsigned int max_bw = 0;
 	int rc = 0;
-	int lsr_num_cores = 2;
+	int repro_num_cores = 2;
+	int csc_num_cores = 2;
 	struct lsr_device *dev;
 	enum lsr_panel_topology panel_topology = LSR_PANEL_TOPOLOGY_BINO;
+	unsigned long lsr0_bw, lsr1_bw, lsr0_peak, lsr1_peak;
 
 	if (!core) {
 		dprintk(LSR_ERR, "%s: invalid params\n", __func__);
@@ -49,39 +51,48 @@ static int msm_lsr_set_data_bus_vote(struct msm_lsr_core *core)
 	}
 
 	panel_topology = dev->panel_topology;
-	lsr_num_cores = dev->panel_topology == LSR_PANEL_TOPOLOGY_MONO ? 1:2;
-	core->bw_sum = ((core->bw_sum/lsr_num_cores) > max_bw) ? max_bw : core->bw_sum;
+	repro_num_cores = panel_topology == LSR_PANEL_TOPOLOGY_MONO ? 1 : 2;
+	csc_num_cores = core->csc_is_mono ? 1 : 2;
+	core->bw_sum = ((core->bw_sum/repro_num_cores) > max_bw) ? max_bw : core->bw_sum;
+
+	/* LSR0 always carries CSC's (split) share plus REPRO's (split) share */
+	lsr0_bw = core->csc_bw_icc/csc_num_cores + core->repro_bw_icc/repro_num_cores;
+	lsr0_peak = core->csc_peak_icc/csc_num_cores + core->repro_peak_icc/repro_num_cores;
+	lsr0_bw = (lsr0_bw > max_bw) ? max_bw : lsr0_bw;
+
+	/* LSR1 only carries a share when that component is actually split across cores */
+	lsr1_bw = 0;
+	lsr1_peak = 0;
+	if (!core->csc_is_mono) {
+		lsr1_bw += core->csc_bw_icc/csc_num_cores;
+		lsr1_peak += core->csc_peak_icc/csc_num_cores;
+	}
+	if (panel_topology == LSR_PANEL_TOPOLOGY_BINO) {
+		lsr1_bw += core->repro_bw_icc/repro_num_cores;
+		lsr1_peak += core->repro_peak_icc/repro_num_cores;
+	}
+	lsr1_bw = (lsr1_bw > max_bw) ? max_bw : lsr1_bw;
 
 	/* Vote with split voting if llcc is enabled */
 	if (msm_lsr_syscache_disable) {
-		rc = msm_lsr_set_bw(core, bus, core->bw_sum, core->peak_bw/lsr_num_cores);
+		rc = msm_lsr_set_bw(core, bus, core->bw_sum, core->peak_bw/repro_num_cores);
 		if (rc)
 			dprintk(LSR_ERR, "failed to set bw vote on %s", bus->name);
-		rc = msm_lsr_set_bw(core, llcc_bus, core->bw_sum/lsr_num_cores,
-				core->peak_bw/lsr_num_cores);
-		if (rc)
-			dprintk(LSR_ERR, "failed to set bw vote on %s", bus->name);
-		if (panel_topology == LSR_PANEL_TOPOLOGY_BINO) {
-			rc = msm_lsr_set_bw(core, llcc_bus1, core->bw_sum/lsr_num_cores,
-					core->peak_bw/lsr_num_cores);
-			if (rc)
-				dprintk(LSR_ERR, "failed to set bw vote on %s", bus->name);
-		}
 	} else {
 		rc = msm_lsr_set_bw(core, bus, LSR_DDR_MIN_BW_WITH_SYSCACHE_KBPS,
 				LSR_DDR_MIN_BW_WITH_SYSCACHE_KBPS);
 		if (rc)
 			dprintk(LSR_ERR, "failed to set bw vote on %s", bus->name);
-		rc = msm_lsr_set_bw(core, llcc_bus, core->bw_sum/lsr_num_cores,
-				core->peak_bw/lsr_num_cores);
+	}
+
+	rc = msm_lsr_set_bw(core, llcc_bus, lsr0_bw, lsr0_peak);
+	if (rc)
+		dprintk(LSR_ERR, "failed to set bw vote on %s", llcc_bus->name);
+
+	if (lsr1_bw || lsr1_peak) {
+		rc = msm_lsr_set_bw(core, llcc_bus1, lsr1_bw, lsr1_peak);
 		if (rc)
-			dprintk(LSR_ERR, "failed to set bw vote on %s", bus->name);
-		if (panel_topology == LSR_PANEL_TOPOLOGY_BINO) {
-			rc = msm_lsr_set_bw(core, llcc_bus1, core->bw_sum/lsr_num_cores,
-					core->peak_bw/lsr_num_cores);
-			if (rc)
-				dprintk(LSR_ERR, "failed to set bw vote on %s", bus->name);
-		}
+			dprintk(LSR_ERR, "failed to set bw vote on %s", llcc_bus1->name);
 	}
 
 	return rc;
@@ -139,6 +150,12 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 
 	peak_bw = core->new_perf.lsr_csc_ib_bw + core->new_perf.lsr_repro_ib_bw;
 	core->peak_bw = Bps_to_icc(peak_bw);
+
+	core->csc_bw_icc = Bps_to_icc(core->new_perf.lsr_csc_bw);
+	core->repro_bw_icc = Bps_to_icc(core->new_perf.lsr_repro_bw);
+	core->csc_peak_icc = Bps_to_icc(core->new_perf.lsr_csc_ib_bw);
+	core->repro_peak_icc = Bps_to_icc(core->new_perf.lsr_repro_ib_bw);
+
 	dprintk(LSR_PWR, "%s %d : clk : %lu bw : %lu kBps peak_bw = %lu kBps\n",
 		__func__, __LINE__, core->curr_freq, core->bw_sum, core->peak_bw);
 

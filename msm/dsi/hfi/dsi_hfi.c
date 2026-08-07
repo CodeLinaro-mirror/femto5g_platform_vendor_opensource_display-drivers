@@ -22,6 +22,7 @@
 #include "hfi_props.h"
 #include "hfi_kms.h"
 #include "sde_dsc_helper.h"
+#include "dsi_phy.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 
@@ -326,18 +327,32 @@ int dsi_hfi_misr_read(struct dsi_display *display)
 
 #endif /* CONFIG_DEBUG_FS */
 
-void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
+void dsi_hfi_prop_handler(struct hfi_packet_info *packet_info,
 			  struct hfi_prop_listener *listener)
 {
 	struct dsi_display_hfi *display_hfi;
 	struct dsi_display *display;
 	u32 dsi_display_obj_id;
+	u32 hfi_uid;
+	u32 prop;
+	void *payload;
+	u32 size;
 	int rc = 0;
+
+	if (!packet_info) {
+		DSI_ERR("invalid packet_info\n");
+		return;
+	}
 
 	if (!listener) {
 		DSI_ERR("invalid listener\n");
 		return;
 	}
+
+	hfi_uid = packet_info->id;
+	prop = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
 
 	display = container_of(listener, struct dsi_display,
 						hfi_cb_obj);
@@ -786,6 +801,8 @@ static void dsi_get_panel_esd_config_helper(struct dsi_display *display,
 			cmd_desc->tx_len =       cmds[i].msg.tx_len;
 			cmd_desc->type =         cmds[i].msg.type;
 			cmd_desc->flags =        cmds[i].msg.flags | MIPI_DSI_MSG_UNICAST_COMMAND;
+			if (display->panel->esd_config.status_cmd.state == DSI_CMD_SET_STATE_LP)
+				cmd_desc->flags |= MIPI_DSI_MSG_USE_LPM;
 			cmd_desc->ctrl_idx =     cmds[i].ctrl;
 			cmd_desc->channel =      cmds[i].msg.channel;
 			cmd_desc->last_command = cmds[i].last_command;
@@ -831,6 +848,48 @@ static void dsi_get_panel_esd_config_helper(struct dsi_display *display,
 			esd_config->valid_params_msb = HFI_VAL_H32(remote_addr_ptr);
 		}
 	}
+}
+
+static bool dsi_get_panel_phy_tuning_config_helper(struct dsi_display *display,
+	struct hfi_panel_phy_tuning_config *tc)
+{
+	struct msm_dsi_phy *phy;
+	struct dsi_phy_tuning_cfg *dt;
+
+	if (!display || !tc)
+		return false;
+
+	phy = display->ctrl[display->cmd_master_idx].phy;
+	if (!phy || !phy->cfg.tuning.is_valid)
+		return false;
+
+	dt = &phy->cfg.tuning;
+	tc->flags = 0;
+	/* Global PHY drive strength / amplitude / de-emphasis */
+	if (dt->flags & DSI_PHY_GLBL_STR_CTRL_VALID) {
+		tc->glbl_str_ctrl = dt->glbl_str_ctrl;
+		tc->flags |= HFI_PHY_GLBL_STR_CTRL_VALID;
+	}
+
+	if (dt->flags & DSI_PHY_GLBL_RESCODE_VALID) {
+		tc->glbl_rescode_top_ctrl = dt->glbl_rescode_top_ctrl;
+		tc->glbl_rescode_bot_ctrl = dt->glbl_rescode_bot_ctrl;
+		tc->glbl_rescode_mid_ctrl = dt->glbl_rescode_mid_ctrl;
+		tc->flags |= HFI_PHY_GLBL_RESCODE_VALID;
+	}
+
+	if (dt->flags & DSI_PHY_CMN_CTRL2_VALID) {
+		tc->cmn_ctrl2       = dt->cmn_ctrl2;
+		tc->flags |= HFI_PHY_CMN_CTRL2_VALID;
+	}
+
+	if (dt->flags & DSI_PHY_VREG_CTRL_VALID) {
+		tc->vreg_ctrl0      = dt->vreg_ctrl0;
+		tc->vreg_ctrl1      = dt->vreg_ctrl1;
+		tc->flags |= HFI_PHY_VREG_CTRL_VALID;
+	}
+
+	return true;
 }
 
 static enum hfi_panel_fps_traffic_mode dsi_get_panel_traffic_mode_helper(struct dsi_panel *panel)
@@ -1344,6 +1403,10 @@ int dsi_hfi_tx_cmd_set(struct dsi_display *display,
 		tx_local_ptr     += cmd->msg.tx_len;
 		tx_remote_offset += cmd->msg.tx_len;
 	}
+	cmd_desc_set->seq_no = (u32)atomic_inc_return(&display->cmd_seq_no);
+
+	SDE_EVT32(cmd_desc_set->seq_no, cmd_desc_set->size, cmd_desc_set->type,
+			cmd_desc_set->count, cmd_desc_set->state);
 
 	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client,
 			HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET, display->display_type,
@@ -1450,6 +1513,7 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	dsi_cmd_desc->last_command = cmd->last_command;
 	dsi_cmd_desc->post_wait_ms = cmd->post_wait_ms;
 	dsi_cmd_desc->ctrl_flags = cmd->ctrl_flags;
+	dsi_cmd_desc->seq_no = (u32)atomic_inc_return(&display->cmd_seq_no);
 
 	if (non_embedded) {
 		dsi_cmd_desc->tx_buff_addr_lsb = HFI_VAL_L32((u64)display->cmd_buffer_iova_non_embedded);
@@ -1469,6 +1533,11 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 		dsi_cmd_desc->rx_buff_addr_lsb = HFI_VAL_L32((u64)rx_cmd_buf_map->remote_addr);
 		dsi_cmd_desc->rx_buff_addr_msb = HFI_VAL_H32((u64)rx_cmd_buf_map->remote_addr);
 	}
+
+	SDE_EVT32(dsi_cmd_desc->seq_no, dsi_cmd_desc->size, dsi_cmd_desc->type,
+			dsi_cmd_desc->flags, dsi_cmd_desc->tx_len, dsi_cmd_desc->rx_len,
+			dsi_cmd_desc->ctrl_idx, dsi_cmd_desc->ctrl_flags,
+			dsi_cmd_desc->last_command);
 
 	rc = dsi_display_hfi_send_cmd_buf_with_header_flags(display, hfi_client, hfi_cmd,
 			display->display_type, HFI_PAYLOAD_TYPE_U32_ARRAY, dsi_cmd_desc,
@@ -2208,6 +2277,9 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	panel_generic_caps->custom_cmd_set_info[1] = DSI_CUSTOM_CMD_SET_COUNT;
 
 	panel_generic_caps->ulps_supported = panel->ulps_feature_enabled;
+	if (dsi_get_panel_phy_tuning_config_helper(display,
+			&panel_generic_caps->phy_tuning_config))
+		panel_generic_caps->phy_tuning_config_valid = true;
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -2524,6 +2596,15 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 			((ARRAY_SIZE(dfps_payload) * sizeof(dfps_payload[0])) / sizeof(u32))),
 					(void *)dfps_payload);
 		kv_size += sizeof(dfps_payload);
+	}
+
+	if (panel_generic_caps.phy_tuning_config_valid) {
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG, 0,
+				((sizeof(panel_generic_caps.phy_tuning_config) +
+					sizeof(u32) - 1) / sizeof(u32))),
+				(void *)&panel_generic_caps.phy_tuning_config);
+		kv_size += sizeof(panel_generic_caps.phy_tuning_config);
 	}
 
 	if (display->modes && display->modes[0].priv_info &&

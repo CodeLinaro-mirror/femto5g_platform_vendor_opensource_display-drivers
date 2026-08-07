@@ -124,12 +124,11 @@ int sde_wb_connector_reproj_setup(struct sde_connector *conn, struct sde_wb_devi
 
 /**
  * hfi_lsr_display_disable_handler - lsr display disable handler
- * @obj_id: hfi object id for the response received
- * @cmd_id: hfi command for the response
+ * @packet_info: hfi packet info for the response received
  * @listener: pointer to the listener object of the response
  */
-void hfi_lsr_display_disable_handler(u32 obj_id, u32 cmd_id,
-		void *payload, u32 size, struct hfi_prop_listener *listener);
+void hfi_lsr_display_disable_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *listener);
 
 /**
  * hfi_conn_send_lsr_display_ctrl_cmd - set lsr enable/disable commands
@@ -252,7 +251,7 @@ static inline int sde_wb_connector_reproj_setup(struct sde_connector *conn,
 	return 0;
 }
 
-static inline void hfi_lsr_display_disable_handler(u32 obj_id, u32 cmd_id, void *payload, u32 size,
+static inline void hfi_lsr_display_disable_handler(struct hfi_packet_info *packet_info,
 	struct hfi_prop_listener *listener)
 {
 }

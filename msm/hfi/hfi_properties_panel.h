@@ -963,6 +963,20 @@
 #define HFI_PROPERTY_PANEL_COLOR_FORMAT                              0x00040043
 
 /*
+ * HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG - Provides DSI PHY tuning configuration values
+ *                                        read from HLOS device-tree. These platform-specific
+ *                                        values allow the DCP to program the PHY lane
+ *                                        configuration and strength control.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG |
+ *                               (version=0 << 20) | (dsize=N << 24)
+ *                               where N = sizeof(struct hfi_panel_phy_tuning_config)/sizeof(u32)
+ *   (u32_value) payload[1..N] : struct hfi_panel_phy_tuning_config
+ */
+#define HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG                         0x00040044
+
+/*
  * HFI_PROPERTY_PANEL_DP_AUX_CFG - Provides optional DP AUX channel configuration values
  *                                  used to program the AUX PHY settings.
  *                                  This property is sent to DCP as part of
@@ -977,7 +991,7 @@
  *                               register index ranging from 0 to n-1 instead of
  *                               the raw register offset.
  */
-#define HFI_PROPERTY_PANEL_DP_AUX_CFG                                0x00040044
+#define HFI_PROPERTY_PANEL_DP_AUX_CFG                                0x00040045
 
 /*
  * HFI_PROPERTY_PANEL_DP_VOLTAGESWING_PREEMPHASIS - Provides optional DP PHY voltage swing and
@@ -993,21 +1007,32 @@
  *   (u32_value) payload[2]         : Number of voltage_swing/preemphasis pairs (n)
  *   (u32_value) payload[3..n+2]    : (voltage_swing[k] << 16 | preemphasis[k])
  */
-#define HFI_PROPERTY_PANEL_DP_VOLTAGESWING_PREEMPHASIS               0x00040045
+#define HFI_PROPERTY_PANEL_DP_VOLTAGESWING_PREEMPHASIS               0x00040046
 
 /*
- * HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG - Provides DSI PHY tuning configuration values
- *                                        read from HLOS device-tree. These platform-specific
- *                                        values allow the DCP to program the PHY lane
- *                                        configuration and strength control.
+ * HFI_PROPERTY_PANEL_MAX_LINK_RATE - Provides optional maximum link clock rate in KHz supported
+ *                                    by the display. This property is sent to DCP as part of
+ *                                    HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
  *
- * @PanelInit - HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG
- *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG |
- *                               (version=0 << 20) | (dsize=N << 24)
- *                               where N = sizeof(struct hfi_panel_phy_tuning_config)/sizeof(u32)
- *   (u32_value) payload[1..N] : struct hfi_panel_phy_tuning_config
+ * @PanelInit - HFI_PROPERTY_PANEL_MAX_LINK_RATE
+ *     (u32_key) payload[0]       : HFI_PROPERTY_PANEL_MAX_LINK_RATE |
+ *                                  (version=0 << 20) | (dsize=1 << 24)
+ *   (u32_value) payload[1]       : max_link_rate
  */
-#define HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG                         0x00040044
+#define HFI_PROPERTY_PANEL_MAX_LINK_RATE                             0x00040047
+
+/*
+ * HFI_PROPERTY_PANEL_MAX_LANE_COUNT - Provides optional maximum number of lanes supported
+ *                                     by the display. This property is sent to DCP as part of
+ *                                     HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet
+ *                                     payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_MAX_LANE_COUNT
+ *     (u32_key) payload[0]       : HFI_PROPERTY_PANEL_MAX_LANE_COUNT |
+ *                                  (version=0 << 20) | (dsize=1 << 24)
+ *   (u32_value) payload[1]       : max_lane_count
+ */
+#define HFI_PROPERTY_PANEL_MAX_LANE_COUNT                            0x00040048
 
 /*
  * All panel property IDs end here

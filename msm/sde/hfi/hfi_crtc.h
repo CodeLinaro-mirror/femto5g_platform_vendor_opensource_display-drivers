@@ -39,6 +39,10 @@ struct crtc_hw_event_state {
  * @pending_enc_mask: encoder_mask that has pending commit on the drm_crtc
  * @hw_events_state: tracks the state of the hw events
  * @hfi_cb_obj: hfi callback object for crtc events from hfi
+ * @batch_mode_running: true when BATCH_MODE_END was sent and a BATCH_MODE_CANCEL
+ *                      must be issued before the next normal (non-batch) commit
+ * @batch_type: usecase_id saved when BATCH_MODE_END is sent; used to
+ *              populate the BATCH_MODE_CANCEL payload
  */
 struct hfi_crtc {
 	struct sde_crtc *sde_base;
@@ -52,6 +56,8 @@ struct hfi_crtc {
 	u32 pending_enc_mask;
 	struct crtc_hw_event_state hw_events_state[HFI_CRTC_EVENT_MAX];
 	struct hfi_prop_listener hfi_cb_obj;
+	bool batch_mode_running;
+	enum hfi_batch_usecase_id batch_type;
 };
 
 /**

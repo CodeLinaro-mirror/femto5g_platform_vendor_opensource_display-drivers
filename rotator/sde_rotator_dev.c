@@ -949,8 +949,11 @@ struct sde_rotator_ctx *sde_rotator_ctx_open(
 	if (ctx->file) {
 		v4l2_fh_init(&ctx->fh, video);
 		file->private_data = &ctx->fh;
+#if (KERNEL_VERSION(6, 18, 0) <= LINUX_VERSION_CODE)
+		v4l2_fh_add(&ctx->fh, ctx->file);
+#else
 		v4l2_fh_add(&ctx->fh);
-
+#endif
 		ctx->fh.m2m_ctx = v4l2_m2m_ctx_init(rot_dev->m2m_dev,
 			ctx, sde_rotator_queue_init);
 		if (IS_ERR_OR_NULL(ctx->fh.m2m_ctx)) {
@@ -1060,7 +1063,11 @@ error_kobj_init:
 	}
 error_m2m_init:
 	if (ctx->file) {
+#if (KERNEL_VERSION(6, 18, 0) <= LINUX_VERSION_CODE)
+		v4l2_fh_del(&ctx->fh, ctx->file);
+#else
 		v4l2_fh_del(&ctx->fh);
+#endif
 		v4l2_fh_exit(&ctx->fh);
 	}
 	mutex_unlock(&rot_dev->lock);
@@ -1147,7 +1154,11 @@ static int sde_rotator_ctx_release(struct sde_rotator_ctx *ctx,
 		if (ctx->fh.m2m_ctx)
 			v4l2_m2m_ctx_release(ctx->fh.m2m_ctx);
 		if (ctx->fh.vdev) {
+#if (KERNEL_VERSION(6, 18, 0) <= LINUX_VERSION_CODE)
+			v4l2_fh_del(&ctx->fh, ctx->file);
+#else
 			v4l2_fh_del(&ctx->fh);
+#endif
 			v4l2_fh_exit(&ctx->fh);
 		}
 	}

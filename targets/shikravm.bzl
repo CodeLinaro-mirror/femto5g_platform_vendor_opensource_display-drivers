@@ -20,6 +20,7 @@ def define_shikravm():
                     "CONFIG_MDSS_HFI_ADAPTER",
                     "CONFIG_MDSS_HFI",
                     "CONFIG_QCOM_MDSS_PLL",
+                    "CONFIG_DSI_PARSER",
                     "CONFIG_DRM_MSM_REGISTER_LOGGING",
                     "CONFIG_DRM_SDE_VM",
                     "CONFIG_DRM_LOW_MSM_MEM_FOOTPRINT",

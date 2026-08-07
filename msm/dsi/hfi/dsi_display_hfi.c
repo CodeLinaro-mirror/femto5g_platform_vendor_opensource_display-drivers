@@ -66,6 +66,26 @@ error:
 	return rc;
 }
 
+static int dsi_display_hfi_panel_pre_disable(struct dsi_display *display)
+{
+	int rc = 0;
+
+	if (!display || !display->panel) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&display->panel->panel_lock);
+
+	rc = dsi_panel_set_backlight_en_gpio(display->panel, false);
+	if (rc)
+		DSI_ERR("[%s] failed to disable backlight, rc=%d\n",
+			 display->panel->name, rc);
+
+	mutex_unlock(&display->panel->panel_lock);
+	return rc;
+}
+
 static int dsi_display_hfi_set_mode(struct dsi_display *display, struct dsi_display_mode *mode)
 {
 	struct sde_kms *sde_kms;
@@ -178,10 +198,19 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 	}
 
 	if (!display->is_cont_splash_enabled) {
-		rc = dsi_panel_i2c_tx_cmd_set(display->panel);
-		if (rc) {
-			DSI_ERR("[%s] failed to send i2c cmds, rc=%d\n",
-				display->panel->name, rc);
+		if (!display->panel->skip_pwr) {
+			rc = dsi_panel_i2c_enable(display->panel);
+			if (rc) {
+				DSI_ERR("[%s] failed to enable i2c panel, rc=%d\n",
+					display->panel->name, rc);
+			}
+			rc = dsi_panel_i2c_calibrate(display->panel);
+			if (rc) {
+				DSI_ERR("[%s] failed to calibrate i2c panel, rc=%d\n",
+					display->panel->name, rc);
+			}
+		} else {
+			DSI_DEBUG("skipping i2c panel enable and calibration\n");
 		}
 	}
 
@@ -315,6 +344,11 @@ int dsi_display_hfi_pre_disable(struct dsi_display *display)
 	if (display->trusted_vm_env)
 		return rc;
 
+	rc = dsi_display_hfi_panel_pre_disable(display);
+	if (rc)
+		DSI_ERR("[%s] panel pre-disable failed, rc=%d\n",
+			display->name, rc);
+
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)
 		return -EINVAL;
@@ -388,6 +422,13 @@ int dsi_display_hfi_unprepare(struct dsi_display *display)
 
 	if (display->trusted_vm_env)
 		return rc;
+
+	rc = dsi_panel_i2c_disable(display->panel);
+	if (rc) {
+		DSI_ERR("[%s] failed to send i2c off cmds, rc=%d\n",
+			display->panel->name, rc);
+		rc = 0;
+	}
 
 	rc = dsi_display_hfi_panel_enable_supplies(display, hfi_power_enable);
 	if (rc) {

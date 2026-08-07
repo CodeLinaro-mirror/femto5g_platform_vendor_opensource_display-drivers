@@ -326,6 +326,8 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_PRIVACY_LAYER:		   Command to update panel on Privacy layer config
  * @DSI_CMD_SET_BRIGHTNESS:		   Command to update backlight
  * @DSI_CMD_SET_CUSTOM_ON:		   Custom DCS ON command
+ * @DSI_CMD_SET_ROI_PRE:                   Panel ROI pre command
+ * @DSI_CMD_SET_ROI_POST:                  Panel ROI post command
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -374,6 +376,8 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_PRIVACY_LAYER,
 	DSI_CMD_SET_BRIGHTNESS,
 	DSI_CMD_SET_CUSTOM_ON,
+	DSI_CMD_SET_ROI_PRE,
+	DSI_CMD_SET_ROI_POST,
 	DSI_CMD_SET_MAX
 };
 

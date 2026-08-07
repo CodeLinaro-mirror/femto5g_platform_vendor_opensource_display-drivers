@@ -906,12 +906,21 @@ static inline enum dma_data_direction msm_op_to_dma_dir(u32 op)
 
 int msm_gem_cpu_prep(struct drm_gem_object *obj, uint32_t op, ktime_t *timeout)
 {
-	struct msm_gem_object *msm_obj = to_msm_bo(obj);
-	struct drm_device *dev = obj->dev;
+	struct msm_gem_object *msm_obj;
+	struct drm_device *dev;
 	bool write = !!(op & MSM_PREP_WRITE);
 	unsigned long remain =
 		op & MSM_PREP_NOSYNC ? 0 : timeout_to_jiffies(timeout);
 	long ret;
+
+	if (!obj)
+		return -EINVAL;
+
+	msm_obj = to_msm_bo(obj);
+	dev = obj->dev;
+
+	if (!msm_obj || !dev)
+		return -EINVAL;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 	ret = dma_resv_wait_timeout(msm_obj->resv, write, true, remain);
@@ -925,6 +934,8 @@ int msm_gem_cpu_prep(struct drm_gem_object *obj, uint32_t op, ktime_t *timeout)
 
 	/* cache maintenance */
 	if (msm_obj->flags & MSM_BO_CACHED) {
+		if (!msm_obj->sgt)
+			return -EINVAL;  /* sgt not set up, not an OOM condition */
 		dma_sync_sgtable_for_cpu(dev->dev, msm_obj->sgt,
 					 msm_op_to_dma_dir(op));
 		msm_obj->last_cpu_prep_op = op;
@@ -936,11 +947,25 @@ int msm_gem_cpu_prep(struct drm_gem_object *obj, uint32_t op, ktime_t *timeout)
 int msm_gem_cpu_fini(struct drm_gem_object *obj)
 {
 	/* cache maintenance */
-	struct drm_device *dev = obj->dev;
-	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+	struct drm_device *dev;
+	struct msm_gem_object *msm_obj;
+
+	if (!obj)
+		return -EINVAL;
+
+	dev = obj->dev;
+	msm_obj = to_msm_bo(obj);
+
+	if (!msm_obj || !dev)
+		return -EINVAL;
+
 	if (msm_obj->flags & MSM_BO_CACHED) {
 		/* fini without a prep is almost certainly a userspace error */
 		WARN_ON(msm_obj->last_cpu_prep_op == 0);
+		if (!msm_obj->sgt) {
+			msm_obj->last_cpu_prep_op = 0;
+			return -ENOMEM;
+		}
 		dma_sync_sgtable_for_device(dev->dev, msm_obj->sgt,
 			msm_op_to_dma_dir(msm_obj->last_cpu_prep_op));
 		msm_obj->last_cpu_prep_op = 0;

@@ -25,6 +25,9 @@ def define_bengal():
                     "CONFIG_MDSS_HFI_ADAPTER",
                     "CONFIG_MDSS_HFI",
                     "CONFIG_QTI_HFI_CORE",
-                    "CONFIG_QCOM_SPEC_SYNC"
+                    "CONFIG_QCOM_SPEC_SYNC",
+                    "CONFIG_MSM_SDE_ROTATOR",
+                    "CONFIG_MSM_SDE_ROTATOR_EVTLOG_DEBUG",
+                    "CONFIG_DEBUG_FS"
                 ],
             )

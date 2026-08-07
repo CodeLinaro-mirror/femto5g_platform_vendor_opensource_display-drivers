@@ -441,17 +441,32 @@ static void dp_debug_hfi_destroy_client(struct dp_debug_client_hfi_priv *priv)
 }
 
 /* HFI response handler for DP simulation read commands */
-static void dp_debug_hfi_response_handler(u32 obj_id, u32 cmd_id, void *payload,
-		u32 payload_size, struct hfi_prop_listener *listener)
+static void dp_debug_hfi_response_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *listener)
 {
 	struct dp_debug_client_hfi_priv *priv;
-	u32 *payload_ptr = payload;
+	u32 obj_id;
+	u32 cmd_id;
+	void *payload;
+	u32 payload_size;
+	u32 *payload_ptr;
 	u32 num_misr;
+
+	if (!packet_info) {
+		DP_ERR("Invalid packet_info\n");
+		return;
+	}
 
 	if (!listener) {
 		DP_ERR("Invalid listener\n");
 		return;
 	}
+
+	obj_id = packet_info->id;
+	cmd_id = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	payload_size = packet_info->payload_size;
+	payload_ptr = payload;
 
 	/* Use container_of to get back to the parent structure, just like dp_hfi.c does */
 	priv = container_of(listener, struct dp_debug_client_hfi_priv, hfi_cb_obj);
@@ -1739,8 +1754,6 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 		return -ENODEV;
 	}
 
-	hfi = mgr_priv->hfi[DP_STREAM_0];
-
 	while (sscanf(buf, "%d %d %d %d %d %d%n",
 		      &debug_en, &con_id,
 		      &hdisplay, &vdisplay, &vrefresh, &aspect_ratio,
@@ -1763,11 +1776,13 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 		sde_conn = to_sde_connector(connector);
 		stream_id = sde_conn->panel_id;
 
-		if (stream_id >= mgr_priv->max_streams || !hfi) {
+		if (stream_id >= mgr_priv->max_streams || !mgr_priv->hfi[stream_id]) {
 			DP_ERR("Invalid stream_id %u for con_id=%d\n", stream_id, con_id);
 			buf += offset;
 			continue;
 		}
+
+		hfi = mgr_priv->hfi[stream_id];
 
 		if (!debug_en || !hdisplay || !vdisplay || !vrefresh) {
 			DP_DEBUG("clearing MST override (con_id=%d, stream_id=%u)\n",
@@ -1989,11 +2004,24 @@ static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 	 */
 	if (status == connector_status_disconnected) {
 		/*
-		 * Send an HPD IRQ to DCP before marking the stream as
-		 * soft-unplugged.  The attention callback is gated on
-		 * soft_unplug==false, so the IRQ must be dispatched first.
-		 * This notifies DCP of the MST topology change (monitor
-		 * removed from port) while the physical DP link stays up.
+		 * Set soft_unplug=true BEFORE firing the attention/disconnect
+		 * callback below. dp_mgr_hfi_hpd_attention_cb() checks soft_unplug
+		 * at entry and returns early when it is set. If soft_unplug is set
+		 * after the call (as it was previously), the attention callback
+		 * runs to completion and sends an extra, unintended
+		 * HFI_COMMAND_DEVICE_HOT_PLUG_DETECT to DCP right after the
+		 * MST_CONFIG command above, causing DCP to tear down the entire
+		 * MST topology instead of just the single port being removed.
+		 */
+		mgr_priv->soft_unplug = true;
+		DP_DEBUG("Set soft_unplug=true for con_id=%d (active_streams=%u)\n",
+			con_id, mgr_priv->active_streams);
+
+		/*
+		 * Send an HPD IRQ to DCP to notify it of the MST topology
+		 * change (monitor removed from port) while the physical DP
+		 * link stays up. For the last stream, the code below performs
+		 * a full disconnect instead.
 		 */
 		if (mgr_priv->hpd) {
 			if (mgr_priv->active_streams > 1 && mgr_priv->hpd_cb.attention) {
@@ -2008,8 +2036,6 @@ static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 				mgr_priv->hpd_cb.disconnect(mgr_priv);
 			}
 		}
-		mgr_priv->soft_unplug = true;
-		DP_DEBUG("Set soft_unplug=true for con_id=%d\n", con_id);
 	} else if (status == connector_status_connected) {
 		mgr_priv->soft_unplug = false;
 		DP_DEBUG("Cleared soft_unplug for con_id=%d\n", con_id);

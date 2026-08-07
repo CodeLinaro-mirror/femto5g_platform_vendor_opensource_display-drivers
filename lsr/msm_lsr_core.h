@@ -98,6 +98,11 @@ struct msm_lsr_core {
 	unsigned long orig_core_sum;
 	unsigned long bw_sum;
 	unsigned long peak_bw;
+	unsigned long csc_bw_icc;
+	unsigned long repro_bw_icc;
+	unsigned long csc_peak_icc;
+	unsigned long repro_peak_icc;
+	bool csc_is_mono;
 	struct lsr_perf new_perf;
 	struct lsr_perf old_perf;
 };

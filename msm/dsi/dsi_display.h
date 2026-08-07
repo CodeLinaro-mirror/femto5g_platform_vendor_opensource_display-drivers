@@ -258,6 +258,7 @@ struct dsi_display_ops {
  * @cmd_set:	      Debugfs TX cmd set.
  * @dsi_hfi_info:         HFI adapter information
  * @display_ops:          HWIO/HFI display ops
+ * @cmd_seq_no:           Monotonically increasing sequence number for DCS commands.
  * @enabled:	      Boolean to indicate display enabled.
  * @tx_cmd_buf_non_embedded:  TX command buffer object for non-embedded mode.
  * @cmd_buffer_size_non_embedded: Size of the non-embedded TX command buffer.
@@ -377,6 +378,8 @@ struct dsi_display {
 	struct hfi_prop_listener hfi_cb_obj;
 
 	struct dsi_display_ops display_ops;
+
+	atomic_t cmd_seq_no;
 
 	bool enabled;
 };
