@@ -298,7 +298,7 @@ static int dp_altmode_set_usb_dp_mode(struct dp_altmode_private *altmode)
 	struct device_node *np;
 	struct device_node *usb_node;
 	struct platform_device *usb_pdev;
-	int timeout = 250;
+	int timeout = 10;
 
 	if (!altmode || !altmode->dev) {
 		DP_ERR("invalid args\n");
@@ -340,8 +340,21 @@ static int dp_altmode_set_usb_dp_mode(struct dp_altmode_private *altmode)
 	of_node_put(usb_node);
 	platform_device_put(usb_pdev);
 
-	if (rc)
-		DP_ERR("Error releasing SS lanes: %d\n", rc);
+	if (rc) {
+		if (rc == -EAGAIN || rc == -EBUSY) {
+			/*
+			 * For AIO bar device, USB controller is always busy
+			 * (USB is connected). Ignore this error and let DP
+			 * proceed without USB SS lane release, similar to
+			 * configurations where the USB SS lane release is
+			 * not required for DP operation.
+			 */
+			DP_WARN("USB busy, ignoring for DP-only mode\n");
+			rc = 0;
+		} else {
+			DP_ERR("Error releasing SS lanes: %d\n", rc);
+		}
+	}
 
 	return rc;
 }
@@ -461,8 +474,13 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 		altmode->orientation = orientation;
 
 		rc = dp_altmode_set_usb_dp_mode(altmode);
-		if (rc)
+		if (rc == -EAGAIN || rc == -EBUSY) {
+			DP_WARN("USB mode set failed (busy): %d, continuing DP init\n", rc);
+			rc = 0;
+		} else if (rc) {
+			DP_ERR("USB mode set failed: %d\n", rc);
 			goto ack;
+		}
 
 		rc = dp_altmode_configure_nb7_retimer(altmode, true,
 			raw_orientation, pin, hpd_state, hpd_irq);
