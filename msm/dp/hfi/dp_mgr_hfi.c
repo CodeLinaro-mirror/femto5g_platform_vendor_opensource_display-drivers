@@ -1001,7 +1001,7 @@ end:
 }
 
 /* HPD callback functions */
-static int dp_mgr_hfi_hpd_configure_helper(struct dp_mgr_hfi_priv *hfi_priv)
+int dp_mgr_hfi_hpd_configure_helper(struct dp_mgr_hfi_priv *hfi_priv)
 {
 	int rc;
 
@@ -1097,7 +1097,7 @@ static int dp_mgr_hfi_hpd_disconnect_helper(struct dp_mgr_hfi_priv *hfi_priv)
 	return rc;
 }
 
-static int dp_mgr_hfi_hpd_attention_helper(struct dp_mgr_hfi_priv *hfi_priv)
+int dp_mgr_hfi_hpd_attention_helper(struct dp_mgr_hfi_priv *hfi_priv)
 {
 	struct hfi_device_hotplug_config config;
 	int rc = 0;
@@ -1122,6 +1122,7 @@ static int dp_mgr_hfi_hpd_attention_helper(struct dp_mgr_hfi_priv *hfi_priv)
 
 	/* check if there was any change in state */
 	if ((hpd_state == hfi_priv->connected) && !hpd_irq) {
+		SDE_EVT32(hpd_state, hfi_priv->connected, hpd_irq);
 		mutex_unlock(&hfi_priv->hpd_mutex);
 		return 0;
 	}
@@ -1245,7 +1246,7 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 	return dp_mgr_hfi_hpd_disconnect_helper(hfi_priv);
 }
 
-static int dp_mgr_hfi_hpd_attention_cb(void *data)
+int dp_mgr_hfi_hpd_attention_cb(void *data)
 {
 	struct dp_mgr_hfi_priv *hfi_priv = data;
 
