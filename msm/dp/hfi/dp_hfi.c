@@ -238,6 +238,7 @@ static int _pack_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client,
 	remove_on_cb = ((hfi_cmd != HFI_COMMAND_DISPLAY_EVENT_REGISTER)
 			&& (hfi_cmd != HFI_COMMAND_DISPLAY_EVENT_DEREGISTER));
 	DP_INFO("hfi_cmd=0x%x, obj_id=0x%x, flags=0x%x\n", hfi_cmd, obj_id, flags);
+	SDE_EVT32_EXTERNAL(hfi_cmd, obj_id, flags);
 
 	if (flags & HFI_HOST_FLAGS_RESPONSE_REQUIRED) {
 		rc = hfi_adapter_add_get_property(hfi_client, cmd_buf, hfi_cmd, obj_id,
@@ -300,6 +301,7 @@ int dp_hfi_send_cmd_buf(struct dp_hfi *hfi,
 
 	DP_INFO("hfi_cmd=0x%x, obj_id=0x%x, cmd_buf_type=%d, flags=0x%x\n",
 		hfi_cmd, obj_id, cmd_buf_type, flags);
+	SDE_EVT32_EXTERNAL(hfi_cmd, obj_id, cmd_buf_type, flags);
 
 	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id, cmd_buf_type);
 	if (!cmd_buf) {

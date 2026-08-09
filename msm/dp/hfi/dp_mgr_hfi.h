@@ -9,6 +9,7 @@
 #include <linux/types.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
+#include <linux/workqueue.h>
 
 #include "msm_drv.h"
 #include "dp_drv.h"
@@ -109,6 +110,10 @@ struct dp_mgr_hfi_priv {
 	struct dp_hpd_cb hpd_cb;
 	struct dp_parser *parser;
 	struct mutex hpd_mutex;
+	struct workqueue_struct *wq;
+	struct work_struct configure_work;
+	struct work_struct attention_work;
+	struct work_struct connect_work;
 
 	struct dp_aux_switch *aux_switch;
 	struct dp_display_mode default_mode;
