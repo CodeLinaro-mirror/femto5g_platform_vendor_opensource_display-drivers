@@ -286,11 +286,6 @@ static int sde_smmu_detach(struct sde_rot_data_type *mdata)
 	return 0;
 }
 
-static int sde_smmu_get_domain_id(u32 type)
-{
-	return type;
-}
-
 /*
  * sde_smmu_dma_buf_attach()
  *
