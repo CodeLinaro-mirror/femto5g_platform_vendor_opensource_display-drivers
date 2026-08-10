@@ -753,6 +753,11 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	}
 	adapter = ctx->host;
 
+	if (!adapter) {
+		HFI_AD_ERROR("hfi adapter not initialized, skip cmd buf alloc\n");
+		return NULL;
+	}
+
 	/* Acquire lock to protect the entire critical section including pool->available */
 	mutex_lock(&adapter->hfi_adapter_cmd_buf_list_lock);
 	pool = get_avail_buffer(adapter);
