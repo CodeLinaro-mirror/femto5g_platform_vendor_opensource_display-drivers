@@ -120,10 +120,10 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 	bool force_multi_func = altmode->dp_altmode.base.force_multi_func;
 
 	/*
-		* Due to hardware design reasons, in USB peripheral mode, the communication
-		* between PD chip with always on power supply and PMIC'CC is abnormal, when
-		* HPD happened. Therefore, we need to customize payload data for workaround
-		*/
+	 * Due to hardware design reasons, in USB peripheral mode, the communication
+	 * between PD chip with always on power supply and PMIC'CC is abnormal, when
+	 * HPD happened. Therefore, we need to customize payload data for workaround
+	 */
 	if (altmode->custom_payload_enable) {
 		if (payload[8] & ALTMODE_HPD_STATE_MASK) {
 			altmode->needs_custom_payload_change = false;
@@ -230,7 +230,7 @@ static void dp_altmode_register(void *priv)
 	 * add bool flag, Used to customized altmode payload, just on AIO
 	 */
 	altmode->custom_payload_enable = of_property_read_bool(altmode->dev->of_node,
-							"customize-altmode-payload");
+							"qcom,custom-altmode-payload");
 
 	cd.name = "displayport";
 	cd.svid = USB_SID_DISPLAYPORT;
