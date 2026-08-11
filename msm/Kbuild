@@ -28,6 +28,11 @@ ifeq ($(CONFIG_ARCH_NIOBE), y)
 	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_niobedispconf.h
 endif
 
+ifeq ($(CONFIG_ARCH_RAVELIN), y)
+	include $(DISPLAY_ROOT)/config/gki_ravelindisp.conf
+	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_ravelindispconf.h
+endif
+
 ifeq ($(CONFIG_ARCH_PINEAPPLE), y)
 ifeq ($(CONFIG_ARCH_QTI_VM), y)
     include $(DISPLAY_ROOT)/config/gki_pineappledisptui.conf
@@ -66,6 +71,11 @@ endif
 ifeq ($(CONFIG_ARCH_BENGAL), y)
 	include $(DISPLAY_ROOT)/config/gki_bengaldisp.conf
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_bengaldispconf.h
+endif
+
+ifeq ($(CONFIG_ARCH_SCUBA), y)
+        include $(DISPLAY_ROOT)/config/gki_bengaldisp.conf
+        LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_bengaldispconf.h
 endif
 
 ifeq ($(CONFIG_ARCH_KALAMA), y)
