@@ -506,12 +506,6 @@ static unsigned long hdmi_pll_vco_div_clk_recalc_rate(struct clk_hw *hw,
 	return pll->vco_rate;
 }
 
-static long hdmi_pll_vco_div_clk_round(struct clk_hw *hw,
-		unsigned long rate, unsigned long *parent_rate)
-{
-	return hdmi_pll_vco_div_clk_recalc_rate(hw, *parent_rate);
-}
-
 /*
  * Adding this redundant function to better understand
  * the pll configuration process, and make it inline/similar
