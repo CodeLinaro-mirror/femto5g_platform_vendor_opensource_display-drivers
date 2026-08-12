@@ -640,25 +640,6 @@ static unsigned long edp_pll_link_clk_recalc_rate(struct clk_hw *hw,
 	return rate;
 }
 
-static long edp_pll_link_clk_round(struct clk_hw *hw, unsigned long rate,
-			unsigned long *parent_rate)
-{
-	struct dp_pll *pll = NULL;
-	struct dp_pll_vco_clk *pll_link = NULL;
-
-	if (!hw) {
-		DP_ERR("invalid input parameters\n");
-		return -EINVAL;
-	}
-
-	pll_link = to_dp_vco_hw(hw);
-	pll = pll_link->priv;
-
-	rate = pll->vco_rate * 100;
-
-	return rate;
-}
-
 static unsigned long edp_pll_vco_div_clk_get_rate(struct dp_pll *pll)
 {
 	if (pll->vco_rate == DP_VCO_HSCLK_RATE_8100MHZDIV1000)
@@ -686,20 +667,28 @@ static unsigned long edp_pll_vco_div_clk_recalc_rate(struct clk_hw *hw,
 	return edp_pll_vco_div_clk_get_rate(pll);
 }
 
-static long edp_pll_vco_div_clk_round(struct clk_hw *hw, unsigned long rate,
-			unsigned long *parent_rate)
+static int edp_pll_link_clk_determine_rate(struct clk_hw *hw,
+			struct clk_rate_request *req)
 {
-	return edp_pll_vco_div_clk_recalc_rate(hw, *parent_rate);
+	req->rate = edp_pll_link_clk_recalc_rate(hw, req->best_parent_rate);
+	return 0;
+}
+
+static int edp_pll_vco_div_clk_determine_rate(struct clk_hw *hw,
+			struct clk_rate_request *req)
+{
+	req->rate = edp_pll_vco_div_clk_recalc_rate(hw, req->best_parent_rate);
+	return 0;
 }
 
 static const struct clk_ops edp_pll_link_clk_ops = {
 	.recalc_rate = edp_pll_link_clk_recalc_rate,
-	.round_rate = edp_pll_link_clk_round,
+	.determine_rate = edp_pll_link_clk_determine_rate,
 };
 
 static const struct clk_ops edp_pll_vco_div_clk_ops = {
 	.recalc_rate = edp_pll_vco_div_clk_recalc_rate,
-	.round_rate = edp_pll_vco_div_clk_round,
+	.determine_rate = edp_pll_vco_div_clk_determine_rate,
 };
 
 static struct clk_init_data edp_phy_pll_clks[DP_PLL_NUM_CLKS] = {

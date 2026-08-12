@@ -1311,6 +1311,7 @@ static void msm_lastclose(struct drm_device *dev)
 
 	msm_atomic_flush_display_threads(priv);
 
+#if (KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE)
 	if (priv->fbdev) {
 		rc = drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev);
 		if (rc)
@@ -1322,6 +1323,7 @@ static void msm_lastclose(struct drm_device *dev)
 			DRM_ERROR("client modeset commit failed: %d\n", rc);
 #endif /* (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE) */
 	}
+#endif /* KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE */
 
 	/* wait again, before kms driver does it's lastclose commit */
 	msm_wait_event_timeout(priv->pending_crtcs_event, !priv->pending_crtcs,
