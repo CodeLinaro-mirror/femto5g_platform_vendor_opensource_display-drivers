@@ -7036,6 +7036,10 @@ static void _sde_get_hw_caps_for_pebble(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
+	set_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map);
+	set_bit(SDE_SYS_CACHE_DISP_WB, sde_cfg->sde_sys_cache_type_map);
+	set_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_cfg->features);
+	set_bit(SDE_FEATURE_SYS_CACHE_STALING, sde_cfg->features);
 	set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);
 	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 	set_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features);
