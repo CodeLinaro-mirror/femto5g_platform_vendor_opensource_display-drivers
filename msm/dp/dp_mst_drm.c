@@ -1183,9 +1183,20 @@ int dp_mst_drm_bridge_init(void *data, struct drm_encoder *encoder)
 		goto end;
 	}
 
+#if (KERNEL_VERSION(7, 1, 0) <= LINUX_VERSION_CODE)
+	rc = drm_atomic_private_obj_init(dev, &bridge->obj,
+				    &state->base,
+				    &dp_mst_bridge_state_funcs);
+	if (rc) {
+		DP_ERR("failed to init private obj, rc=%d\n", rc);
+		kfree(state);
+		goto end;
+	}
+#else
 	drm_atomic_private_obj_init(dev, &bridge->obj,
 				    &state->base,
 				    &dp_mst_bridge_state_funcs);
+#endif
 
 	DP_MST_DEBUG("mst drm bridge init. bridge id:%d\n", i);
 
