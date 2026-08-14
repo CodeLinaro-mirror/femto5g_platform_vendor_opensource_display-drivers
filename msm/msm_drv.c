@@ -2696,8 +2696,19 @@ static struct platform_driver msm_platform_driver = {
 
 static int __init msm_drm_register(void)
 {
+	struct device_node *node;
+
 	if (!modeset)
 		return -EINVAL;
+
+	/* Skips init when display node is either not available or disabled. */
+	node = of_find_matching_node(NULL, dt_match);
+	if (!of_device_is_available(node)) {
+		of_node_put(node);
+		SDE_INFO("Display device node not found\n");
+		return -ENODEV;
+	}
+	of_node_put(node);
 
 	DBG("init");
 	msm_lsr_init();
