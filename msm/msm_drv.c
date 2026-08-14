@@ -529,6 +529,13 @@ static int msm_drm_uninit(struct device *dev)
 
 	drm_mode_config_cleanup(ddev);
 
+	/* drm_mode_config_cleanup() freed these; clear the caches so
+	 * re-probe creates them fresh.
+	 */
+	memset(priv->crtc_property, 0, sizeof(priv->crtc_property));
+	memset(priv->plane_property, 0, sizeof(priv->plane_property));
+	memset(priv->conn_property, 0, sizeof(priv->conn_property));
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 	msm_irq_uninstall(ddev);
 #else
@@ -1304,6 +1311,7 @@ static void msm_lastclose(struct drm_device *dev)
 
 	msm_atomic_flush_display_threads(priv);
 
+#if (KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE)
 	if (priv->fbdev) {
 		rc = drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev);
 		if (rc)
@@ -1315,6 +1323,7 @@ static void msm_lastclose(struct drm_device *dev)
 			DRM_ERROR("client modeset commit failed: %d\n", rc);
 #endif /* (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE) */
 	}
+#endif /* KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE */
 
 	/* wait again, before kms driver does it's lastclose commit */
 	msm_wait_event_timeout(priv->pending_crtcs_event, !priv->pending_crtcs,
@@ -2149,7 +2158,7 @@ static int msm_pm_resume(struct device *dev)
 }
 #endif /* CONFIG_PM_SLEEP */
 
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 static int msm_pm_freeze(struct device *dev)
 {
 	struct drm_device *ddev;
@@ -2193,7 +2202,7 @@ static int msm_pm_restore(struct device *dev)
 
 	return 0;
 }
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 
 #if IS_ENABLED(CONFIG_PM)
 static int msm_runtime_suspend(struct device *dev)
@@ -2243,10 +2252,10 @@ static const struct dev_pm_ops msm_pm_ops = {
 	.suspend = msm_pm_suspend,
 	.resume = msm_pm_resume,
 #endif /* CONFIG_PM_SLEEP */
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 	.freeze = msm_pm_freeze,
 	.restore = msm_pm_restore,
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 	SET_RUNTIME_PM_OPS(msm_runtime_suspend, msm_runtime_resume, NULL)
 };
 

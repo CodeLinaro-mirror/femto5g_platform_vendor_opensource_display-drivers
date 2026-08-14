@@ -473,6 +473,16 @@ struct sde_encoder_hal_funcs {
 			bool enable);
 
 	/**
+	 * register_dcs_cmd_error_event_notify - register/unregister DCS command error
+	 *                                       event notification from DCP firmware.
+	 * @enc: Pointer to sde encoder structure
+	 * @enable: flag to register/deregister event.
+	 * Returns: status of registration/deregistration.
+	 */
+	int (*register_dcs_cmd_error_event_notify[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+			bool enable);
+
+	/**
 	 * misr_setup - Setup MISR module
 	 * @enc: Pointer to sde encoder structure
 	 * @en: enable/disable flag
@@ -674,6 +684,7 @@ struct sde_encoder_virt {
 	bool elevated_ahb_vote;
 	struct dev_pm_qos_request pm_qos_cpu_req[NR_CPUS];
 	struct cpumask valid_cpu_mask;
+	struct mutex pm_qos_lock;
 	struct msm_mode_info mode_info;
 	struct sde_encoder_vrr_info vrr_info;
 	bool delay_kickoff;
@@ -772,6 +783,14 @@ void sde_encoder_register_display_power_event_callback(struct drm_encoder *encod
  * @enable:		flag to register or deregister panel deadcall back.
  */
 void sde_encoder_register_panel_dead_event_callback(struct drm_encoder *drm_enc, bool enable);
+
+/**
+ * sde_encoder_register_dcs_cmd_error_event_callback - register/unregister for DCS
+ *	command error events reported by DCP firmware.
+ * @drm_enc:	encoder pointer
+ * @enable:		true to register, false to deregister.
+ */
+void sde_encoder_register_dcs_cmd_error_event_callback(struct drm_encoder *drm_enc, bool enable);
 
 /**
  * sde_encoder_get_rsc_client - gets the rsc client state for primary

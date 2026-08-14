@@ -242,6 +242,8 @@ struct dsi_panel_timing_caps {
  * @poms_caps:                      HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY
  * @custom_cmd_set_info:            HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO
  * @ulps_supported:                 HFI_PROPERTY_PANEL_ULPS_SUPPORTED
+ * @phy_tuning_config:              HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG
+ * @phy_tuning_config_valid:        true if phy_tuning_config has been populated
  */
 struct dsi_panel_generic_caps {
 	u32 panel_name;
@@ -282,6 +284,8 @@ struct dsi_panel_generic_caps {
 	struct hfi_panel_operating_mode_caps poms_caps;
 	u32 custom_cmd_set_info[2]; /* [0]=start_index, [1]=count */
 	u32 ulps_supported;
+	struct hfi_panel_phy_tuning_config phy_tuning_config;
+	bool phy_tuning_config_valid;
 };
 
 /**
@@ -316,13 +320,10 @@ int dsi_hfi_process_cmd_buf(struct hfi_client_t *hfi_client, struct hfi_cmdbuf_t
 
 /**
  * dsi_hfi_prop_handler() - handle/parse hfi properties
- * @UNIQUE_DISP_OR_OBJ_ID:	display/object ID
- * @CMD_ID: command ID
- * @payload: handle to payload
- * @size: size of payload
+ * @packet_info: handle to hfi packet info
  * @listener: handle to hfi property listener
  */
-void dsi_hfi_prop_handler(u32 UNIQUE_DISP_OR_OBJ_ID, u32 CMD_ID, void *payload, u32 size,
+void dsi_hfi_prop_handler(struct hfi_packet_info *packet_info,
 						struct hfi_prop_listener *listener);
 
 /**

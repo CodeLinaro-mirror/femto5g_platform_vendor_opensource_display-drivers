@@ -252,7 +252,8 @@ msm_drm-$(CONFIG_DRM_MSM_DP) += dp/dp_altmode.o \
 msm_drm-$(CONFIG_DRM_MSM_DP_HFI) += dp/hfi/dp_mgr_hfi.o \
 				    dp/hfi/dp_hfi.o \
 				    dp/hfi/dp_debug_client_hfi.o \
-				    dp/hfi/dp_hfi_audio.o
+				    dp/hfi/dp_hfi_audio.o \
+				    dp/hfi/dp_hdcp.o
 
 msm_drm-$(CONFIG_DRM_MSM_DP_MST) += dp/dp_mst_drm.o
 
@@ -388,11 +389,14 @@ msm_drm-$(CONFIG_MDSS_HFI) += hfi/hfi_utils.o \
 				 dsi/hfi/dsi_hfi.o \
 				 sde/hfi/hfi_wb.o
 
+msm_drm-$(CONFIG_DSI_PANEL_I2C) += dsi/dsi_panel_i2c.o
+
 msm_drm-$(CONFIG_DSI_PARSER) += dsi/dsi_parser.o
 
 msm_drm-$(CONFIG_THERMAL_OF) += msm_cooling_device.o
 
 msm_drm-$(CONFIG_DRM_MSM_HDMI) += hdmi/hdmi_audio.o \
+				hdmi/hdmi_cec.o \
 				hdmi/hdmi_debug.o \
 				hdmi/hdmi_display.o \
 				hdmi/hdmi_drm.o \

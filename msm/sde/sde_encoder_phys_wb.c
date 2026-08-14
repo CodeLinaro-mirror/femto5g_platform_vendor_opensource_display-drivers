@@ -129,9 +129,15 @@ static void _sde_wb_get_dnsc_tap_point_dims(struct sde_connector_state *cstate,
 		break;
 	case CAPTURE_DSPP_OUT:
 	case CAPTURE_DEMURA_OUT:
-		/* Panel ROI */
-		*sw = sde_cstate->crtc_roi.w;
-		*sh = sde_cstate->crtc_roi.h;
+		if (!sde_cstate->user_roi_list.num_rects) {
+			/* ROI is cleared, fall back to full screen */
+			*sw = 0;
+			*sh = 0;
+		} else {
+			/* Panel ROI */
+			*sw = sde_cstate->crtc_roi.w;
+			*sh = sde_cstate->crtc_roi.h;
+		}
 		break;
 	default:
 		break;
@@ -1295,6 +1301,7 @@ static int _sde_enc_phys_wb_validate_dnsc_blur_ds(struct drm_crtc_state *crtc_st
 
 	if (!msm_atomic_needs_modeset(crtc_state, conn_state) && !phys_enc->hw_dnsc_blur) {
 		SDE_DEBUG("hw_dnsc_blur block reservation is needed, requesting mode_set\n");
+		cstate->dnsc_res_changed = true;
 		crtc_state->mode_changed = true;
 	}
 
@@ -2295,12 +2302,29 @@ static void _sde_encoder_phys_wb_setup_prog_line(struct sde_encoder_phys *phys_e
 static void sde_encoder_phys_wb_setup(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct drm_display_mode mode = phys_enc->cached_mode;
-	struct drm_connector_state *conn_state = phys_enc->connector->state;
-	struct drm_crtc_state *crtc_state = wb_enc->crtc->state;
+	struct drm_connector_state *conn_state;
+	struct drm_crtc_state *crtc_state;
 	struct drm_framebuffer *fb;
 	struct sde_rect *wb_roi = &wb_enc->wb_roi;
 	u32 out_width = 0, out_height = 0, num_lm;
+
+	if (!phys_enc->connector || !wb_enc->crtc) {
+		SDE_ERROR("[enc:%d wb:%d] invalid connector:%pK crtc:%pK, skip setup\n",
+				DRMID(phys_enc->parent), WBID(wb_enc),
+				phys_enc->connector, wb_enc->crtc);
+		return;
+	}
+
+	conn_state = phys_enc->connector->state;
+	crtc_state = wb_enc->crtc->state;
+
+	if (!conn_state || !crtc_state) {
+		SDE_ERROR("[enc:%d wb:%d] invalid connector state:%pK crtc state:%pK, skip setup\n",
+			DRMID(phys_enc->parent), WBID(wb_enc), conn_state, crtc_state);
+		return;
+	}
 
 	SDE_DEBUG("[enc:%d wb:%d] mode_set:\"%s\",%d,%d]\n", DRMID(phys_enc->parent),
 			WBID(wb_enc), mode.name, mode.hdisplay, mode.vdisplay);
@@ -2308,6 +2332,10 @@ static void sde_encoder_phys_wb_setup(struct sde_encoder_phys *phys_enc)
 	memset(wb_roi, 0, sizeof(struct sde_rect));
 
 	/* clear writeback framebuffer - will be updated in setup_fb */
+	if (sde_enc->hfi_encoder && wb_enc->wb_fb && wb_enc->wb_aspace) {
+		msm_framebuffer_cleanup(wb_enc->wb_fb, wb_enc->wb_aspace);
+		drm_framebuffer_put(wb_enc->wb_fb);
+	}
 	wb_enc->wb_fb = NULL;
 	wb_enc->wb_aspace = NULL;
 
@@ -2715,6 +2743,13 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 		drm_framebuffer_put(wb_enc->wb_fb);
 		wb_enc->wb_fb = NULL;
 		wb_enc->wb_aspace = NULL;
+	}
+
+	if (wb_enc->old_fb && wb_enc->old_aspace) {
+		msm_framebuffer_cleanup(wb_enc->old_fb, wb_enc->old_aspace);
+		drm_framebuffer_put(wb_enc->old_fb);
+		wb_enc->old_fb = NULL;
+		wb_enc->old_aspace = NULL;
 	}
 
 	sde_crtc = to_sde_crtc(sde_enc->crtc);

@@ -76,6 +76,7 @@
 #define SDE_HW_VER_D10	SDE_HW_VER(13, 1, 0) /* alor */
 #define SDE_HW_VER_E00  SDE_HW_VER(14, 0, 0) /* art */
 #define SDE_HW_VER_E30  SDE_HW_VER(14, 3, 0) /* pebble */
+#define SDE_HW_VER_E40  SDE_HW_VER(14, 4, 0) /* coast */
 
 #define SDE_QULTIVATE_SW_NONE 0x0
 #define SDE_QULTIVATE_SW_REV1 0x1
@@ -128,6 +129,7 @@
 #define IS_ALOR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D10)
 #define IS_ART_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_E00)
 #define IS_PEBBLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_E30)
+#define IS_COAST_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_E40)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
@@ -958,6 +960,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_FRAME_SEQ_CHECK	 Add check on frame sequence number to avoid duplicate frame events
  * @SDE_FEATURE_QRTC           QRTC supported
  * @SDE_FEATURE_A10_Y10        A10/Y10 pipe format supported
+ * @SDE_FEATURE_RSC_CLK_STATE  use CLK state instead of CMD/VID state for RSC
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -1020,6 +1023,9 @@ enum sde_mdss_features {
 	SDE_FEATURE_ALLOW_SEC_CAM_CONCURRENCY,
 	SDE_FEATURE_BATCH_COMMIT,
 	SDE_FEATURE_GMU_REPROJ,
+	SDE_FEATURE_RSC_CLK_STATE,
+	SDE_FEATURE_NO_UBWC,
+	SDE_FEATURE_NO_CSC,
 	SDE_FEATURE_MAX
 };
 
@@ -2251,6 +2257,7 @@ struct sde_perf_cfg {
  * @macrotile_mode      UBWC parameter for macro tile channel distribution
  * @pipe_order_type     indicates if it is required to specify pipe order
  * @csc_type            csc or csc_10bit support
+ * @enable_hibernation indicate if hibernation feature is supported
  * @allowed_dsc_reservation_switch      intf to which dsc reservation switch is supported
  * @autorefresh_disable_seq    indicates the autorefresh disable sequence; default is seq1
  * @sc_cfg              system cache configuration
@@ -2408,6 +2415,7 @@ struct sde_mdss_cfg {
 	u32 macrotile_mode;
 	u32 pipe_order_type;
 	u32 csc_type;
+	bool enable_hibernation;
 	u32 allowed_dsc_reservation_switch;
 	enum autorefresh_disable_sequence autorefresh_disable_seq;
 	struct sde_sc_cfg sc_cfg[SDE_SYS_CACHE_MAX];

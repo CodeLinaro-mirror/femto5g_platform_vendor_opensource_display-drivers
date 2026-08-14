@@ -413,11 +413,13 @@ void sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
 	if (!cpu_mask)
 		return;
 
+	mutex_lock(&sde_enc->pm_qos_lock);
 	for_each_cpu(cpu, cpu_mask) {
 		cpu_dev = get_cpu_device(cpu);
 		if (!cpu_dev) {
 			SDE_ERROR("%s: failed to get cpu%d device\n", __func__,
 					cpu);
+			mutex_unlock(&sde_enc->pm_qos_lock);
 			return;
 		}
 		cpumask_set_cpu(cpu, &sde_enc->valid_cpu_mask);
@@ -430,6 +432,7 @@ void sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
 					DEV_PM_QOS_RESUME_LATENCY, cpu_dma_latency);
 		SDE_EVT32_VERBOSE(DRMID(drm_enc), cpu_dma_latency, cpu);
 	}
+	mutex_unlock(&sde_enc->pm_qos_lock);
 }
 
 void sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
@@ -438,6 +441,7 @@ void sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
 	struct device *cpu_dev;
 	int cpu = 0;
 
+	mutex_lock(&sde_enc->pm_qos_lock);
 	for_each_cpu(cpu, &sde_enc->valid_cpu_mask) {
 		cpu_dev = get_cpu_device(cpu);
 		if (!cpu_dev) {
@@ -451,6 +455,7 @@ void sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
 		SDE_EVT32_VERBOSE(DRMID(drm_enc), cpu);
 	}
 	cpumask_clear(&sde_enc->valid_cpu_mask);
+	mutex_unlock(&sde_enc->pm_qos_lock);
 }
 
 static bool _sde_encoder_is_autorefresh_enabled(
@@ -2064,13 +2069,23 @@ static int _sde_encoder_update_rsc_client(
 	struct drm_display_mode *mode;
 	bool is_vid_mode;
 	struct drm_encoder *enc;
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
 
-	if (!drm_enc || !drm_enc->dev) {
+	if (!drm_enc || !drm_enc->dev || !drm_enc->dev->dev_private) {
 		SDE_ERROR("invalid encoder arguments\n");
 		return -EINVAL;
 	}
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
+	priv = drm_enc->dev->dev_private;
+	sde_kms = to_sde_kms(priv->kms);
+
+        if (!sde_kms) {
+                SDE_ERROR("invalid parameters\n");
+                return -EINVAL;
+        }
+
 	mode_info = &sde_enc->mode_info;
 
 	crtc = sde_enc->crtc;
@@ -2115,6 +2130,10 @@ static int _sde_encoder_update_rsc_client(
 		rsc_state = enable ? SDE_RSC_CMD_STATE : SDE_RSC_IDLE_STATE;
 	else if (sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_VIDEO_MODE))
 		rsc_state = enable ? SDE_RSC_VID_STATE : SDE_RSC_IDLE_STATE;
+
+	if (rsc_state == SDE_RSC_CMD_STATE &&
+			test_bit(SDE_FEATURE_RSC_CLK_STATE, sde_kms->catalog->features))
+		rsc_state = SDE_RSC_CLK_STATE;
 
 	drm_for_each_encoder(enc, drm_enc->dev) {
 		if (enc->base.id != drm_enc->base.id &&
@@ -5233,6 +5252,25 @@ void sde_encoder_register_panel_dead_event_callback(struct drm_encoder *drm_enc,
 	}
 }
 
+void sde_encoder_register_dcs_cmd_error_event_callback(struct drm_encoder *drm_enc, bool enable)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	enum msm_disp_op disp_op;
+	int rc = 0;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return;
+	}
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (sde_enc->hal_ops.register_dcs_cmd_error_event_notify[disp_op]) {
+		rc = sde_enc->hal_ops.register_dcs_cmd_error_event_notify[disp_op](sde_enc, enable);
+		if (rc)
+			SDE_ERROR_ENC(sde_enc, "failed to register DCS cmd error event\n");
+	}
+}
+
 static void sde_encoder_frame_done_callback(
 		struct drm_encoder *drm_enc,
 		struct sde_encoder_phys *ready_phys, u32 event)
@@ -7548,8 +7586,10 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 		goto end;
 	}
 
-	ret = _sde_encoder_prepare_for_kickoff_processing(drm_enc, params, sde_enc, sde_kms,
+	rc = _sde_encoder_prepare_for_kickoff_processing(drm_enc, params, sde_enc, sde_kms,
 			needs_hw_reset, is_cmd_mode);
+	if (rc)
+		ret = rc;
 
 end:
 	SDE_ATRACE_END("sde_encoder_prepare_for_kickoff");
@@ -9056,6 +9096,7 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 
 	mutex_init(&sde_enc->off_work_lock);
 	mutex_init(&sde_enc->rc_lock);
+	mutex_init(&sde_enc->pm_qos_lock);
 	sde_enc->vblank_enabled = false;
 	sde_enc->qdss_status = false;
 

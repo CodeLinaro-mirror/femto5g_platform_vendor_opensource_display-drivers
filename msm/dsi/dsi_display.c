@@ -6552,6 +6552,7 @@ static int dsi_display_bind(struct device *dev,
 	}
 
 	atomic_set(&display->clkrate_change_pending, 0);
+	atomic_set(&display->cmd_seq_no, 0);
 	display->cached_clk_rate = 0;
 
 	memset(&info, 0x0, sizeof(info));
@@ -6780,7 +6781,7 @@ static void dsi_display_unbind(struct device *dev,
 	mutex_unlock(&display->display_lock);
 }
 
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 static int dsi_display_pm_freeze(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -6833,6 +6834,21 @@ static int dsi_display_pm_restore(struct device *dev)
 	if (!hfi_kms)
 		return -EINVAL;
 
+	/*
+	 * Rebind DSI HFI client to current active adapter on restore.
+	 * Prevent stale host/session usage after hibernation.
+	 */
+	if (display->dsi_hfi_info && display->dsi_hfi_info->hfi_client &&
+			hfi_kms->hfi_adapter &&
+			(display->dsi_hfi_info->hfi_adapter != hfi_kms->hfi_adapter ||
+			 display->dsi_hfi_info->hfi_client->host != hfi_kms->hfi_adapter)) {
+		DSI_WARN("rebinding dsi hfi client: old_adapter=%pK new_adapter=%pK old_host=%pK\n",
+			display->dsi_hfi_info->hfi_adapter, hfi_kms->hfi_adapter,
+			display->dsi_hfi_info->hfi_client->host);
+		display->dsi_hfi_info->hfi_adapter = hfi_kms->hfi_adapter;
+		display->dsi_hfi_info->hfi_client->host = hfi_kms->hfi_adapter;
+	}
+
 	rc = hfi_kms_send_trace_cfg(hfi_kms, HFI_TRUE);
 	if (rc) {
 		DSI_ERR("failed to send trace config to DCP, rc: %d\n", rc);
@@ -6862,7 +6878,7 @@ static const struct dev_pm_ops dsi_display_pm_ops = {
 	.freeze = dsi_display_pm_freeze,
 	.restore = dsi_display_pm_restore,
 };
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 
 static const struct component_ops dsi_display_comp_ops = {
 	.bind = dsi_display_bind,
@@ -6875,9 +6891,9 @@ static struct platform_driver dsi_display_driver = {
 	.driver = {
 		.name = "msm-dsi-display",
 		.of_match_table = dsi_display_dt_match,
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 		.pm = &dsi_display_pm_ops,
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 		.suppress_bind_attrs = true,
 	},
 };

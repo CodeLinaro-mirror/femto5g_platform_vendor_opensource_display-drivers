@@ -7,12 +7,14 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/gpio.h>
-#include <linux/i2c.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/pwm.h>
 #include <video/mipi_display.h>
+#if IS_ENABLED(CONFIG_MTD)
+#include <linux/mtd/mtd.h>
+#endif
 
 #include "dsi_panel.h"
 #include "dsi_ctrl_hw.h"
@@ -22,25 +24,6 @@
 #include "sde_vdc_helper.h"
 #include "sde_hw_catalog.h"
 #include "dsi_hfi.h"
-
-#if IS_ENABLED(CONFIG_ISL97900_LED)
-#include <misc/isl97900_led.h>
-
-#else
-enum isl_function {
-	ISL_LED_BRIGHTNESS_RGB_LEVEL,
-	ISL_LED_BRIGHTNESS_RED_LEVEL,
-	ISL_LED_BRIGHTNESS_GREEN_LEVEL,
-	ISL_LED_BRIGHTNESS_BLUE_LEVEL,
-	ISL_LED_BRIGHTNESS_EVENT_MAX,
-};
-
-static int isl97900_led_event(struct device_node *node, enum isl_function event, u32 level)
-{
-	return 0;
-}
-
-#endif
 
 /**
  * topology is currently defined by a set of following 3 values:
@@ -65,7 +48,6 @@ static int isl97900_led_event(struct device_node *node, enum isl_function event,
 #define RSCC_MODE_THRESHOLD_TIME_US 40
 #define DCS_COMMAND_THRESHOLD_TIME_US 40
 
-#define DSI_PANEL_I2C_MIN_CMD_SIZE 3 /* slave, delay, len */
 #define DSI_PANEL_DEFAULT_GPIO_RELEASE_DELAY_MS  120
 
 static void dsi_dce_prepare_pps_header(char *buf, u32 pps_delay_ms)
@@ -335,7 +317,7 @@ static int dsi_panel_reset(struct dsi_panel *panel)
 	struct dsi_panel_reset_config *r_config = &panel->reset_config;
 	int i;
 
-	if (!gpio_is_valid(r_config->reset_gpio))
+	if (!gpio_is_valid(r_config->reset_gpio) || panel->skip_pwr)
 		goto skip_reset_gpio;
 
 	if (gpio_is_valid(panel->reset_config.disp_en_gpio)) {
@@ -366,11 +348,10 @@ static int dsi_panel_reset(struct dsi_panel *panel)
 	}
 
 skip_reset_gpio:
-	if (gpio_is_valid(panel->bl_config.en_gpio)) {
-		rc = gpio_direction_output(panel->bl_config.en_gpio, 1);
-		if (rc)
-			DSI_ERR("unable to set dir for bklt gpio rc=%d\n", rc);
-	}
+	rc = dsi_panel_set_backlight_en_gpio(panel, true);
+	if (rc)
+		DSI_ERR("[%s] failed to enable backlight, rc=%d\n",
+			 panel->name, rc);
 
 	if (gpio_is_valid(panel->reset_config.lcd_mode_sel_gpio)) {
 		bool out = true;
@@ -431,6 +412,23 @@ int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel)
 	pinctrl_select_state(panel->pinctrl.pinctrl, orig_state);
 	if (rc)
 		DSI_ERR("[%s] failed to toggle TE back, rc=%d", panel->name, rc);
+
+	return rc;
+}
+
+int dsi_panel_set_backlight_en_gpio(struct dsi_panel *panel, bool enable)
+{
+	int rc = 0;
+
+	if (!panel)
+		return -EINVAL;
+
+	if (!gpio_is_valid(panel->bl_config.en_gpio))
+		return 0;
+
+	rc = gpio_direction_output(panel->bl_config.en_gpio, enable ? 1 : 0);
+	if (rc)
+		DSI_ERR("failed to set backlight en_gpio %d, rc=%d\n", enable ? 1 : 0, rc);
 
 	return rc;
 }
@@ -505,17 +503,16 @@ int dsi_panel_power_on(struct dsi_panel *panel, bool is_cont_splash)
 		}
 	}
 
-	if (panel->skip_pwr)
-		panel->skip_pwr = false;
-
 	goto exit;
 
 error_disable_gpio:
 	if (gpio_is_valid(panel->reset_config.disp_en_gpio))
 		gpio_set_value(panel->reset_config.disp_en_gpio, 0);
 
-	if (gpio_is_valid(panel->bl_config.en_gpio))
-		gpio_set_value(panel->bl_config.en_gpio, 0);
+	rc = dsi_panel_set_backlight_en_gpio(panel, false);
+	if (rc)
+		DSI_ERR("[%s] failed to disable backlight, rc=%d\n",
+			 panel->name, rc);
 
 	(void)dsi_panel_set_pinctrl_state(panel, false, is_cont_splash);
 
@@ -865,13 +862,7 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 		rc = dsi_panel_update_pwm_backlight(panel, bl_lvl);
 		break;
 	case DSI_BACKLIGHT_I2C:
-		if (panel->rgb_left_led_node)
-			isl97900_led_event(panel->rgb_left_led_node,
-					0, bl_lvl);
-
-		if (panel->rgb_right_led_node)
-			isl97900_led_event(panel->rgb_right_led_node,
-					0, bl_lvl);
+		rc = dsi_panel_i2c_update_backlight(panel, bl_lvl);
 		break;
 	default:
 		DSI_ERR("Backlight type(%d) not supported\n", bl->type);
@@ -946,26 +937,6 @@ static int dsi_panel_pwm_register(struct dsi_panel *panel)
 	panel->pinctrl.cur_state = panel->pinctrl.pwm_pin;
 
 	return 0;
-}
-
-static int dsi_panel_parse_rgb_led(struct dsi_panel *panel,
-		struct device_node *of_node)
-{
-	int rc = 0;
-
-	if (!panel || !of_node)
-		return -EINVAL;
-
-	if (panel->bl_config.type != DSI_BACKLIGHT_I2C)
-		return 0;
-
-	panel->rgb_left_led_node = of_parse_phandle(of_node,
-		"qcom,panel-rgb-left-led", 0);
-
-	panel->rgb_right_led_node = of_parse_phandle(of_node,
-		"qcom,panel-rgb-right-led", 0);
-
-	return rc;
 }
 
 static int dsi_panel_bl_register(struct dsi_panel *panel)
@@ -2552,6 +2523,8 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"Privacy layer not parsed from DTSI, generated dynamically",
 	"Brightness not parsed from DTSI, generated dynamically",
 	"qcom,mdss-dsi-custom-on-command",
+	"qcom,mdss-dsi-roi-pre-command",
+	"qcom,mdss-dsi-roi-post-command",
 };
 
 /**
@@ -2613,6 +2586,8 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"Privacy layer not parsed from DTSI, generated dynamically",
 	"Brightness not parsed from DTSI, generated dynamically",
 	"qcom,mdss-dsi-custom-on-command-state",
+	"qcom,mdss-dsi-roi-pre-command-state",
+	"qcom,mdss-dsi-roi-post-command-state",
 };
 
 /**
@@ -2961,6 +2936,80 @@ error:
 	return rc;
 }
 
+/*
+ * dsi_panel_parse_calibration_mtd - look up the left/right calibration MTD
+ * devices from the panel DT node.
+ */
+#if IS_ENABLED(CONFIG_MTD)
+static int dsi_panel_parse_calibration_mtd(struct dsi_panel *panel)
+{
+	struct device_node *np;
+	struct mtd_info *mtd;
+
+	np = of_parse_phandle(panel->panel_of_node,
+			"qcom,panel-calibration-mtd-left", 0);
+	if (!np) {
+		DSI_DEBUG("[%s] calibration MTD left not defined, skipping\n",
+				panel->name);
+	} else {
+		mtd = of_get_mtd_device_by_node(np);
+		of_node_put(np);
+		if (IS_ERR_OR_NULL(mtd)) {
+			DSI_ERR("[%s] failed to get left calibration MTD device, rc=%ld\n",
+					panel->name, PTR_ERR(mtd));
+			return IS_ERR(mtd) ? PTR_ERR(mtd) : -ENODEV;
+		}
+		panel->calibration_mtd_left = mtd;
+	}
+
+	np = of_parse_phandle(panel->panel_of_node,
+			"qcom,panel-calibration-mtd-right", 0);
+	if (!np) {
+		DSI_DEBUG("[%s] calibration MTD right not defined, skipping\n",
+				panel->name);
+	} else {
+		mtd = of_get_mtd_device_by_node(np);
+		of_node_put(np);
+		if (IS_ERR_OR_NULL(mtd)) {
+			DSI_ERR("[%s] failed to get right calibration MTD device, rc=%ld\n",
+					panel->name, PTR_ERR(mtd));
+			if (panel->calibration_mtd_left) {
+				put_mtd_device(panel->calibration_mtd_left);
+				panel->calibration_mtd_left = NULL;
+			}
+			return IS_ERR(mtd) ? PTR_ERR(mtd) : -ENODEV;
+		}
+		panel->calibration_mtd_right = mtd;
+	}
+
+	return 0;
+}
+#else
+static inline int dsi_panel_parse_calibration_mtd(struct dsi_panel *panel)
+{
+	DSI_WARN("[%s] calibration enabled in DT but MTD support not compiled in, disabling\n",
+			panel->name);
+	panel->calibration_enabled = false;
+	return 0;
+}
+#endif /* CONFIG_MTD */
+
+static int dsi_panel_parse_calibration(struct dsi_panel *panel)
+{
+	struct dsi_parser_utils *utils = &panel->utils;
+
+	panel->calibration_enabled = utils->read_bool(utils->data,
+			"qcom,panel-calibration-enabled");
+
+	DSI_DEBUG("%s: panel calibration %s\n", __func__,
+		(panel->calibration_enabled ? "enabled" : "disabled"));
+
+	if (!panel->calibration_enabled)
+		return 0;
+
+	return dsi_panel_parse_calibration_mtd(panel);
+}
+
 static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 {
 	struct dsi_parser_utils *utils = &panel->utils;
@@ -3002,6 +3051,13 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 
 	DSI_DEBUG("%s: privacy feature %s\n", __func__,
 		(panel->privacy_feature_enabled ? "enabled" : "disabled"));
+
+	rc = dsi_panel_parse_calibration(panel);
+	if (rc) {
+		DSI_ERR("[%s] failed to parse calibration details, rc=%d\n",
+				panel->name, rc);
+		return rc;
+	}
 
 	panel->spr_info.enable = false;
 	panel->spr_info.pack_type = MSM_DISPLAY_SPR_TYPE_MAX;
@@ -4659,261 +4715,6 @@ static void dsi_panel_setup_vm_ops(struct dsi_panel *panel, bool trusted_vm_env)
 	}
 }
 
-static int dsi_panel_i2c_tx_cmd(struct dsi_panel *panel, u8 slave_addr, const u8 *buf, u32 len)
-{
-	struct dsi_panel_i2c_config *cfg;
-	struct i2c_msg msg;
-	int rc = 0;
-
-	if (!panel || !buf || !len || !slave_addr)
-		return -EINVAL;
-
-	cfg = &panel->i2c_config;
-	msg.addr = slave_addr;
-	msg.flags = 0;
-	msg.len = len;
-	msg.buf = (u8 *)buf;
-
-	if (cfg->left_adapter) {
-		rc = i2c_transfer(cfg->left_adapter, &msg, 1);
-		if (rc != 1) {
-			DSI_ERR("i2c transfer failed on left adapter: %d\n", rc);
-			return -EIO;
-		}
-	}
-
-	if (cfg->right_adapter) {
-		rc = i2c_transfer(cfg->right_adapter, &msg, 1);
-		if (rc != 1) {
-			DSI_ERR("i2c transfer failed on right adapter: %d\n", rc);
-			return -EIO;
-		}
-	}
-
-	return 0;
-}
-
-static int dsi_panel_i2c_get_cmd_count(const u8 *data, u32 nbytes, u32 *cnt)
-{
-	u32 count = 0;
-
-	if (!data || !nbytes || !cnt)
-		return -EINVAL;
-
-	while (nbytes >= DSI_PANEL_I2C_MIN_CMD_SIZE) {
-		u32 packet_length = DSI_PANEL_I2C_MIN_CMD_SIZE + data[2];
-
-		if (packet_length > nbytes) {
-			DSI_ERR("malformed i2c cmds: there are %u bytes left\n", nbytes);
-			return -EINVAL;
-		}
-
-		nbytes -= packet_length;
-		data += packet_length;
-		count++;
-	}
-
-	*cnt = count;
-	return 0;
-}
-
-static int dsi_panel_i2c_create_cmd_set(const u8 *data, u32 nbytes,
-					u32 count, struct dsi_panel_i2c_cmd *cmds)
-{
-	u32 pos = 0;
-	u32 i;
-	int rc = 0;
-
-	if (!data || !nbytes || !cmds)
-		return -EINVAL;
-
-	for (i = 0; i < count; i++) {
-		u8 slave, delay, plen;
-		u8 *cmds_data;
-
-		if ((nbytes - pos) < DSI_PANEL_I2C_MIN_CMD_SIZE) {
-			DSI_ERR("malformed i2c cmds: short header at %u\n", pos);
-			rc = -EINVAL;
-			goto error;
-		}
-
-		slave = data[pos++];
-		delay = data[pos++];
-		plen = data[pos++];
-
-		if ((nbytes - pos) < plen) {
-			DSI_ERR("malformed i2c cmd payload overruns at %u (len=%u)\n",
-				pos, plen);
-			rc = -EINVAL;
-			goto error;
-		}
-
-		cmds_data = kmemdup(&data[pos], plen, GFP_KERNEL);
-		if (!cmds_data) {
-			rc = -ENOMEM;
-			goto error;
-		}
-
-		cmds[i].slave_addr = slave;
-		cmds[i].post_wait_ms = delay;
-		cmds[i].len = plen;
-		cmds[i].data = cmds_data;
-
-		pos += plen;
-	}
-
-	return 0;
-
-error:
-	while (i--) {
-		kfree(cmds[i].data);
-		cmds[i].data = NULL;
-		cmds[i].len = 0;
-	}
-	return rc;
-}
-
-static void dsi_panel_i2c_free_config(struct dsi_panel *panel)
-{
-	u32 i;
-	struct dsi_panel_i2c_config *cfg;
-
-	if (!panel)
-		return;
-
-	cfg = &panel->i2c_config;
-
-	if (cfg->left_adapter) {
-		i2c_put_adapter(cfg->left_adapter);
-		cfg->left_adapter = NULL;
-	}
-
-	if (cfg->right_adapter) {
-		i2c_put_adapter(cfg->right_adapter);
-		cfg->right_adapter = NULL;
-	}
-
-	if (cfg->cmd_set.cmds) {
-		for (i = 0; i < cfg->cmd_set.count; i++) {
-			kfree(cfg->cmd_set.cmds[i].data);
-			cfg->cmd_set.cmds[i].data = NULL;
-			cfg->cmd_set.cmds[i].len = 0;
-		}
-		kfree(cfg->cmd_set.cmds);
-		cfg->cmd_set.cmds = NULL;
-		cfg->cmd_set.count = 0;
-	}
-
-	cfg->i2c_support = false;
-}
-
-static int dsi_panel_i2c_parse_config(struct dsi_panel *panel)
-{
-	struct dsi_panel_i2c_config *cfg;
-	struct device_node *np = NULL, *np_left = NULL, *np_right = NULL;
-	const u8 *data = NULL;
-	int nbytes = 0;
-	int rc = 0;
-	u32 ncmds = 0;
-
-	if (!panel || !panel->panel_of_node) {
-		DSI_INFO("invalid params\n");
-		return 0;
-	}
-
-	cfg = &panel->i2c_config;
-	np = panel->panel_of_node;
-
-	np_left = of_parse_phandle(np, "qcom,panel-i2c-left", 0);
-	np_right = of_parse_phandle(np, "qcom,panel-i2c-right", 0);
-
-	if (!np_left && !np_right) {
-		DSI_DEBUG("[%s] no panel i2c bus provided\n", panel->name);
-		return 0;
-	}
-
-	if (np_left) {
-		cfg->left_adapter = of_find_i2c_adapter_by_node(np_left);
-		of_node_put(np_left);
-	}
-
-	if (np_right) {
-		cfg->right_adapter = of_find_i2c_adapter_by_node(np_right);
-		of_node_put(np_right);
-	}
-
-	if (!cfg->left_adapter && !cfg->right_adapter) {
-		DSI_DEBUG("[%s] i2c adapter(s) not ready\n", panel->name);
-		rc = -EPROBE_DEFER;
-	}
-
-	data = of_get_property(np, "qcom,mdss-panel-i2c-on-command", &nbytes);
-	if (!data || !nbytes) {
-		rc = 0;
-		goto error;
-	}
-
-	rc = dsi_panel_i2c_get_cmd_count(data, (u32)nbytes, &ncmds);
-	if (rc) {
-		DSI_ERR("[%s] failed to get i2c cmd count, rc=%d\n", panel->name, rc);
-		goto error;
-	}
-
-	cfg->cmd_set.count = ncmds;
-	cfg->cmd_set.cmds = kcalloc(ncmds, sizeof(*cfg->cmd_set.cmds), GFP_KERNEL);
-	if (!cfg->cmd_set.cmds) {
-		rc = -ENOMEM;
-		goto error;
-	}
-
-	rc = dsi_panel_i2c_create_cmd_set(data, (u32)nbytes, ncmds, cfg->cmd_set.cmds);
-	if (rc) {
-		DSI_ERR("[%s] failed to create i2c cmd set, rc=%d\n", panel->name, rc);
-		goto error;
-	}
-
-	if (cfg->cmd_set.count)
-		cfg->i2c_support = true;
-
-	return 0;
-
-error:
-	dsi_panel_i2c_free_config(panel);
-	return rc;
-}
-
-int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel)
-{
-	struct dsi_panel_i2c_cmd_set *set;
-	u32 i;
-	int rc = 0;
-	struct dsi_panel_i2c_cmd *cmd;
-
-	if (!panel)
-		return -EINVAL;
-
-	set = &panel->i2c_config.cmd_set;
-
-	if (!panel->i2c_config.i2c_support || !set->count) {
-		DSI_DEBUG("[%s] No commands to be sent\n", panel->name);
-		return 0;
-	}
-
-	for (i = 0; i < set->count; i++) {
-		cmd = &set->cmds[i];
-		rc = dsi_panel_i2c_tx_cmd(panel, cmd->slave_addr, cmd->data, cmd->len);
-		if (rc) {
-			DSI_ERR("[%s] failed to send i2c cmd, rc=%d\n", panel->name, rc);
-			break;
-		}
-		if (cmd->post_wait_ms) {
-			usleep_range(cmd->post_wait_ms * 1000,
-				cmd->post_wait_ms * 1000 + 100);
-		}
-	}
-	return rc;
-}
-
 struct dsi_panel *dsi_panel_get(struct device *parent,
 				struct device_node *of_node,
 				struct device_node *parser_node,
@@ -5027,10 +4828,6 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	if (rc)
 		DSI_DEBUG("failed to parse esd config, rc=%d\n", rc);
 
-	rc = dsi_panel_parse_rgb_led(panel, of_node);
-	if (rc)
-		DSI_DEBUG("failed to get rgb led info, rc=%d\n", rc);
-
 	rc = dsi_panel_vreg_get(panel);
 	if (rc) {
 		DSI_ERR("[%s] failed to get panel regulators, rc=%d\n",
@@ -5076,6 +4873,18 @@ void dsi_panel_put(struct dsi_panel *panel)
 
 	/* free resources allocated for ESD check */
 	dsi_panel_esd_config_deinit(&panel->esd_config);
+
+#if IS_ENABLED(CONFIG_MTD)
+	/* Release MTD references acquired in dsi_panel_parse_calibration_mtd() */
+	if (panel->calibration_mtd_left) {
+		put_mtd_device(panel->calibration_mtd_left);
+		panel->calibration_mtd_left = NULL;
+	}
+	if (panel->calibration_mtd_right) {
+		put_mtd_device(panel->calibration_mtd_right);
+		panel->calibration_mtd_right = NULL;
+	}
+#endif
 
 	kfree(panel->avr_caps.avr_step_fps_list);
 	kfree(panel);
@@ -6022,13 +5831,6 @@ int dsi_panel_prepare(struct dsi_panel *panel)
 			       panel->name, rc);
 			goto error;
 		}
-	}
-
-	rc = dsi_panel_i2c_tx_cmd_set(panel);
-	if (rc) {
-		DSI_ERR("[%s] failed to send i2c cmds, rc=%d\n",
-			panel->name, rc);
-		goto error;
 	}
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_PRE_ON, false);
@@ -7417,6 +7219,13 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		goto error;
 	}
 
+	rc = dsi_panel_i2c_enable(panel);
+	if (rc) {
+		DSI_ERR("[%s] failed to send i2c on cmds, rc=%d\n",
+			panel->name, rc);
+		goto error;
+	}
+
 	if (panel->panel_mode == DSI_OP_CMD_MODE) {
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_CMD_ON, false);
 		if (rc) {
@@ -7481,8 +7290,10 @@ int dsi_panel_pre_disable(struct dsi_panel *panel)
 
 	mutex_lock(&panel->panel_lock);
 
-	if (gpio_is_valid(panel->bl_config.en_gpio))
-		gpio_set_value(panel->bl_config.en_gpio, 0);
+	rc = dsi_panel_set_backlight_en_gpio(panel, false);
+	if (rc)
+		DSI_ERR("[%s] failed to disable backlight, rc=%d\n",
+			 panel->name, rc);
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_PRE_OFF, false);
 	if (rc) {
@@ -7527,6 +7338,13 @@ int dsi_panel_disable(struct dsi_panel *panel)
 			 * subsequent display enable anyway.
 			 */
 			pr_warn_ratelimited("[%s] failed to send DSI_CMD_SET_OFF cmds, rc=%d\n",
+					panel->name, rc);
+			rc = 0;
+		}
+
+		rc = dsi_panel_i2c_disable(panel);
+		if (rc) {
+			pr_warn_ratelimited("[%s] failed to send i2c off cmds, rc=%d\n",
 					panel->name, rc);
 			rc = 0;
 		}

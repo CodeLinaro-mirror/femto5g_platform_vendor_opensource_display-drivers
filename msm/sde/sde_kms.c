@@ -698,6 +698,7 @@ end:
 
 		smmu_state->state = smmu_state->prev_state;
 		smmu_state->secure_level = smmu_state->prev_secure_level;
+		smmu_state->crtc_id = 0;
 
 		if (smmu_state->sui_misr_state == SUI_MISR_ENABLE_REQ)
 			_sde_kms_sui_misr_ctrl(sde_kms, crtc, false);
@@ -1498,12 +1499,14 @@ static void _sde_kms_free_splash_display_data(struct sde_kms *sde_kms,
 			!sde_kms->splash_data.num_splash_displays)
 		return;
 
-	if (sde_kms->splash_data.num_splash_regions) {
+	if (sde_kms->splash_data.num_splash_regions &&
+			!sde_kms->catalog->enable_hibernation) {
 		_sde_kms_splash_mem_put(sde_kms, splash_display->splash);
 		if (splash_display->demura)
 			_sde_kms_splash_mem_put(sde_kms,
 					splash_display->demura);
 	}
+
 	sde_kms->splash_data.num_splash_displays--;
 	SDE_DEBUG("cont_splash handoff done, remaining:%d\n",
 				sde_kms->splash_data.num_splash_displays);
@@ -2836,10 +2839,10 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 	int ret = 0;
 	int wb_idx = 0, csc_wb_idx = 0, repro_wb_idx = 0;
 	int dsi_idx = 0;
-	enum wb_opmode opmode;
+	enum wb_opmode opmode = WB_DPU;
 	int dp_idx = 0;
 
-	if (!sde_kms) {
+	if (!sde_kms || !sde_kms->hfi_kms) {
 		SDE_ERROR("invalid arguments\n");
 		return -EINVAL;
 	}
@@ -2847,8 +2850,7 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 	dev = sde_kms->dev;
 	priv = dev->dev_private;
 
-	if (sde_kms->hfi_kms)
-		hfi_catalog = sde_kms->hfi_kms->catalog;
+	hfi_catalog = sde_kms->hfi_kms->catalog;
 
 	drm_connector_list_iter_begin(dev, &conn_iter);
 	drm_for_each_connector_iter(conn, &conn_iter) {
@@ -2876,7 +2878,7 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 			c_conn->ops.ctl_pre_transition(c_conn->display);
 		} else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DisplayPort) {
 			sde_connector_setup_obj_id(conn,
-					sde_kms->hfi_kms->catalog->dp_indices[dp_idx++]);
+					hfi_catalog->dp_indices[dp_idx++]);
 
 			c_conn = to_sde_connector(conn);
 			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
@@ -4354,6 +4356,10 @@ static int sde_kms_vm_state_update(struct sde_kms *sde_kms,
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
 
 	if (IS_DISP_OP_HFI(disp_op) && (vm_req == VM_REQ_ACQUIRE)) {
+		if (sde_in_trusted_vm(sde_kms) && !sde_kms->hfi_tvm_start) {
+			SDE_ERROR("HFI not initialized, skip vm state update\n");
+			return -EINVAL;
+		}
 		atomic_set(&sde_kms->tui_hfi_in_progress, 1);
 		rc = hfi_kms_set_vm_state(crtc, new_cstate, HFI_DEVICE_RESOURCE_ACQUIRE);
 		atomic_set(&sde_kms->tui_hfi_in_progress, 0);
@@ -5621,8 +5627,8 @@ static int sde_kms_pm_suspend(struct device *dev)
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_HIBERNATE)
-int sde_kms_freeze_helper(struct sde_kms *sde_kms)
+#if IS_ENABLED(CONFIG_HIBERNATION)
+static int sde_kms_freeze_helper(struct sde_kms *sde_kms)
 {
 	struct drm_device *ddev;
 	struct drm_modeset_acquire_ctx ctx;
@@ -5833,6 +5839,10 @@ static int sde_kms_pm_freeze(struct device *dev)
 	if (sde_kms->pm_suspend_clk_dump)
 		_sde_kms_dump_clks_state(sde_kms);
 
+	ret = hfi_adapter_handle_hibernation_entry(hfi_client);
+	if (ret)
+		DRM_ERROR("failed to handle freeze at hfi adapter: %d\n", ret);
+
 	return ret;
 }
 
@@ -5872,10 +5882,23 @@ static int sde_kms_pm_restore(struct device *dev)
 	 * 7. Resume displays
 	 */
 
+	/* Reinit the queues at the hibernation exit.*/
+	ret = hfi_adapter_handle_hibernation_exit();
+	if (ret) {
+		DRM_ERROR("failed to reinit queues at restore: %d\n", ret);
+		return ret;
+	}
+
 	ret = sde_kms_setup_hfi(priv, ddev);
 	if (ret) {
 		SDE_ERROR("HFI setup failed\n");
 		return ret;
+	}
+
+	/* Reset catalog before re-initialization.  */
+	if (hfi_kms->catalog) {
+		memset(hfi_kms->catalog, 0, sizeof(*hfi_kms->catalog));
+		atomic_set(&hfi_kms->cat_init_done, 0);
 	}
 
 	/* Device-init */
@@ -5899,6 +5922,11 @@ static int sde_kms_pm_restore(struct device *dev)
 		return ret;
 	}
 
+	/* Re-configure HW fence after restore */
+	ret = hfi_kms_init_hw_fence_config(hfi_kms);
+	if (ret)
+		SDE_INFO("hfi hw fence config init failed on restore: %d\n", ret);
+
 	/* Clear any pending interrupts before restore */
 	if (sde_kms->hw_intr && sde_kms->hw_intr->ops.clear_all_irqs[disp_op]) {
 		sde_kms->hw_intr->ops.clear_all_irqs[disp_op](sde_kms->hw_intr);
@@ -5907,10 +5935,9 @@ static int sde_kms_pm_restore(struct device *dev)
 
 	/* Re-enable and re-register interrupts during restore */
 	if (sde_kms->hw_intr) {
-		ret = sde_core_irq_postinstall(sde_kms);
+		sde_core_irq_preinstall(sde_kms);
 		if (ret) {
 			SDE_ERROR("failed to re-install interrupts, ret: %d\n", ret);
-			return ret;
 		}
 		SDE_DEBUG("Re-enabled and re-registered MDSS interrupts during restore\n");
 	}
@@ -5924,7 +5951,7 @@ static int sde_kms_pm_restore(struct device *dev)
 
 	return ret;
 }
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 
 int sde_kms_resume_helper(struct sde_kms *sde_kms)
 {
@@ -6041,7 +6068,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.display_early_ept_hint = sde_kms_display_early_ept_hint,
 	.pm_suspend      = sde_kms_pm_suspend,
 	.pm_resume       = sde_kms_pm_resume,
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 	.pm_freeze      = sde_kms_pm_freeze,
 	.pm_restore       = sde_kms_pm_restore,
 #endif
@@ -6376,9 +6403,18 @@ static int sde_kms_pd_enable(struct generic_pm_domain *genpd)
 	SDE_DEBUG("\n");
 
 	rc = pm_runtime_get_sync(sde_kms->dev->dev);
+	if (rc < 0) {
+		pm_runtime_put_noidle(sde_kms->dev->dev);
+		dev_err(sde_kms->dev->dev, "PM runtime resume failed: %d\n", rc);
+		SDE_EVT32(rc, genpd->device_count,
+			atomic_read(&sde_kms->dev->dev->power.usage_count),
+			pm_runtime_suspended(sde_kms->dev->dev));
+		return rc;
+	}
 	rc = (rc > 0) ? 0 : rc;
 
-	SDE_EVT32(rc, genpd->device_count);
+	SDE_EVT32(rc, genpd->device_count, atomic_read(&sde_kms->dev->dev->power.usage_count),
+		pm_runtime_suspended(sde_kms->dev->dev));
 
 	return rc;
 }
@@ -6391,7 +6427,8 @@ static int sde_kms_pd_disable(struct generic_pm_domain *genpd)
 
 	pm_runtime_put_sync(sde_kms->dev->dev);
 
-	SDE_EVT32(genpd->device_count);
+	SDE_EVT32(genpd->device_count, atomic_read(&sde_kms->dev->dev->power.usage_count),
+		pm_runtime_suspended(sde_kms->dev->dev));
 
 	return 0;
 }
@@ -7152,6 +7189,7 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 
 	msm_kms_init(&sde_kms->base, &kms_funcs);
 	sde_kms->dev = dev;
+	sde_kms->smmu_state.crtc_id = 0;
 
 	return &sde_kms->base;
 }

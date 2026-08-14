@@ -206,6 +206,22 @@ static struct drm_private_state *dp_mst_duplicate_bridge_state(
 	return &state->base;
 }
 
+#if (KERNEL_VERSION(7, 1, 0) <= LINUX_VERSION_CODE)
+static struct drm_private_state *dp_mst_create_bridge_state(
+		struct drm_private_obj *obj)
+{
+	struct dp_mst_bridge_state *state;
+
+	state = kzalloc(sizeof(*state), GFP_KERNEL);
+	if (!state)
+		return ERR_PTR(-ENOMEM);
+
+	__drm_atomic_helper_private_obj_duplicate_state(obj, &state->base);
+
+	return &state->base;
+}
+#endif
+
 static void dp_mst_destroy_bridge_state(struct drm_private_obj *obj,
 		struct drm_private_state *state)
 {
@@ -215,10 +231,18 @@ static void dp_mst_destroy_bridge_state(struct drm_private_obj *obj,
 	kfree(priv_state);
 }
 
+#if (KERNEL_VERSION(7, 1, 0) <= LINUX_VERSION_CODE)
+static const struct drm_private_state_funcs dp_mst_bridge_state_funcs = {
+	.atomic_create_state = dp_mst_create_bridge_state,
+	.atomic_duplicate_state = dp_mst_duplicate_bridge_state,
+	.atomic_destroy_state = dp_mst_destroy_bridge_state,
+};
+#else
 static const struct drm_private_state_funcs dp_mst_bridge_state_funcs = {
 	.atomic_duplicate_state = dp_mst_duplicate_bridge_state,
 	.atomic_destroy_state = dp_mst_destroy_bridge_state,
 };
+#endif
 
 static struct dp_mst_bridge_state *dp_mst_get_bridge_atomic_state(
 		struct drm_atomic_state *state, struct dp_mst_bridge *bridge)
@@ -1139,7 +1163,9 @@ int dp_mst_drm_bridge_init(void *data, struct drm_encoder *encoder)
 {
 	int rc = 0;
 	struct dp_mst_bridge *bridge = NULL;
+#if !(KERNEL_VERSION(7, 1, 0) <= LINUX_VERSION_CODE)
 	struct dp_mst_bridge_state *state;
+#endif
 	struct drm_device *dev;
 	struct dp_drv *drv = data;
 	struct msm_drm_private *priv = NULL;
@@ -1177,6 +1203,14 @@ int dp_mst_drm_bridge_init(void *data, struct drm_encoder *encoder)
 
 	priv->bridges[priv->num_bridges++] = &bridge->base;
 
+#if (KERNEL_VERSION(7, 1, 0) <= LINUX_VERSION_CODE)
+	rc = drm_atomic_private_obj_init(dev, &bridge->obj,
+				    &dp_mst_bridge_state_funcs);
+	if (rc) {
+		DP_ERR("failed to init private obj, rc=%d\n", rc);
+		goto end;
+	}
+#else
 	state = kzalloc(sizeof(*state), GFP_KERNEL);
 	if (state == NULL) {
 		rc = -ENOMEM;
@@ -1186,6 +1220,7 @@ int dp_mst_drm_bridge_init(void *data, struct drm_encoder *encoder)
 	drm_atomic_private_obj_init(dev, &bridge->obj,
 				    &state->base,
 				    &dp_mst_bridge_state_funcs);
+#endif
 
 	DP_MST_DEBUG("mst drm bridge init. bridge id:%d\n", i);
 
@@ -1200,8 +1235,10 @@ int dp_mst_drm_bridge_init(void *data, struct drm_encoder *encoder)
 			dp_mst_drm_fixed_connector_init(drv, bridge->encoder);
 		if (bridge->fixed_connector == NULL) {
 			DP_ERR("failed to create fixed connector\n");
-			kfree(state);
 			rc = -ENOMEM;
+#if !(KERNEL_VERSION(7, 1, 0) <= LINUX_VERSION_CODE)
+			kfree(state);
+#endif
 			goto end;
 		}
 	}

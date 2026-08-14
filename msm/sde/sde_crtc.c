@@ -413,12 +413,17 @@ static void _sde_crtc_check_loopback_pstates(struct drm_crtc_state *crtc_state)
 	 */
 	drm_atomic_crtc_state_for_each_plane(plane, crtc_state) {
 #if (KERNEL_VERSION(6, 19, 0) <= LINUX_VERSION_CODE)
-		plane_state = drm_atomic_get_old_plane_state(
+		plane_state = drm_atomic_get_new_plane_state(
 				crtc_state->state, plane);
 #else
 		plane_state = drm_atomic_get_existing_plane_state(
 				crtc_state->state, plane);
 #endif
+		if (!plane_state) {
+			plane_state = plane->state;
+			SDE_EVT32(DRMID(plane), crtc_state->plane_mask,
+				plane_state, SDE_EVTLOG_FUNC_CASE1);
+		}
 
 		if (!plane_state)
 			continue;
@@ -435,6 +440,47 @@ static void _sde_crtc_check_loopback_pstates(struct drm_crtc_state *crtc_state)
 			max(cstate->cac_mixer_roi[pstate->pref_lm].src_h,
 				plane_state->crtc_h);
 	}
+}
+
+static int _sde_crtc_check_modeset_dnsc_blur(struct drm_crtc *crtc,
+	struct drm_crtc_state *crtc_state)
+{
+	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
+	struct msm_display_mode *msm_mode;
+	struct drm_connector *conn;
+	struct drm_connector_state *conn_state;
+	struct sde_connector_state *sde_conn_state;
+	int i;
+
+	if (!cstate->dnsc_res_changed)
+		return 0;
+
+	for (i = 0; i < cstate->num_connectors; i++) {
+		conn = cstate->connectors[i];
+		conn_state = drm_atomic_get_new_connector_state(crtc_state->state, conn);
+		sde_conn_state = to_sde_connector_state(conn_state);
+		msm_mode = &sde_conn_state->msm_mode;
+
+		/* Downscaler blur block can be enabled independently incase of
+		 * CWB Demura client request. It need not be coupled with CWB
+		 * enablement request. Dnsc blur modeset flag is added for
+		 * reservation of dnsc blur hw.
+		 */
+		if (msm_is_mode_seamless(msm_mode) ||
+			msm_is_mode_seamless_vrr(msm_mode) ||
+			msm_is_mode_seamless_emsync_fps_switch(msm_mode) ||
+			msm_is_mode_seamless_poms(msm_mode) ||
+			msm_is_mode_seamless_dyn_clk(msm_mode)) {
+			SDE_DEBUG("modeset flag already set\n");
+		} else if (!crtc_state->connectors_changed && !msm_mode->private_flags) {
+			msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DNSC_BLUR;
+			SDE_DEBUG("semaless cwb modeset flag set as dnsc resource requested\n");
+			SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+		}
+	}
+
+	cstate->dnsc_res_changed = false;
+	return 0;
 }
 
 static int _sde_crtc_check_loopback_mode(struct drm_crtc *crtc,
@@ -3113,12 +3159,18 @@ int sde_crtc_get_secure_transition_ops(struct drm_crtc *crtc,
 	case SDE_DRM_FB_SEC_DIR_TRANS:
 		_sde_drm_fb_sec_dir_trans(smmu_state, secure_level,
 				catalog, old_valid_fb, &ops);
+		if (ops)
+			smmu_state->crtc_id = DRMID(crtc);
 		break;
 
 	case SDE_DRM_FB_SEC:
 	case SDE_DRM_FB_NON_SEC:
-		_sde_drm_fb_transactions(smmu_state, catalog,
+		if (!smmu_state->crtc_id
+				|| (smmu_state->crtc_id == DRMID(crtc))) {
+			_sde_drm_fb_transactions(smmu_state, catalog,
 				old_valid_fb, post_commit, &ops);
+			smmu_state->crtc_id = 0;
+		}
 		break;
 
 	case SDE_DRM_FB_NON_SEC_DIR_TRANS:
@@ -4214,6 +4266,18 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 	sde_kms = _sde_crtc_get_kms(crtc);
 	if (!sde_kms)
 		return;
+
+	if (old_state->active && !crtc->state->active) {
+		unsigned long flags;
+
+		spin_lock_irqsave(&crtc->dev->event_lock, flags);
+		if (!sde_crtc->event && crtc->state->event) {
+			sde_crtc->event = crtc->state->event;
+			crtc->state->event = NULL;
+		}
+		spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
+		sde_crtc_complete_flip(crtc, NULL);
+	}
 
 	for (i = 0; i < MAX_DSI_DISPLAYS; i++) {
 		splash_display = &sde_kms->splash_data.splash_display[i];
@@ -6726,17 +6790,6 @@ static void sde_crtc_handle_power_event(u32 event_type, void *arg)
 		sde_cp_crtc_suspend(crtc);
 		power_on = 0;
 		sde_crtc_event_notify(crtc, DRM_EVENT_SDE_POWER, &power_on, sizeof(u32));
-		/*
-		 * Deregister only after FW signals power-off to avoid a race
-		 * where sde_crtc_disable nulls crtc_power_event_cb while
-		 * hfi_encoder_power_event_callback is still mid-flight.
-		 */
-		if (IS_DISP_OP_HFI(disp_op) && !crtc->state->active) {
-			drm_for_each_encoder_mask(encoder, crtc->dev,
-					crtc->state->encoder_mask)
-				sde_encoder_register_display_power_event_callback(
-						encoder, NULL, NULL);
-		}
 		break;
 	case SDE_POWER_EVENT_MMRM_CALLBACK:
 		sde_crtc_mmrm_cb_notification(crtc);
@@ -6907,8 +6960,11 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	drm_for_each_encoder_mask(encoder, crtc->dev, encoder_mask) {
 		sde_encoder_register_frame_event_callback(encoder, NULL, NULL);
 
-		if (IS_DISP_OP_HFI(priv->disp_op))
+		if (IS_DISP_OP_HFI(priv->disp_op)) {
+			sde_encoder_register_display_power_event_callback(encoder, NULL, NULL);
 			sde_encoder_register_panel_dead_event_callback(encoder, false);
+			sde_encoder_register_dcs_cmd_error_event_callback(encoder, false);
+		}
 
 		cstate->rsc_client = NULL;
 		cstate->rsc_update = false;
@@ -7189,8 +7245,10 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 			sde_encoder_register_display_power_event_callback(encoder,
 					sde_crtc_power_event_cb, crtc);
 
-		if (IS_DISP_OP_HFI(priv->disp_op))
+		if (IS_DISP_OP_HFI(priv->disp_op)) {
 			sde_encoder_register_panel_dead_event_callback(encoder, true);
+			sde_encoder_register_dcs_cmd_error_event_callback(encoder, true);
+		}
 
 		sde_crtc_static_img_control(crtc, CACHE_STATE_NORMAL,
 				sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE));
@@ -7993,6 +8051,13 @@ static int _sde_crtc_atomic_check(struct drm_crtc *crtc,
 		goto end;
 	}
 
+	rc = _sde_crtc_check_modeset_dnsc_blur(crtc, state);
+	if (rc) {
+		SDE_ERROR("crtc%d check modeset dnsc blur failed rc%d\n",
+			crtc->base.id, rc);
+		goto end;
+	}
+
 	rc = _sde_crtc_check_dest_scaler_data(crtc, state);
 	if (rc) {
 		SDE_ERROR("crtc%d failed dest scaler check %d\n",
@@ -8590,9 +8655,11 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			ARRAY_SIZE(e_secure_level), 0,
 			CRTC_PROP_SECURITY_LEVEL);
 
-	msm_property_install_enum(&sde_crtc->property_info,
+	if (test_bit(SDE_FEATURE_LSR, catalog->features)) {
+		msm_property_install_enum(&sde_crtc->property_info,
 			"lsr_mode", 0, 0, e_lsr_mode, ARRAY_SIZE(e_lsr_mode),
 			MSM_DISP_LSR_MODE_DISABLED, CRTC_PROP_LSR_MODE);
+	}
 
 	if (test_bit(SDE_SYS_CACHE_DISP, catalog->sde_sys_cache_type_map) ||
 			test_bit(SDE_FEATURE_LSR, catalog->features))
@@ -8724,7 +8791,7 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	uint64_t lp_val;
 	bool is_vid = false;
 	bool is_wb = false;
-	bool is_doze_mode = false;
+	bool is_doze_suspend = false;
 	int lsr_opmode;
 	struct drm_encoder *encoder;
 	struct sde_hw_ctl *hw_ctl = NULL;
@@ -8745,7 +8812,7 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 		if (is_vid || is_wb)
 			break;
 
-		if (!is_doze_mode && IS_DISP_OP_HFI(disp_op)) {
+		if (!is_doze_suspend && IS_DISP_OP_HFI(disp_op)) {
 			conn = sde_encoder_get_connector(crtc->dev, encoder);
 			if (conn) {
 				new_conn_state = drm_atomic_get_new_connector_state(
@@ -8753,9 +8820,8 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 				if (new_conn_state) {
 					lp_val = sde_connector_get_property(
 						new_conn_state, CONNECTOR_PROP_LP);
-					if (lp_val == SDE_MODE_DPMS_LP1 ||
-					    lp_val == SDE_MODE_DPMS_LP2)
-						is_doze_mode = true;
+					if (lp_val == SDE_MODE_DPMS_LP2)
+						is_doze_suspend = true;
 				}
 			}
 		}
@@ -8788,7 +8854,7 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	 * can be triggered only after the next frame-update.
 	 */
 	if (is_vid || lsr_opmode == WB_REPRO ||
-				(IS_DISP_OP_HFI(disp_op) && !is_wb && !lsr_opmode && !is_doze_mode))
+			(IS_DISP_OP_HFI(disp_op) && !is_wb && !lsr_opmode && !is_doze_suspend))
 		offset++;
 
 	/*

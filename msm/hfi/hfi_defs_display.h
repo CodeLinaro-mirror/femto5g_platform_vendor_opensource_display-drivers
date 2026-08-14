@@ -278,6 +278,29 @@ struct hfi_display_prog_line_event_data {
 };
 
 /*
+ * struct hfi_display_dcs_cmd_error_data - payload for HFI_COMMAND_DISPLAY_EVENT_DCS_CMD_ERROR
+ * @flags:      Reserved flags for future use.
+ * @seq_no:     Failed DCS command sequence number, which was set by host as part of the
+ *              hfi_dsi_cmd_desc while sending the DCS command.
+ * @cmd_type:   DSI command type (MIPI data type byte).
+ * @cmd_index:  Index of the command within the command set.
+ * @error_code: Error code reported by DCP firmware (negative errno convention).
+ * @ts_hi:      Upper 32 bits of the DCP firmware timestamp at error time.
+ * @ts_lo:      Lower 32 bits of the DCP firmware timestamp at error time.
+ * @reserved:   Reserved array for future use.
+ */
+struct hfi_display_dcs_cmd_error_data {
+	u32 flags;
+	u32 seq_no;
+	u32 cmd_type;
+	u32 cmd_index;
+	u32 error_code;
+	u32 ts_hi;
+	u32 ts_lo;
+	u32 reserved[3];
+};
+
+/*
  * @enum hfi_display_idle_timer_control
  * @brief Enum to control idle timer.
  *
@@ -348,6 +371,8 @@ enum hfi_display_idle_timer_control {
  *   EVENT ID for AIQE COPR.
  * @HFI_EVENT_PROG_LINE_INTR:
  *     Event ID for Program Line Interrupt.
+ * @HFI_EVENT_DCS_CMD_ERROR:
+ *     Event ID for DCS command transfer error reported by DCP firmware.
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC               = 0x1,
@@ -375,6 +400,7 @@ enum hfi_display_event_id {
 	HFI_EVENT_HDCP_FEATURE_SUPPORTED = 0x17,
 	HFI_EVENT_AIQE_COPR           = 0x18,
 	HFI_EVENT_PROG_LINE_INTR      = 0x19,
+	HFI_EVENT_DCS_CMD_ERROR       = 0x1a,
 };
 
 /*
@@ -491,7 +517,9 @@ struct hfi_display_mode_info {
  * @ctrl_flags       :  CTRL flags.
  * @last_command     :  Is last DCS command.
  * @post_wait_ms     :  Wait time in milliseconds.
- * @reserved1        :  Reserved for future use.
+ * @seq_no           :  Monotonically increasing sequence number of the DCS command set by host.
+ *                      In case of error, this will be returned as part of HFI_EVENT_DCS_CMD_ERROR
+ *                      event.
  * @reserved2        :  Reserved for future use.
  */
 struct hfi_dsi_cmd_desc {
@@ -517,8 +545,9 @@ struct hfi_dsi_cmd_desc {
 	u32 last_command;
 	u32 post_wait_ms;
 
+	u32 seq_no;
+
 	/* Reserved for future use */
-	u32 reserved1;
 	u32 reserved2;
 };
 
@@ -533,7 +562,8 @@ struct hfi_dsi_cmd_desc {
  * @state     : Command state (LP/HS mode). Mirrors enum dsi_cmd_set_state:
  *              0 = DSI_CMD_SET_STATE_LP (low power),
  *              1 = DSI_CMD_SET_STATE_HS (high speed).
- * @reserved1 : Reserved for future use.
+ * @seq_no    :  Monotonically increasing sequence number of the DCS command set by host.
+ *               In case of error, this will be returned as part of HFI_EVENT_DCS_CMD_ERROR event.
  * @reserved2 : Reserved for future use.
  * @cmds      : Flexible array of DCS command descriptors; @count entries
  *              of struct hfi_dsi_cmd_desc immediately follow this header
@@ -547,7 +577,7 @@ struct hfi_dsi_cmd_desc_set {
 	u32 type;
 	u32 count;
 	u32 state;
-	u32 reserved1; /* Reserved for future use */
+	u32 seq_no;
 	u32 reserved2; /* Reserved for future use */
 	struct hfi_dsi_cmd_desc cmds[];
 };
