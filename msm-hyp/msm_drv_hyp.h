@@ -70,7 +70,7 @@
 #define MSM_HYP_SKIP_INLINE_ROT     1
 #define MSM_HYP_CLK_FUDGE_FACTOR    "1.0"
 #define MSM_HYP_IB_FUDGE_FACTOR     "6.0"
-#define MSM_HYP_MIXER_COUNT         2
+#define MSM_HYP_MIXER_COUNT         5
 #define MSM_HYP_DSPP_COUNT          1
 
 enum msm_hyp_panel_rotation {
