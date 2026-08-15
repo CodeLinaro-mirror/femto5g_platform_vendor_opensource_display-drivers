@@ -1226,11 +1226,6 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 		return -EINVAL;
 	}
 
-	if (hfi_priv->tui_active) {
-		DP_INFO("TUI is active\n");
-		return 0;
-	}
-
 	if (!hfi_priv->connected) {
 		DP_INFO("DP already disconnected, ignoring\n");
 		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, hfi_priv->connected);
@@ -1254,6 +1249,22 @@ int dp_mgr_hfi_hpd_attention_cb(void *data)
 		DP_ERR("Invalid hfi_priv data\n");
 		return -EINVAL;
 	}
+
+	if (!hfi_priv->hpd->hpd_high && hfi_priv->connected) {
+		cancel_work_sync(&hfi_priv->configure_work);
+		cancel_work_sync(&hfi_priv->attention_work);
+		cancel_work_sync(&hfi_priv->connect_work);
+		flush_workqueue(hfi_priv->wq);
+	}
+
+	if (hfi_priv->hpd->hpd_high && hfi_priv->tui_active) {
+		DP_INFO("TUI is active\n");
+		return 0;
+	}
+
+	/* Ignore attention calls during soft replug */
+	if (hfi_priv->soft_unplug)
+		return 0;
 
 	/* if hpd plug is waiting on display enable cancel it here */
 	complete_all(&hfi_priv->hpd_comp);
