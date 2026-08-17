@@ -31,6 +31,8 @@ struct cmd_type {
 	char *cmd_name;
 };
 
+static char *virtio_cmd_type(uint32_t cmd);
+
 //TODO chck the usage of resp size
 static int virtio_hab_send_and_recv(uint32_t hab_socket,
 		struct channel_map *pHab_channel,
@@ -69,6 +71,7 @@ retry_send_packet:
 	retry_times = 0;
 
 retry_recv_packet:
+        delay = jiffies + (HZ / 4);
 	do {
 		size = resp_size;
 		/* TODO: Need handle exit hab_receive during deinit */
@@ -103,8 +106,16 @@ retry_recv_packet:
 		rc = -1;
 		goto end;
 	}
-	if (resp_size != size)
+	if (resp_size != size) {
 		pr_err("virtio : somethign wrong in the order of req and resp\n");
+		if (size >= sizeof(struct virtio_gpu_ctrl_hdr) ) {
+			struct virtio_gpu_ctrl_hdr *hdr =
+				(struct virtio_gpu_ctrl_hdr *)resp;
+			pr_err("recv and resp type %s(0x%x)\n",
+				virtio_cmd_type(hdr->type), hdr->type);
+		}
+		rc = -EINVAL;
+	}
 end:
 
 	if (SPIN_LOCK_CHANNEL == lock_flag)
