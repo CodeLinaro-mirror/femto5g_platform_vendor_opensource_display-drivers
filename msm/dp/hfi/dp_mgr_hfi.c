@@ -879,7 +879,28 @@ static int _aux_switch_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 	if (!hfi_priv->aux_switch)
 		return 0;
 
+	if ((hfi_priv->debug && hfi_priv->debug->sim_mode) ||
+			(hfi_priv->parser && hfi_priv->parser->gpio_aux_switch))
+		return 0;
+
 	orientation = enable ? hfi_priv->hpd->orientation : ORIENTATION_NONE;
+
+	/*
+	 * No-op a redundant call. init()/configure() are I2C writes to the
+	 * mux that physically re-route AUX/lanes; re-issuing them against an
+	 * already-configured (possibly already-trained) link momentarily
+	 * disturbs the AUX channel. The mux is shared with USB and is
+	 * re-routed away from DP by the PD/altmode stack on every physical
+	 * unplug, so it must still be reprogrammed on every plug/unplug
+	 * cycle - this only skips a truly redundant repeat call for the same
+	 * enable/orientation within one cycle.
+	 */
+	if (enable == hfi_priv->aux_switch_ready &&
+			orientation == hfi_priv->aux_switch_orientation) {
+		DP_DEBUG("aux switch already %sabled orientation:%d, skipping reprogram\n",
+				(enable ? "en" : "dis"), orientation);
+		return 0;
+	}
 
 	if (enable) {
 		rc = hfi_priv->aux_switch->init(hfi_priv->aux_switch);
@@ -889,7 +910,13 @@ static int _aux_switch_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 
 	DP_DEBUG("aux switch %sable with orientation:%d\n", (enable ? "en":"dis"),
 			hfi_priv->hpd->orientation);
-	return hfi_priv->aux_switch->configure(hfi_priv->aux_switch, enable, orientation);
+	rc = hfi_priv->aux_switch->configure(hfi_priv->aux_switch, enable, orientation);
+	if (!rc) {
+		hfi_priv->aux_switch_ready = enable;
+		hfi_priv->aux_switch_orientation = orientation;
+	}
+
+	return rc;
 }
 
 static void _deinit_addr_maps(struct dp_hfi *hfi)
@@ -1134,8 +1161,6 @@ int dp_mgr_hfi_hpd_attention_helper(struct dp_mgr_hfi_priv *hfi_priv)
 			mutex_unlock(&hfi_priv->hpd_mutex);
 			return rc;
 		}
-	} else if (!hfi_priv->connected && hpd_state) {
-		_aux_switch_enable(hfi_priv, true);
 	}
 
 	/* allow HPD LOW when TUI is active, ignore all other attention messages */
@@ -1148,8 +1173,6 @@ int dp_mgr_hfi_hpd_attention_helper(struct dp_mgr_hfi_priv *hfi_priv)
 	_hfi_update_config(hfi_priv, &config);
 	hfi_priv->connected = hpd_state;
 	rc = _hfi_send_hot_plug(hfi_priv, &config);
-	if (!rc && !hfi_priv->connected)
-		dp_mgr_hfi_hpd_cleanup(hfi_priv);
 
 	DP_INFO("attention %d\n", hpd_state);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hpd_state, config.hpd_irq);
