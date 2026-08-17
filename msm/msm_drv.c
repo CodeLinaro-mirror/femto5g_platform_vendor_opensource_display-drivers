@@ -2711,11 +2711,11 @@ static int __init msm_drm_register(void)
 	of_node_put(node);
 
 	DBG("init");
-	msm_lsr_init();
 	sde_rsc_rpmh_register();
 	sde_rsc_register();
 	sde_cesta_register();
 	msm_smmu_driver_init();
+	msm_lsr_init();
 	sde_wb_register();
 	platform_driver_register(&msm_platform_driver);
 	dsi_display_register();
