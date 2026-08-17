@@ -674,6 +674,9 @@ struct sde_drm_dim_layer_v1 {
 /* SDE_DRM_WB_CONFIG_FLAGS - Writeback configuration flags */
 #define SDE_DRM_WB_CFG_FLAGS_CONNECTED	(1<<0)
 
+/* SDE_DRM_WB_CFG_FLAGS_DSPP - Request DSPP allocation for WB display */
+#define SDE_DRM_WB_CFG_FLAGS_DSPP	(1<<1)
+
 /**
  * struct sde_drm_wb_cfg - Writeback configuration structure
  * @flags:		see DRM_MSM_WB_CONFIG_FLAGS

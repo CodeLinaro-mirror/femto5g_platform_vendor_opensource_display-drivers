@@ -32,6 +32,8 @@ struct hw_event_state {
  * @pending_kickoff_wq: Wait queue for blocking until kickoff completes
  * @hfi_cb_obj: hfi listener call back object
  * @misr_read_listener: hfi listener call back object for MISR
+ * @ps_listener_packet_id: cache PANIC_SUBSCRIBE listener packet_id to remove during enc disable
+ * @panic_events_state: maintains state of panic events registration
  */
 struct hfi_encoder {
 	struct sde_encoder_virt *sde_base;
@@ -47,6 +49,8 @@ struct hfi_encoder {
 
 	struct hfi_prop_listener hfi_cb_obj;
 	struct hfi_prop_listener misr_read_listener;
+	u32 ps_listener_packet_id[2];
+	bool panic_events_state;
 };
 
 #if IS_ENABLED(CONFIG_MDSS_HFI)

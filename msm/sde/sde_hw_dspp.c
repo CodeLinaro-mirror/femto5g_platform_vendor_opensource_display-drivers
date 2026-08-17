@@ -460,6 +460,7 @@ static void dspp_spr(struct sde_hw_dspp *c)
 
 		c->ops.setup_spr_init_config[MSM_DISP_OP_HFI] = reg_dmav1_setup_spr_init_cfgv2;
 		c->ops.setup_spr_udc_config[MSM_DISP_OP_HFI] = reg_dmav1_setup_spr_udc_cfgv2;
+		c->ops.setup_spr_pu_config[MSM_DISP_OP_HFI] = reg_dmav1_setup_spr_pu_cfgv2;
 	}
 
 	if (c->cap->sblk->spr_dither.version == SDE_COLOR_PROCESS_VER(0x1, 0x7))
@@ -586,6 +587,7 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 				c->ops.setup_mdnie[MSM_DISP_OP_HFI] = reg_dmav1_setup_mdnie_v2;
 				c->ops.setup_mdnie_art[MSM_DISP_OP_HFI] = hfi_setup_mdnie_art_v1;
 				c->ops.reset_mdnie_art[MSM_DISP_OP_HFI] = NULL;
+				c->ops.setup_mdnie_ipc[MSM_DISP_OP_HFI] = hfi_setup_mdnie_ipc;
 			}
 		}
 

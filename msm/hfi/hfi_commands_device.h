@@ -468,7 +468,58 @@
  *     hfi_packet.cmd           : HFI_COMMAND_DEVICE_HOT_PLUG_DETECT
  *     hfi_packet.flags         : HFI_TX_FLAGS_RESPONSE_REQUIRED
  * HFI_TX_FLAGS_NON_DISCARDABLE
- *     hfi_packet.payload       : struct hfi_device_hotplug_info
+ *     hfi_packet.payload       : struct device_hotplug_info
+ *
+ * Below pseudo-code, illustrates the memory layout of the payload sent by host.
+ *
+ * struct device_hotplug_info {
+ *     struct hfi_device_hotplug_config config;
+ *     u32 hfi_buf_cnt;
+ *     struct hfi_buff edid_modes_buf[hfi_buf_cnt];
+ * };
+ *
+ * config
+ *   Hot-plug configuration details for the connected device.
+ *   - Contains orientation, port, pin configuration, and state information
+ *   - Provides interface-specific connection parameters
+ *
+ * hfi_buf_cnt
+ *   Number of shared buffers (edid_modes_buf) added below. It is target-specific based on the
+ *   maximum number of streams supported per DisplayPort output port. This value should be
+ *   greater than 0 for PLUG command. For UNPLUG, it shall be set to 0.
+ *
+ * edid_modes_buf
+ *   Buffers initialized by client, one per stream, and provided to DCP. Once the hotplug is
+ *   successfully handled, firmware shall pack the following information into these buffers and
+ *   send them back to host as payload for HFI_COMMAND_DISPLAY_EVENT_EDID_INFO.
+ *
+ *   Below table describes the payload in the shared buffer:
+ *
+ * Payload    | Size  | Value                          | Description
+ *------------|-------|--------------------------------|-------------------------------
+ * 0          | u32   | raw_edid_size                  | Size of Raw EDID data in bytes (N)
+ * [1..N]     | u8*N  | raw_edid_data                  | Raw EDID data read from sink. Depending
+ *            |       |                                | on sink capabalities, this could have
+ *            |       |                                | 1 to many blocks of edid data, where each
+ *            |       |                                | block has 128 bytes of data.
+ * N+1        | u32   | num_modes                      | Number of modes supported for this sink (M)
+ * ^          | ^     | mode_info_1                    | Extended mode information for each mode
+ * ^          | ^     | ^                              | packed as an array of type:
+ * ^          | ^     | ^                              | struct hfi_display_mode_extended_info
+ * ^          | ^     | mode_info_M                    |
+ *
+ *   Extended Display Identification Data (EDID):
+ *   - Contains display capabilities, supported resolutions, and timing information
+ *   - Populated when device is connected and EDID is successfully read
+ *   - Used for display mode negotiation and capability determination
+ *   - Buffer may be empty if EDID read fails or device doesn't support EDID
+ *
+ *   Extended mode information:
+ *   - Derived from EDID data and device capabilities
+ *   - Contains timing parameters, refresh rates, and format information
+ *   - Used by display subsystem for mode selection and validation
+ *   - May include both standard and custom display modes
+ *
  */
 #define HFI_COMMAND_DEVICE_HOT_PLUG_DETECT                           0x01000013
 

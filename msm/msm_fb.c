@@ -83,6 +83,11 @@ void msm_framebuffer_cleanup(struct drm_framebuffer *fb,
 	}
 
 	msm_fb = to_msm_framebuffer(fb);
+	if (!fb->format) {
+		DRM_ERROR("from:%pS null fb format\n", __builtin_return_address(0));
+		return;
+	}
+
 	n = fb->format->num_planes;
 
 	for (i = 0; i < n; i++)

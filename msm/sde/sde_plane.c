@@ -473,36 +473,6 @@ void sde_plane_set_revalidate(struct drm_plane *plane, bool enable)
 	psde->revalidate = enable;
 }
 
-int sde_plane_danger_signal_ctrl(struct drm_plane *plane, bool enable)
-{
-	struct sde_plane *psde;
-	int rc;
-
-	if (!plane) {
-		SDE_ERROR("invalid arguments\n");
-		return -EINVAL;
-	}
-
-	psde = to_sde_plane(plane);
-
-	if (!psde->is_rt_pipe)
-		goto end;
-
-	rc = pm_runtime_resume_and_get(plane->dev->dev);
-	if (rc < 0) {
-		SDE_ERROR("failed to enable power resource %d\n", rc);
-		SDE_EVT32(rc, SDE_EVTLOG_ERROR);
-		return rc;
-	}
-
-	_sde_plane_set_qos_ctrl(plane, enable, SDE_PLANE_QOS_PANIC_CTRL);
-
-	pm_runtime_put_sync(plane->dev->dev);
-
-end:
-	return 0;
-}
-
 /**
  * _sde_plane_set_ot_limit - set OT limit for the given plane
  * @plane:		Pointer to drm plane
@@ -673,6 +643,27 @@ static void _sde_plane_set_input_fence(struct sde_plane *psde,
 		pstate->input_fence = sde_sync_get(fd);
 
 	SDE_DEBUG_PLANE(psde, "0x%llX\n", fd);
+}
+
+int sde_plane_set_input_fence_deadline(struct drm_plane *plane, ktime_t deadline)
+{
+	struct sde_plane_state *pstate;
+	struct dma_fence *input_fence;
+
+	if (!plane) {
+		SDE_ERROR("invalid plane\n");
+		return -EINVAL;
+	}
+	if (!plane->state) {
+		SDE_ERROR_PLANE(to_sde_plane(plane), "invalid state\n");
+		return -EINVAL;
+	}
+	pstate = to_sde_plane_state(plane->state);
+	input_fence = (struct dma_fence *)pstate->input_fence;
+
+	sde_fence_set_input_deadline(input_fence, deadline);
+
+	return 0;
 }
 
 void sde_plane_dump_input_fence(struct drm_plane *plane)
@@ -945,12 +936,7 @@ static inline void _sde_plane_set_scanout(struct drm_plane *plane,
 		 * smmu faults during secure session transition.
 		 */
 		psde->is_error = true;
-	} else if (psde->pipe_hw->ops.setup_sourceaddress[disp_op]) {
-		if (!psde->pipe_hw) {
-			SDE_ERROR_PLANE(psde, "invalid pipe_hw\n");
-			return;
-		}
-
+	} else if (psde->pipe_hw && psde->pipe_hw->ops.setup_sourceaddress[disp_op]) {
 		SDE_EVT32_VERBOSE(psde->pipe_hw->idx,
 				pipe_cfg->layout.width,
 				pipe_cfg->layout.height,
@@ -4757,6 +4743,9 @@ static void _sde_plane_install_repro_properties(struct sde_plane *psde,
 		msm_property_install_volatile_enum(&psde->property_info, "layer_gamma",
 			0x0, 0, layer_gamma, ARRAY_SIZE(layer_gamma), 0,
 			PLANE_PROP_REPROJ_LAYER_GAMMA);
+
+		msm_property_install_volatile_range(&psde->property_info, "disparity_phase",
+			0x0, 0, U32_MAX, 0, PLANE_PROP_DISPARITY_PHASE);
 	}
 }
 
@@ -5293,6 +5282,10 @@ static void _sde_plane_set_alpha_buffer(struct drm_plane *plane, struct sde_plan
 	int ret = 0;
 
 	sde_kms = _sde_plane_get_kms(plane);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return;
+	}
 
 	pstate->repro_sspp_cfg.alpha_fb = drm_framebuffer_lookup(plane->dev, NULL, alpha_fb_id);
 	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
@@ -5885,6 +5878,36 @@ static ssize_t _sde_plane_danger_read(struct file *file,
 	return len;
 }
 
+static int sde_plane_danger_signal_ctrl(struct drm_plane *plane, bool enable)
+{
+	struct sde_plane *psde;
+	int rc;
+
+	if (!plane) {
+		SDE_ERROR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	psde = to_sde_plane(plane);
+
+	if (!psde->is_rt_pipe)
+		goto end;
+
+	rc = pm_runtime_resume_and_get(plane->dev->dev);
+	if (rc < 0) {
+		SDE_ERROR("failed to enable power resource %d\n", rc);
+		SDE_EVT32(rc, SDE_EVTLOG_ERROR);
+		return rc;
+	}
+
+	_sde_plane_set_qos_ctrl(plane, enable, SDE_PLANE_QOS_PANIC_CTRL);
+
+	pm_runtime_put_sync(plane->dev->dev);
+
+end:
+	return 0;
+}
+
 static void _sde_plane_set_danger_state(struct sde_kms *kms, bool enable)
 {
 	struct drm_plane *plane;
@@ -6146,7 +6169,7 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 	struct msm_drm_private *priv;
 	struct sde_kms *kms;
 	enum drm_plane_type type;
-	struct sde_vbif_clk_client clk_client;
+	struct sde_vbif_clk_client clk_client = {};
 	enum msm_disp_op disp_op;
 	int ret = 0;
 	bool lsr_plane;
@@ -6312,4 +6335,3 @@ bool sde_plane_property_is_dirty(struct drm_plane_state *plane_state,
 	return msm_property_is_dirty(&psde->property_info,
 			&pstate->property_state, property_idx);
 }
-

@@ -48,6 +48,19 @@ enum sde_perf_commit_state {
 };
 
 /**
+ * enum sde_perf_mode - performance tuning mode
+ * @SDE_PERF_MODE_NORMAL: performance controlled by user mode client
+ * @SDE_PERF_MODE_MINIMUM: performance bounded by minimum setting
+ * @SDE_PERF_MODE_FIXED: performance bounded by fixed setting
+ */
+enum sde_perf_mode {
+	SDE_PERF_MODE_NORMAL,
+	SDE_PERF_MODE_MINIMUM,
+	SDE_PERF_MODE_FIXED,
+	SDE_PERF_MODE_MAX
+};
+
+/**
  * struct sde_core_perf_params - definition of performance parameters
  * @max_per_pipe_ib: maximum instantaneous bandwidth request
  * @bw_ctl: arbitrated bandwidth request

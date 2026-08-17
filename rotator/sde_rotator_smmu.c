@@ -617,8 +617,13 @@ int sde_smmu_probe(struct platform_device *pdev)
 	dma_set_max_seg_size(dev, (unsigned int)DMA_BIT_MASK(32));
 	dma_set_seg_boundary(dev, (unsigned long)DMA_BIT_MASK(64));
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+	qcom_iommu_set_fault_handler(sde_smmu->rot_domain,
+			sde_smmu_fault_handler, (void *)sde_smmu);
+#else
 	iommu_set_fault_handler(sde_smmu->rot_domain,
 			sde_smmu_fault_handler, (void *)sde_smmu);
+#endif
 
 	sde_smmu_enable_power(sde_smmu, false);
 

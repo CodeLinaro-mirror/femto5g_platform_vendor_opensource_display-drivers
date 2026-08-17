@@ -18,10 +18,10 @@ def _register_module_to_map(module_map, name, path, config_option, srcs, config_
             nested_config = config_src
 
             for nested_src, nest_name in nested_config.items():
-                if nested_src == True:
-                    processed_config_srcs[config_src_name] = {True: nest_name}
-                else:
-                    processed_config_srcs[nested_src] = {True: nest_name}
+                if nested_src == "True":
+                    for nest_src in nest_name:
+                        final_srcs = nest_name[nest_src]
+                        processed_config_srcs[nest_src] = final_srcs
 
     for config_deps_name in config_deps:
         config_dep = config_deps[config_deps_name]
@@ -96,9 +96,15 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
             "//soc-repo:{}/drivers/soc/qcom/socinfo".format(kernel_build_tv),
             "//soc-repo:{}/drivers/soc/qcom/panel_event_notifier".format(kernel_build_tv),
             "//soc-repo:{}/drivers/soc/qcom/qcom_rpmh".format(kernel_build_tv),
-	    "//soc-repo:{}/drivers/soc/qcom/fsa4480_i2c".format(kernel_build_tv),
+            "//soc-repo:{}/drivers/soc/qcom/fsa4480_i2c".format(kernel_build_tv),
         ],
         "//build/qcom_build_extensions:qtisocrepo_false": ["//msm-kernel:all_headers"],
+        })
+
+    if target == "seraph":
+        deps += select({
+           "//build/qcom_build_extensions:qtisocrepo_true": ["//soc-repo:{}/drivers/misc/isl97900_led/isl97900_led".format(kernel_build_tv)],
+           "//build/qcom_build_extensions:qtisocrepo_false": ["//msm-kernel:all_headers"],
         })
 
     if not vm_target:

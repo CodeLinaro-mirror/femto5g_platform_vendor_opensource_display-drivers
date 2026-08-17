@@ -7,6 +7,7 @@
 #include <linux/of.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
+#include <drm/drm_print.h>
 
 #include "dsi_pwr.h"
 #include "dsi_parser.h"

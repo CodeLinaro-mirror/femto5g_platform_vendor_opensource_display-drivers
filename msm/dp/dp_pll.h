@@ -189,4 +189,10 @@ void dp_pll_put(struct dp_pll *pll);
 void dp_pll_drv_register(void);
 void dp_pll_drv_unregister(void);
 
+unsigned long dp_vco_recalc_rate_5nm(struct dp_pll *pll);
+
+unsigned long dp_vco_recalc_rate_4nm(struct dp_pll *pll);
+
+unsigned long dp_vco_recalc_rate_3nm(struct dp_pll *pll);
+
 #endif /* __DP_PLL_H */

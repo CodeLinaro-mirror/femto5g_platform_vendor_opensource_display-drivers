@@ -6,6 +6,7 @@
 #include <linux/math64.h>
 #include <linux/delay.h>
 #include <linux/iopoll.h>
+#include <drm/drm_print.h>
 #include "dsi_hw.h"
 #include "dsi_defs.h"
 #include "dsi_phy_hw.h"

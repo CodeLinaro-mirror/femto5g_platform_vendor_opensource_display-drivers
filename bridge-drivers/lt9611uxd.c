@@ -9,6 +9,7 @@
 #define pr_fmt(fmt) "%s: " fmt, __func__
 
 #include <linux/types.h>
+#include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
@@ -176,8 +177,26 @@ void lt9611uxd_helper_read_edid(struct lt9611uxd *pdata)
 {
 	pr_info("Reading edid.\n");
 	lt9611uxd_read_edid(pdata);
-	pdata->edid = drm_do_get_edid(&pdata->connector,
+#if KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE
+	const struct drm_edid *drm_edid = NULL;
+	const struct edid *edid_raw = NULL;
+
+	drm_edid = drm_edid_read_custom(&pdata->connector,
 			lt9611uxd_get_edid_block, pdata);
+
+	if (!drm_edid)
+		return;
+
+	edid_raw = drm_edid_raw(drm_edid);
+
+	if (edid_raw)
+		pdata->edid = drm_edid_duplicate(edid_raw);
+
+	drm_edid_free(drm_edid);
+#else
+	pdata->edid = drm_do_get_edid(&pdata->connector,
+					lt9611uxd_get_edid_block, pdata);
+#endif
 }
 
 int lt9611uxd_read_hpd_status(struct lt9611uxd *pdata)
@@ -1770,8 +1789,15 @@ static int lt9611uxd_connector_get_modes(struct drm_connector *connector)
 	return count;
 }
 
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 static enum drm_mode_status lt9611uxd_connector_mode_valid(
-	struct drm_connector *connector, struct drm_display_mode *drm_mode)
+	struct drm_connector *connector,
+	struct drm_display_mode *drm_mode)
+#else
+static enum drm_mode_status lt9611uxd_connector_mode_valid(
+	struct drm_connector *connector,
+	const struct drm_display_mode *drm_mode)
+#endif
 {
 	struct lt9611uxd *pdata = connector_to_lt9611(connector);
 	struct drm_display_mode *mode, *n;

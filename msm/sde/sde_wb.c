@@ -937,6 +937,9 @@ int sde_wb_config(struct drm_device *drm_dev, void *data,
 
 	mutex_lock(&wb_dev->wb_lock);
 
+	// Store the DSPP hint from UserMode
+	wb_dev->needs_dspp = (flags & SDE_DRM_WB_CFG_FLAGS_DSPP) ? true : false;
+
 	rc = sde_wb_connector_set_modes(wb_dev, count_modes,
 		(struct drm_mode_modeinfo __user *) (uintptr_t) modes,
 		(flags & SDE_DRM_WB_CFG_FLAGS_CONNECTED) ? true : false);

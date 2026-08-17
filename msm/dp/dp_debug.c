@@ -1851,9 +1851,11 @@ static int dp_debug_init(struct dp_debug_private *priv)
 	if (rc)
 		goto error_remove_dir;
 
-	rc = dp_debug_init_reg_dump(priv, dir);
-	if (rc)
-		goto error_remove_dir;
+	if (IS_DISP_OP_HWIO(priv->disp_op)) {
+		rc = dp_debug_init_reg_dump(priv, dir);
+		if (rc)
+			goto error_remove_dir;
+	}
 
 	rc = dp_debug_init_feature_toggle(priv, dir);
 	if (rc)

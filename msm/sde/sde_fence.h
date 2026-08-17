@@ -323,6 +323,13 @@ void sde_fence_list_dump(struct dma_fence *fence, struct seq_file **s);
  */
 void sde_fence_dump(struct dma_fence *fence);
 
+/**
+ * sde_fence_set_input_deadline - set deadline performance hint on input fence to display driver
+ * @fence: pointer to input fence
+ * @deadline: ktime value for deadline; deadline will not be set if this value is zero
+ */
+void sde_fence_set_input_deadline(struct dma_fence *fence, ktime_t deadline);
+
 #else
 static inline void *sde_sync_get(uint64_t fd)
 {
@@ -389,18 +396,23 @@ static inline void sde_fence_timeline_status(struct sde_fence_context *ctx,
 	/* do nothing */
 }
 
-void sde_debugfs_timeline_dump(struct sde_fence_context *ctx,
+static inline void sde_debugfs_timeline_dump(struct sde_fence_context *ctx,
 		struct drm_mode_object *drm_obj, struct seq_file **s)
 {
 	/* do nothing */
 }
 
-void sde_fence_list_dump(struct dma_fence *fence, struct seq_file **s)
+static inline void sde_fence_list_dump(struct dma_fence *fence, struct seq_file **s)
 {
 	/* do nothing */
 }
 
-void sde_fence_dump(struct dma_fence *fence)
+static inline void sde_fence_dump(struct dma_fence *fence)
+{
+	/* do nothing */
+}
+
+static inline void sde_fence_set_input_deadline(struct dma_fence *fence, ktime_t deadline)
 {
 	/* do nothing */
 }

@@ -161,5 +161,8 @@ define_parrot()
 load(":targets/shikra.bzl", "define_shikra")
 define_shikra()
 
+load(":targets/shikravm.bzl", "define_shikravm")
+define_shikravm()
+
 load(":targets/malabar.bzl", "define_malabar")
 define_malabar()

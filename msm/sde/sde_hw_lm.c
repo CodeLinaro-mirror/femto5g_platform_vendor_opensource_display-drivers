@@ -794,7 +794,7 @@ static int sde_hw_lm_setup_blendstage(struct sde_hw_mixer *ctx,
 
 	c = &ctx->hw;
 	stages = ctx->cap->sblk->maxblendstages;
-	if (stages <= SDE_STAGE_BASE)
+	if (stages <= SDE_STAGE_BASE || stages >= SDE_STAGE_MAX)
 		return -EINVAL;
 
 	if (test_bit(SDE_MIXER_SOURCESPLIT, &ctx->cap->features))

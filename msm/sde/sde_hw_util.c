@@ -142,6 +142,10 @@ void msm_sde_qtimer_install(struct device *dev)
 	}
 
 	qtimer_res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "qtimer_reg");
+	if (!qtimer_res) {
+		pr_err("Failed to get qtimer_reg resource\n");
+		return;
+	}
 	qtimer_reg_size = resource_size(qtimer_res);
 	sde_kms->sde_qtimer.qtimer_cb = sde_qtimer_irq_cb;
 

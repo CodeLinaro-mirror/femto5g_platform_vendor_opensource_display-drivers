@@ -146,6 +146,11 @@ static int msm_dma_get_device_address(struct dma_buf *dbuf, u32 align,
 		if ((smem_flags & SMEM_ARP_BUF) || (smem_flags & SMEM_QUEUE_TABLE) ||
 				(smem_flags & SMEM_SCRATCH_PAD)) {
 			dcp_cb = msm_lsr_smem_get_context_bank(res, SMEM_LSR_HFI);
+			if (!dcp_cb) {
+				dprintk(LSR_ERR, "Failed to get dcp_cb\n");
+				rc = -EINVAL;
+				goto mem_map_table_failed;
+			}
 			dcp_attach = dma_buf_attach(dbuf, dcp_cb->dev);
 			if (IS_ERR_OR_NULL(dcp_attach)) {
 				rc = PTR_ERR(dcp_attach) ?: -ENOMEM;

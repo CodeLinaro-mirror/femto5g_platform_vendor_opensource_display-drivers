@@ -11,6 +11,7 @@ def define_sun():
                 registry = display_driver_modules,
                 modules = [
                     "msm_drm",
+                    "lt9611uxd",
                 ],
                 config_options = [
                     "CONFIG_DRM_MSM_SDE",
@@ -32,6 +33,7 @@ def define_sun():
                     "CONFIG_QTI_HW_FENCE",
                     "CONFIG_QCOM_SPEC_SYNC",
                     "CONFIG_MSM_EXT_DISPLAY",
+                    "CONFIG_DRM_LT9611UXD",
                     "CONFIG_DRM_SDE_CESTA",
                     "CONFIG_SMMU_PROXY",
                     "CONFIG_DRM_MSM_HDMI"

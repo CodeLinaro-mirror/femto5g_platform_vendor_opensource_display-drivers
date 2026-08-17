@@ -184,6 +184,8 @@ struct msm_lsr_platform_resources {
 	uint32_t irq_wd;
 	struct allowed_clock_rates_table *allowed_clks_tbl;
 	u32 allowed_clks_tbl_size;
+	struct allowed_clock_rates_table *controller_clk_corner_tbl;
+	u32 controller_clk_corner_tbl_size;
 	bool sys_cache_present;
 	bool sys_cache_res_set;
 	struct subcache_set subcache_set;

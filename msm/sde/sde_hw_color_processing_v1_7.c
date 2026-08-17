@@ -7,6 +7,7 @@
 #include <drm/msm_drm_pp.h>
 #include "sde_hw_color_processing_v1_7.h"
 #include "sde_hw_ctl.h"
+#include <drm/drm_print.h>
 
 #define REG_MASK_SHIFT(n, shift) ((REG_MASK(n)) << (shift))
 

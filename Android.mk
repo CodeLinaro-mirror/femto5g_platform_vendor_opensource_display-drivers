@@ -12,7 +12,7 @@ ifeq ($(DISPLAY_DLKM_ENABLE),  true)
 	include $(LOCAL_PATH)/msm/Android.mk
 	include $(CLEAR_VARS)
 
-	ifneq (,$(call is-board-platform-in-list2, sun))
+	ifneq (,$(call is-board-platform-in-list2, sun shikra))
 		LOCAL_PATH := $(DISPLAY_DRIVER)
 		include $(LOCAL_PATH)/bridge-drivers/Android.mk
 	endif

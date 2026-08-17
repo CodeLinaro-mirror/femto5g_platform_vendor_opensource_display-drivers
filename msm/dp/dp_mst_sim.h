@@ -48,4 +48,8 @@ int dp_sim_write_dpcd_reg(struct dp_aux_bridge *bridge,
 int dp_sim_read_dpcd_reg(struct dp_aux_bridge *bridge,
 		u8 *dpcd, u32 size, u32 offset);
 
+int dp_sim_probe(struct platform_device *pdev);
+
+int dp_sim_remove(struct platform_device *pdev);
+
 #endif /* _DP_MST_SIM_H_ */

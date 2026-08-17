@@ -2,6 +2,8 @@
 /*
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
+
+#include <drm/drm_print.h>
 #include <drm/msm_drm_pp.h>
 #include "sde_hw_catalog.h"
 #include "sde_hw_util.h"

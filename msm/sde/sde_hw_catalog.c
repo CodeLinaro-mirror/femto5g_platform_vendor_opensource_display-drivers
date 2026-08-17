@@ -25,6 +25,10 @@
  * MACRO DEFINITION
  *************************************************************/
 
+#ifndef LLCC_DCP
+#define LLCC_DCP 0
+#endif
+
 /**
  * Max hardware block in certain hardware. For ex: sspp pipes
  * can have QSEED, pcc, igc, pa, csc, qos entries, etc. This count is
@@ -4290,12 +4294,14 @@ static int sde_cache_parse_dt(struct device_node *np,
 		[SDE_SYS_CACHE_DISP] = LLCC_DISP,
 		[SDE_SYS_CACHE_DISP_1] = LLCC_DISP_1,
 		[SDE_SYS_CACHE_DISP_WB] = LLCC_DISP_WB,
+		[SDE_SYS_CACHE_LSR_MODE] = LLCC_DCP,
 	};
 #else
 	const u32 sde_sys_cache_usecase_id[SDE_SYS_CACHE_MAX] = {
 		[SDE_SYS_CACHE_DISP] = LLCC_DISP,
 		[SDE_SYS_CACHE_DISP_1] = 0,
 		[SDE_SYS_CACHE_DISP_WB] = 0,
+		[SDE_SYS_CACHE_LSR_MODE] = 0,
 	};
 #endif
 
@@ -5599,6 +5605,8 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 		dma_list_size += ARRAY_SIZE(fp16_formats);
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		dma_list_size += ARRAY_SIZE(rgb_lossy_formats);
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		dma_list_size += ARRAY_SIZE(a10_y10_formats);
 
 	sde_cfg->dma_formats = kvcalloc(dma_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -5615,6 +5623,9 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		index += sde_copy_formats(sde_cfg->dma_formats, dma_list_size,
 			index, rgb_lossy_formats, ARRAY_SIZE(rgb_lossy_formats));
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		index += sde_copy_formats(sde_cfg->dma_formats, dma_list_size,
+			index, a10_y10_formats, ARRAY_SIZE(a10_y10_formats));
 
 	/* ViG pipe input formats */
 	vig_list_size = ARRAY_SIZE(plane_formats_vig);
@@ -5626,6 +5637,8 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 		vig_list_size += ARRAY_SIZE(fp16_formats);
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		vig_list_size += ARRAY_SIZE(rgb_lossy_formats);
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		vig_list_size += ARRAY_SIZE(a10_y10_formats);
 
 	sde_cfg->vig_formats = kvcalloc(vig_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -5650,6 +5663,9 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		index += sde_copy_formats(sde_cfg->vig_formats, vig_list_size,
 			index, rgb_lossy_formats, ARRAY_SIZE(rgb_lossy_formats));
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		index += sde_copy_formats(sde_cfg->vig_formats, vig_list_size,
+			index, a10_y10_formats, ARRAY_SIZE(a10_y10_formats));
 
 	/* Virtual ViG pipe input formats (all virt pipes use DMA formats) */
 	virt_vig_list_size = ARRAY_SIZE(plane_formats);
@@ -5657,6 +5673,8 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 		virt_vig_list_size += ARRAY_SIZE(fp16_formats);
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		virt_vig_list_size += ARRAY_SIZE(rgb_lossy_formats);
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		virt_vig_list_size += ARRAY_SIZE(a10_y10_formats);
 
 	sde_cfg->virt_vig_formats = kvcalloc(virt_vig_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -5675,6 +5693,10 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 		index += sde_copy_formats(sde_cfg->virt_vig_formats,
 				virt_vig_list_size, index, rgb_lossy_formats,
 				ARRAY_SIZE(rgb_lossy_formats));
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		index += sde_copy_formats(sde_cfg->virt_vig_formats,
+				virt_vig_list_size, index, a10_y10_formats,
+				ARRAY_SIZE(a10_y10_formats));
 
 	if (test_bit(SDE_FEATURE_LSR, sde_cfg->features)) {
 		csc_list_size = ARRAY_SIZE(plane_csc_formats);
@@ -6108,6 +6130,7 @@ static void _sde_get_hw_caps_for_khaje(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	sde_cfg->sui_block_xin_mask = 0xC01;
 	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 }
 
 static void _sde_get_hw_caps_for_lagoon(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
@@ -6126,17 +6149,7 @@ static void _sde_get_hw_caps_for_lagoon(struct sde_mdss_cfg *sde_cfg, uint32_t h
 static void _sde_get_hw_caps_for_scuba(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
-	sde_cfg->perf.min_prefill_lines = 24;
-	sde_cfg->vbif_qos_nlvl = 8;
-	sde_cfg->ts_prefill_rev = 2;
-	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
-	sde_cfg->sui_block_xin_mask = 0x1;
-	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
-}
-
-static void _sde_get_hw_caps_for_shikra(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
-{
-	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 24;
 	sde_cfg->vbif_qos_nlvl = 8;
 	sde_cfg->ts_prefill_rev = 2;
@@ -6440,6 +6453,7 @@ static void _sde_get_hw_caps_for_x1e80100(struct sde_mdss_cfg *sde_cfg, uint32_t
 static void _sde_get_hw_caps_for_malabar(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;
 	sde_cfg->has_reduced_ob_max = true;
 	sde_cfg->vbif_qos_nlvl = 8;
@@ -6741,6 +6755,7 @@ static void _sde_get_hw_caps_for_art(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
 	set_bit(SDE_FEATURE_FP16, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
+	set_bit(SDE_FEATURE_A10_Y10, sde_cfg->features);
 	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
 	set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
 	set_bit(SDE_FEATURE_QRTC, sde_cfg->features);
@@ -6756,6 +6771,7 @@ static void _sde_get_hw_caps_for_art(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	set_bit(SDE_FEATURE_SYS_CACHE_STALING, sde_cfg->features);
 	set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);
 	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
+	set_bit(SDE_FEATURE_ALLOW_SEC_CAM_CONCURRENCY, sde_cfg->features);
 	set_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features);
 	set_bit(SDE_FEATURE_DS_PU_SUPPORTED, sde_cfg->features);
 	set_bit(SDE_FEATURE_SSIP_CLK, sde_cfg->features);
@@ -6810,6 +6826,7 @@ static void _sde_get_hw_caps_for_pebble(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
 	set_bit(SDE_FEATURE_FP16, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
+	set_bit(SDE_FEATURE_A10_Y10, sde_cfg->features);
 	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
 	set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
@@ -6878,6 +6895,7 @@ static void _sde_get_hw_caps_for_canoe(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	set_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features);
 	set_bit(SDE_FEATURE_DS_PU_SUPPORTED, sde_cfg->features);
 	set_bit(SDE_FEATURE_SSIP_CLK, sde_cfg->features);
+	set_bit(SDE_FEATURE_ALLOW_SEC_CAM_CONCURRENCY, sde_cfg->features);
 	sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
 	sde_cfg->autorefresh_disable_seq = AUTOREFRESH_DISABLE_SEQ2;
 	sde_cfg->ppb_sz_program = SDE_PPB_SIZE_THRU_PINGPONG;
@@ -6997,7 +7015,9 @@ static void _sde_get_hw_caps_for_seraph(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
 	set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
 	set_bit(SDE_FEATURE_LSR, sde_cfg->features);
+	set_bit(SDE_SYS_CACHE_LSR_MODE, sde_cfg->sde_sys_cache_type_map);
 	set_bit(SDE_FEATURE_FRAME_SEQ_CHECK, sde_cfg->features);
+	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;
 	sde_cfg->vbif_qos_nlvl = 8;
 	sde_cfg->ts_prefill_rev = 2;
@@ -7028,6 +7048,9 @@ static void _sde_get_hw_caps_for_pikachu(struct sde_mdss_cfg *sde_cfg, uint32_t 
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
 	set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
+	set_bit(SDE_FEATURE_BATCH_COMMIT, sde_cfg->features);
+	set_bit(SDE_FEATURE_GMU_REPROJ, sde_cfg->features);
+	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;
 	sde_cfg->vbif_qos_nlvl = 8;
 	sde_cfg->ts_prefill_rev = 2;
@@ -7157,8 +7180,8 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_610, _sde_get_hw_caps_for_saipan},
 	{SDE_HW_VER_630, _sde_get_hw_caps_for_bengal},
 	{SDE_HW_VER_640, _sde_get_hw_caps_for_lagoon},
+	/* Applies for both scuba and shikra. */
 	{SDE_HW_VER_650, _sde_get_hw_caps_for_scuba},
-	{SDE_HW_VER_650, _sde_get_hw_caps_for_shikra},
 	{SDE_HW_VER_660, _sde_get_hw_caps_for_holi},
 	{SDE_HW_VER_670, _sde_get_hw_caps_for_shima},
 	{SDE_HW_VER_680, _sde_get_hw_caps_for_monaco},

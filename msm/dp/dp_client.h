@@ -182,6 +182,10 @@ struct dp_client {
 
 		int (*edp_detect)(struct dp_client *client);
 
+		int (*get_mode_info)(struct dp_client *client, int panel_id,
+				const struct drm_display_mode *drm_mode,
+				struct msm_mode_info *mode_info);
+
 		struct dp_display_mode *(*get_display_mode)(struct dp_client *client,
 				int panel_id);
 		int (*cont_splash_config)(struct dp_client *client);

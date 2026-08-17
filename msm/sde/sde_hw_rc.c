@@ -489,7 +489,6 @@ int sde_hw_rc_setup_pu_roi(struct sde_hw_dspp *hw_dspp, void *cfg)
 	}
 
 	rc_mask_cfg = hw_dspp->rc_state.last_rc_mask_cfg;
-	SDE_EVT32(RC_IDX(hw_dspp), roi_list, rc_mask_cfg, rc_mask_cfg->cfg_param_03);
 
 	/* early return when there is no mask in memory */
 	if (!rc_mask_cfg || !rc_mask_cfg->cfg_param_03) {
@@ -497,6 +496,8 @@ int sde_hw_rc_setup_pu_roi(struct sde_hw_dspp *hw_dspp, void *cfg)
 		SDE_EVT32(RC_IDX(hw_dspp));
 		return SDE_HW_RC_PU_SKIP_OP;
 	}
+
+	SDE_EVT32(RC_IDX(hw_dspp), roi_list, rc_mask_cfg, rc_mask_cfg->cfg_param_03);
 
 	sde_kms_rect_merge_rectangles(roi_list, &merged_roi);
 	rc = _sde_hw_rc_get_ajusted_roi(hw_cfg, &merged_roi, &rc_roi);

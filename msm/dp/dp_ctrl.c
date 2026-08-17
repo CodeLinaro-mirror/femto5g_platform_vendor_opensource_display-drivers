@@ -1134,6 +1134,7 @@ static void dp_ctrl_mst_stream_setup(struct dp_ctrl_private *ctrl,
 	mst_rg_calc_in.fec_overhead_fp = panel->fec_overhead_fp;
 	mst_rg_calc_in.dsc_overhead_fp = panel->pinfo.dsc_overhead_fp;
 	mst_rg_calc_in.pbn = panel->pinfo.pbn_no_overhead;
+	mst_rg_calc_in.margin_ovrd = false;
 
 	dp_tu_mst_rg_calc(&mst_rg_calc_in, &mst_rg_calc_out);
 
@@ -1454,7 +1455,7 @@ static void dp_ctrl_isr(struct dp_ctrl *dp_ctrl)
 		dp_ctrl_idle_patterns_sent(ctrl);
 }
 
-void dp_ctrl_set_sim_mode(struct dp_ctrl *dp_ctrl, bool en)
+static void dp_ctrl_set_sim_mode(struct dp_ctrl *dp_ctrl, bool en)
 {
 	struct dp_ctrl_private *ctrl;
 
@@ -1466,7 +1467,7 @@ void dp_ctrl_set_sim_mode(struct dp_ctrl *dp_ctrl, bool en)
 	DP_INFO("sim_mode=%d\n", ctrl->sim_mode);
 }
 
-int dp_ctrl_setup_misr(struct dp_ctrl *dp_ctrl)
+static int dp_ctrl_setup_misr(struct dp_ctrl *dp_ctrl)
 {
 	struct dp_ctrl_private *ctrl;
 
@@ -1478,7 +1479,7 @@ int dp_ctrl_setup_misr(struct dp_ctrl *dp_ctrl)
 	return ctrl->catalog->setup_misr(ctrl->catalog);
 }
 
-int dp_ctrl_read_misr(struct dp_ctrl *dp_ctrl, struct dp_misr40_data *data)
+static int dp_ctrl_read_misr(struct dp_ctrl *dp_ctrl, struct dp_misr40_data *data)
 {
 	struct dp_ctrl_private *ctrl;
 

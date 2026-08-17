@@ -181,8 +181,10 @@ int msm_reproj_disp_register_intf(struct sde_reproj *reproj_inst)
 		return -EINVAL;
 	}
 
-	if (!reproj_inst)
+	if (!reproj_inst) {
 		dprintk(LSR_ERR, "Invalid reproj instance");
+		return -EINVAL;
+	}
 
 	reproj_inst->on = lsr_display_enable;
 	reproj_inst->off = lsr_display_disable;

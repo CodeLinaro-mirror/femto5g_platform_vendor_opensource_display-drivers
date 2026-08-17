@@ -1097,7 +1097,7 @@ static int sde_cesta_get_io_resources(struct msm_io_res *io_res, void *data)
 	return 0;
 }
 
-int sde_cesta_bind(struct device *dev, struct device *master, void *data)
+static int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sde_cesta *cesta;
@@ -1142,7 +1142,7 @@ int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 	return 0;
 }
 
-void sde_cesta_unbind(struct device *dev, struct device *master, void *data)
+static void sde_cesta_unbind(struct device *dev, struct device *master, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sde_cesta *cesta;

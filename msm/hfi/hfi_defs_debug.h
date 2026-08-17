@@ -76,11 +76,15 @@ struct regdump_info {
  * @HFI_DEBUG_MISR_DSI      :   Dsi module
  * @HFI_DEBUG_MISR_MIXER    :   Mixer module
  * @HFI_DEBUG_MISR_INTF     :   Interface module
+ * @HFI_DEBUG_MISR_DP_CTRL  :   DP controller module
+ * @HFI_DEBUG_MISR_DP_PHY   :   DP PHY module
  */
 enum hfi_debug_misr_module_type {
 	HFI_DEBUG_MISR_DSI                     = 0x0,
 	HFI_DEBUG_MISR_MIXER                   = 0x1,
 	HFI_DEBUG_MISR_INTF                    = 0x2,
+	HFI_DEBUG_MISR_DP_CTRL                 = 0x3,
+	HFI_DEBUG_MISR_DP_PHY                  = 0x4,
 };
 
 /*!
@@ -235,11 +239,15 @@ struct hfi_debug_log_level_info {
  * @HFI_DISPLAY_DEBUG_ESD_CHECK_MODE     :  Property ID for esd check mode update
  * @HFI_DISPLAY_DEBUG_ESD_CHECK_INTERVAL :  Property ID for status check interval update.
  * @HFI_DISPLAY_DEBUG_UIDLE              :  Property ID for micro-idle (uidle) state query.
+ * @HFI_DISPLAY_DEBUG_UIDLE_CNTR         :  Property ID for uidle gate counter enable bitmask.
+ * @HFI_DISPLAY_DEBUG_UIDLE_DISABLE      :  Property ID for uidle feature disable/re-enable.
  */
 enum hfi_display_dbg_property_id {
 	HFI_DISPLAY_DEBUG_ESD_CHECK_MODE           = 0x1,
 	HFI_DISPLAY_DEBUG_ESD_CHECK_INTERVAL       = 0x2,
 	HFI_DISPLAY_DEBUG_UIDLE                    = 0x3,
+	HFI_DISPLAY_DEBUG_UIDLE_CNTR               = 0x4,
+	HFI_DISPLAY_DEBUG_UIDLE_DISABLE            = 0x5,
 };
 
 /**

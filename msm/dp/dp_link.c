@@ -1394,6 +1394,11 @@ static int dp_link_adjust_levels(struct dp_link *dp_link, u8 *link_status)
 
 	link = container_of(dp_link, struct dp_link_private, dp_link);
 
+	if (!is_lane_count_valid(dp_link->link_params.lane_count)) {
+		DP_ERR("invalid lane count %d\n", dp_link->link_params.lane_count);
+		return -EINVAL;
+	}
+
 	/* use the max level across lanes */
 	for (i = 0; i < dp_link->link_params.lane_count; i++) {
 		data = drm_dp_get_adjust_request_voltage(link_status, i);

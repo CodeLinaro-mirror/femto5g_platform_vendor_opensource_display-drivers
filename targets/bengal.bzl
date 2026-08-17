@@ -4,7 +4,7 @@ load(":target_variants.bzl", "get_all_variants")
 
 def define_bengal():
     for (t, v) in get_all_variants():
-        if t == "bengal":
+        if t == "bengal" or t == "bengal-le":
             define_target_variant_modules(
                 target = t,
                 variant = v,
@@ -24,9 +24,6 @@ def define_bengal():
                     "CONFIG_THERMAL_OF",
                     "CONFIG_MDSS_HFI_ADAPTER",
                     "CONFIG_MDSS_HFI",
-                    "CONFIG_QCOM_SPEC_SYNC",
-                    "CONFIG_MSM_SDE_ROTATOR",
-                    "CONFIG_MSM_SDE_ROTATOR_EVTLOG_DEBUG",
-                    "CONFIG_DEBUG_FS"
+                    "CONFIG_QCOM_SPEC_SYNC"
                 ],
             )

@@ -414,17 +414,17 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 {
 	int rc = 0;
 	struct dp_drv *drv = display;
-	struct sde_connector *sde_conn;
+	struct sde_connector *sde_conn = NULL;
 	struct dp_client_drm_ops *ops;
 	struct msm_drm_private *priv;
 	struct dp_client *client;
-
-	priv = connector->dev->dev_private;
 
 	if (!drv || !connector || !drv->client || !drv->client->bridge) {
 		DP_ERR("Invalid data\n");
 		return -EINVAL;
 	}
+
+	priv = connector->dev->dev_private;
 
 	client = drv->client;
 
@@ -522,15 +522,17 @@ int dp_connector_get_mode_info(struct drm_connector *connector,
 
 	memset(mode_info, 0, sizeof(*mode_info));
 	ops = &drv->client->drm_ops;
-
+	priv = connector->dev->dev_private;
 	sde_conn = to_sde_connector(connector);
+
+	if (IS_DISP_OP_HFI(priv->disp_op) && ops->get_mode_info)
+		return ops->get_mode_info(drv->client, sde_conn->panel_id, drm_mode, mode_info);
+
 	mode = ops->get_display_mode(drv->client, sde_conn->panel_id);
 	if (!mode) {
 		DP_ERR("invalid panel\n");
 		return -EINVAL;
 	}
-
-	priv = connector->dev->dev_private;
 
 	topology = &mode_info->topology;
 

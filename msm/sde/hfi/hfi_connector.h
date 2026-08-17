@@ -112,6 +112,18 @@ int hfi_connector_set_debug_prop(struct drm_connector *drm_conn,
 	struct hfi_display_dbg_property *dbg_prop);
 
 /**
+ * hfi_connector_get_dsi_panel - helper to get dsi panel
+ * @c_conn: Pointer to sde_connector struct
+ */
+struct dsi_panel *hfi_connector_get_dsi_panel(struct sde_connector *c_conn);
+
+/**
+ * hfi_connector_set_esd_recovery_pending - set ESD recovery pending
+ * @c_conn: Pointer to sde_connector struct
+ */
+void hfi_connector_set_esd_recovery_pending(struct sde_connector *c_conn);
+
+/**
  * hfi_connector_report_panel_dead - report panel dead
  * @c_conn: Pointer to sde_connector struct
  * @skip_pre_kickoff: flag to skip_pre_kickoff
@@ -135,6 +147,15 @@ static inline struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(
 static inline int hfi_conn_send_panel_init(struct drm_connector *drm_conn)
 {
 	return 0;
+}
+
+static inline struct dsi_panel *hfi_connector_get_dsi_panel(struct sde_connector *sde_conn)
+{
+	return NULL;
+}
+
+static inline void hfi_connector_set_esd_recovery_pending(struct sde_connector *sde_conn)
+{
 }
 
 static inline void hfi_connector_report_panel_dead(

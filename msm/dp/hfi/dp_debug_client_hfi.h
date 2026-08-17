@@ -7,42 +7,6 @@
 #define _DP_DEBUG_CLIENT_HFI_H_
 
 #include "dp_debug_client.h"
-#include "dp_client.h"
-#include "hfi_defs_device.h"
-
-/* Response handling for HFI commands */
-struct dp_hfi_response_data {
-	u32 state;
-	u32 bw_code;
-	u32 mst_mode;
-	u32 mst_state;
-	u8 dpcd_data[256];
-	u32 dpcd_size;
-	u32 crc_data[6]; /* R, G, B for source and sink */
-	bool connected;
-	bool response_received;
-	enum {
-		HFI_RESPONSE_NONE,
-		HFI_RESPONSE_BW_CODE,
-		HFI_RESPONSE_MST_MODE,
-		HFI_RESPONSE_DPCD,
-		HFI_RESPONSE_CRC
-	} response_type;
-	struct completion response_complete;
-	struct mutex response_lock;
-};
-
-struct dp_debug_client_hfi_priv {
-	struct device *dev;
-	struct hfi_client_t *hfi_client;
-	struct dp_hfi_response_data response_data;
-	struct hfi_prop_listener hfi_cb_obj;  /* HFI callback listener object */
-	u32 hpd_pin_config;              /* Cached HPD pin config */
-	u32 hpd_orientation;             /* Cached HPD orientation */
-	struct hfi_shared_addr_map *dpcd_addr_map;
-	struct hfi_shared_addr_map *edid_addr_map;
-	struct hfi_shared_addr_map *info_addr_map;
-};
 
 /**
  * dp_debug_client_hfi_get() - get the HFI debug client instance

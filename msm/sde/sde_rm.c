@@ -2099,6 +2099,11 @@ static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm, struct sde_rm_rsvp *rsv
 			continue;
 
 		if (RESERVED_BY_OTHER(iter.blk, rsvp)) {
+			if (id == 1) {
+				id = 3;
+				continue;
+			}
+			SDE_EVT32(iter.blk->type, rsvp->enc_id, iter.blk->id, 0xebad);
 			SDE_ERROR("type %d id %d already reserved\n", type, id);
 			return -ENAVAIL;
 		}
@@ -2422,7 +2427,7 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 	struct sde_rm_hw_iter iter_lm, iter_dsc;
 	struct sde_kms *sde_kms;
 	struct sde_hw_mixer *mixer;
-	size_t pipes_per_lm, pipe_count;
+	size_t pipes_per_lm = 0, pipe_count;
 
 	if (!rm || !ctl || !splash_display) {
 		SDE_ERROR("invalid input parameters\n");
@@ -3035,7 +3040,7 @@ static void _sde_rm_populate_dp_lm_mask(struct sde_rm *rm,
 }
 
 /* call this only after rm_mutex held */
-struct sde_rm_rsvp *_sde_rm_poll_get_rsvp_nxt_locked(struct sde_rm *rm,
+static struct sde_rm_rsvp *_sde_rm_poll_get_rsvp_nxt_locked(struct sde_rm *rm,
 		struct drm_encoder *enc)
 {
 	int i;
