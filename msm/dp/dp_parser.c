@@ -179,12 +179,14 @@ static int dp_parser_misc(struct dp_parser *parser)
 	if (!parser->display_type)
 		parser->display_type = "unknown";
 
-
 	parser->no_backlight_support = of_property_read_bool(of_node,
 			"qcom,no-backlight-support");
 
 	parser->ext_hpd_en = of_property_read_bool(of_node,
 			"qcom,dp-ext-hpd");
+	parser->panel_notifier_support = of_property_read_bool(of_node,
+			"qcom,panel-notifier-support");
+	DP_DEBUG("panel-notifier-support = %d\n", parser->panel_notifier_support);
 
 	return 0;
 }
