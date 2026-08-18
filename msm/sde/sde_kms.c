@@ -4478,6 +4478,10 @@ static struct drm_display_mode *_sde_kms_get_splash_mode(
 				break;
 			}
 		}
+		/* fallback: use first available mode if none marked preferred */
+		if (!cur_mode && !list_empty(&connector->modes))
+			cur_mode = list_first_entry(&connector->modes,
+					struct drm_display_mode, head);
 	} else if (state) {
 		/* get the mode from first atomic_check phase for trusted_vm*/
 		for_each_oldnew_crtc_in_state(state, crtc, old_cstate,

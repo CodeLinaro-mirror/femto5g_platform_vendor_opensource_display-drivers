@@ -5467,11 +5467,11 @@ static void sde_plane_destroy(struct drm_plane *plane)
 
 		if (psde->blob_info)
 			drm_property_blob_put(psde->blob_info);
-		msm_property_destroy(&psde->property_info);
-		mutex_destroy(&psde->lock);
-
 		/* this will destroy the states as well */
 		drm_plane_cleanup(plane);
+
+		msm_property_destroy(&psde->property_info);
+		mutex_destroy(&psde->lock);
 
 		if (psde->pipe_hw)
 			sde_hw_sspp_destroy(psde->pipe_hw);
@@ -6144,4 +6144,3 @@ bool sde_plane_property_is_dirty(struct drm_plane_state *plane_state,
 	return msm_property_is_dirty(&psde->property_info,
 			&pstate->property_state, property_idx);
 }
-
