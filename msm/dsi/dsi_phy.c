@@ -355,6 +355,7 @@ static int dsi_phy_settings_init(struct platform_device *pdev,
 	u32 hstx[2] = {0, 0};
 	u32 rescode[3] = {0, 0, 0};
 	u32 ctrl2_val = 0, ldo0_lvl = 0, ldo1_lvl = 0;
+	u32 pemph[2] = {0, 0};
 
 	lane->count_per_lane = phy->ver_info->lane_cfg_count;
 	rc = dsi_phy_parse_dt_per_lane_cfgs(pdev, lane,
@@ -434,6 +435,16 @@ static int dsi_phy_settings_init(struct platform_device *pdev,
 				ldo0_lvl, ldo1_lvl,
 				tuning->vreg_ctrl0,
 				tuning->vreg_ctrl1);
+		}
+
+		if (!of_property_read_u32_array(pdev->dev.of_node,
+				"qcom,platform-phy-pemph-ctrl", pemph, 2)) {
+			tuning->pemph_ctrl0 = (u8)pemph[0];
+			tuning->pemph_ctrl1 = (u8)pemph[1];
+			tuning->flags |= DSI_PHY_GLBL_PEMPH_CTRL_VALID;
+			DSI_PHY_DBG(phy,
+				"PHY tuning: PEMPH_CTRL_0=0x%02x PEMPH_CTRL_1=0x%02x\n",
+				tuning->pemph_ctrl0, tuning->pemph_ctrl1);
 		}
 
 		if (tuning->flags)
