@@ -89,6 +89,7 @@ struct lt9611uxc {
 	struct msm_ext_disp_audio_edid_blk audio_edid_blk;
 	u8 raw_sad[MAX_NUMBER_ADB * MAX_AUDIO_DATA_BLOCK_SIZE];
 	bool audio_support;
+	bool reset_gpio_active_high;
 
 	/* CEC support */
 	struct cec_adapter *cec_adapter;
@@ -100,6 +101,8 @@ struct lt9611uxc {
 	bool cec_status;
 	unsigned int cec_tx_status;
 	struct cec_notifier *cec_notifier;
+
+	bool cont_splash_en;
 
 	/* Dynamic Mode Switch support */
 	struct drm_display_mode curr_mode;
@@ -541,8 +544,10 @@ static void lt9611uxc_hpd_work(struct work_struct *work)
 	if (lt9611uxc->connector.dev) {
 		lt9611uxc->connector.status = (lt9611uxc->hdmi_connected) ?
 				connector_status_connected: connector_status_disconnected;
-		if (lt9611uxc->connector.status == connector_status_disconnected)
+		if (lt9611uxc->connector.status == connector_status_disconnected) {
+			lt9611uxc->cont_splash_en = false;
 			lt9611uxc_release_edid(lt9611uxc);
+		}
 		lt9611uxc_helper_hotplug_event(lt9611uxc);
 
 		drm_kms_helper_hotplug_event(lt9611uxc->connector.dev);
@@ -562,13 +567,20 @@ static void lt9611uxc_hpd_work(struct work_struct *work)
 
 static void lt9611uxc_reset(struct lt9611uxc *lt9611uxc)
 {
-	gpiod_set_value_cansleep(lt9611uxc->reset_gpio, 1);
+	int gpio_default_state = 1;
+	if (lt9611uxc->reset_gpio_active_high)
+		gpio_default_state = 0;
+
+	gpiod_set_value_cansleep(lt9611uxc->reset_gpio, gpio_default_state);
 	msleep(20);
 
-	gpiod_set_value_cansleep(lt9611uxc->reset_gpio, 0);
+	gpiod_set_value_cansleep(lt9611uxc->reset_gpio, !gpio_default_state);
 	msleep(20);
 
-	gpiod_set_value_cansleep(lt9611uxc->reset_gpio, 1);
+	gpiod_set_value_cansleep(lt9611uxc->reset_gpio, gpio_default_state);
+	msleep(300);
+
+	/* Need longer time to wait LT9611UXC reset finished. */
 	msleep(300);
 
 	/* Need longer time to wait LT9611UXC reset finished. */
@@ -586,7 +598,9 @@ static void lt9611uxc_assert_5v(struct lt9611uxc *lt9611uxc)
 
 static int lt9611uxc_regulator_init(struct lt9611uxc *lt9611uxc)
 {
+	struct device_node *vcc_supply;
 	int ret;
+	u32 vcc_min, vcc_max;
 
 	lt9611uxc->supplies[0].supply = "vdd";
 	lt9611uxc->supplies[1].supply = "vcc";
@@ -595,7 +609,31 @@ static int lt9611uxc_regulator_init(struct lt9611uxc *lt9611uxc)
 	if (ret < 0)
 		return ret;
 
-	ret = regulator_set_voltage(lt9611uxc->supplies[1].consumer, 3300000, 3500000);
+	vcc_supply = of_parse_phandle(lt9611uxc->dev->of_node, "vcc-supply", 0);
+	if (!vcc_supply) {
+		dev_err(lt9611uxc->dev, "%s:failed to get vcc-supply phandle\n",
+				__func__);
+		return -ENODEV;
+	}
+
+	ret = of_property_read_u32(vcc_supply, "regulator-min-microvolt", &vcc_min);
+	if (ret) {
+		dev_err(lt9611uxc->dev, "%s:failed to read regulator-min-microvolt %d\n",
+				__func__, ret);
+		of_node_put(vcc_supply);
+		return ret;
+	}
+
+	ret = of_property_read_u32(vcc_supply, "regulator-max-microvolt", &vcc_max);
+	if (ret) {
+		dev_err(lt9611uxc->dev, "%s:failed to read regulator-max-microvolt %d\n",
+				__func__, ret);
+		of_node_put(vcc_supply);
+		return ret;
+	}
+
+	ret = regulator_set_voltage(lt9611uxc->supplies[1].consumer, vcc_min, vcc_max);
+	of_node_put(vcc_supply);
 	if (ret) {
 		dev_err(lt9611uxc->dev, "%s:regulator set voltage failed %d\n",
 				__func__, ret);
@@ -950,6 +988,14 @@ static void lt9611uxc_bridge_pre_enable(struct drm_bridge *bridge)
 	lt9611uxc_lock(lt9611uxc);
 	lt9611uxc_video_setup(lt9611uxc, &lt9611uxc->curr_mode);
 	lt9611uxc_unlock(lt9611uxc);
+	if (!lt9611uxc->cont_splash_en) {
+		lt9611uxc_reset(lt9611uxc);
+		lt9611uxc_lock(lt9611uxc);
+		lt9611uxc_video_setup(lt9611uxc, &lt9611uxc->curr_mode);
+		lt9611uxc_unlock(lt9611uxc);
+	} else {
+		lt9611uxc->cont_splash_en = false;
+	}
 }
 
 static void lt9611uxc_bridge_enable(struct drm_bridge *bridge)
@@ -1012,9 +1058,11 @@ static void lt9611uxc_bridge_mode_set(struct drm_bridge *bridge,
 {
 	struct lt9611uxc *lt9611uxc = bridge_to_lt9611uxc(bridge);
 
-	lt9611uxc_lock(lt9611uxc);
-	lt9611uxc_video_setup(lt9611uxc, mode);
-	lt9611uxc_unlock(lt9611uxc);
+	if (!lt9611uxc->cont_splash_en) {
+		lt9611uxc_lock(lt9611uxc);
+		lt9611uxc_video_setup(lt9611uxc, mode);
+		lt9611uxc_unlock(lt9611uxc);
+	}
 
 	dev_info(lt9611uxc->dev, "hdisplay=%d, vdisplay=%d, clock=%d \n",
 		mode->hdisplay, mode->vdisplay, mode->clock);
@@ -1150,14 +1198,31 @@ static int lt9611uxc_parse_dt(struct device *dev,
 	lt9611uxc->audio_support = of_property_read_bool(dev->of_node, "lt,audio-support");
 	dev_info(lt9611uxc->dev, "audio support = %d\n", lt9611uxc->audio_support);
 
+	lt9611uxc->cont_splash_en = of_property_read_bool(dev->of_node, "lt,cont-splash-en");
+	dev_info(lt9611uxc->dev, "cont_splash_en = %d\n", lt9611uxc->cont_splash_en);
+
+	lt9611uxc->reset_gpio_active_high =
+		of_property_read_bool(dev->of_node, "lt,reset-gpio-active-high");
+	dev_dbg(lt9611uxc->dev, "reset_gpio_active_high = %d\n", lt9611uxc->reset_gpio_active_high);
+
 	return 0;
 }
 
 static int lt9611uxc_gpio_init(struct lt9611uxc *lt9611uxc)
 {
 	struct device *dev = lt9611uxc->dev;
+	struct gpio_desc *enable_3p3_gpio;
+	struct gpio_desc *enable_1p2_gpio;
 
-	lt9611uxc->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
+	if (lt9611uxc->cont_splash_en) {
+		lt9611uxc->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_ASIS);
+	} else {
+		if (lt9611uxc->reset_gpio_active_high)
+			lt9611uxc->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
+		else
+			lt9611uxc->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
+	}
+
 	if (IS_ERR(lt9611uxc->reset_gpio)) {
 		dev_err(dev, "failed to acquire reset gpio\n");
 		return PTR_ERR(lt9611uxc->reset_gpio);
@@ -1167,6 +1232,18 @@ static int lt9611uxc_gpio_init(struct lt9611uxc *lt9611uxc)
 	if (IS_ERR(lt9611uxc->enable_gpio)) {
 		dev_err(dev, "failed to acquire enable gpio\n");
 		return PTR_ERR(lt9611uxc->enable_gpio);
+	}
+
+	enable_3p3_gpio = devm_gpiod_get_optional(dev, "enable-3p3", GPIOD_OUT_HIGH);
+	if (IS_ERR(enable_3p3_gpio)) {
+		dev_err(dev, "failed to acquire enable 3p3 gpio\n");
+		return PTR_ERR(enable_3p3_gpio);
+	}
+
+	enable_1p2_gpio = devm_gpiod_get_optional(dev, "enable-1p2", GPIOD_OUT_HIGH);
+	if (IS_ERR(enable_1p2_gpio)) {
+		dev_err(dev, "failed to acquire enable 1p2 gpio\n");
+		return PTR_ERR(enable_1p2_gpio);
 	}
 
 	return 0;
@@ -1704,7 +1781,8 @@ static int lt9611uxc_probe(struct i2c_client *client)
 	if (ret)
 		goto err_of_put;
 
-	lt9611uxc_reset(lt9611uxc);
+	if (!lt9611uxc->cont_splash_en)
+		lt9611uxc_reset(lt9611uxc);
 
 	ret = lt9611uxc_read_device_rev(lt9611uxc);
 	if (ret) {
