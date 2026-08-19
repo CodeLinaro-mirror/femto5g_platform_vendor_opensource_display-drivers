@@ -5367,6 +5367,9 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 			drm_crtc_vblank_off(conn->state->crtc);
 			sde_crtc = to_sde_crtc(conn->state->crtc);
 			sde_crtc->vblank_pm_disable = true;
+
+			/* notify FW to immediately expire the idle timer on pm_suspend */
+			sde_encoder_idle_timer_immediate_expiry(conn->encoder);
 		}
 
 		if (priv->disp_thread[crtc_id].thread)
