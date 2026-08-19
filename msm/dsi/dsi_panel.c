@@ -12,6 +12,7 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/pwm.h>
 #include <video/mipi_display.h>
+#include <linux/spi/spi.h>
 #if IS_ENABLED(CONFIG_MTD)
 #include <linux/mtd/mtd.h>
 #endif
@@ -2947,7 +2948,10 @@ static int dsi_panel_parse_calibration_mtd(struct dsi_panel *panel)
 	struct mtd_info *mtd;
 
 	np = of_parse_phandle(panel->panel_of_node,
-			"qcom,panel-calibration-mtd-left", 0);
+			"qcom,panel-calibration-left", 0);
+	if (!np)
+		np = of_parse_phandle(panel->panel_of_node,
+				"qcom,panel-calibration-mtd-left", 0);
 	if (!np) {
 		DSI_DEBUG("[%s] calibration MTD left not defined, skipping\n",
 				panel->name);
@@ -2963,7 +2967,10 @@ static int dsi_panel_parse_calibration_mtd(struct dsi_panel *panel)
 	}
 
 	np = of_parse_phandle(panel->panel_of_node,
-			"qcom,panel-calibration-mtd-right", 0);
+			"qcom,panel-calibration-right", 0);
+	if (!np)
+		np = of_parse_phandle(panel->panel_of_node,
+				"qcom,panel-calibration-mtd-right", 0);
 	if (!np) {
 		DSI_DEBUG("[%s] calibration MTD right not defined, skipping\n",
 				panel->name);
@@ -2994,9 +3001,65 @@ static inline int dsi_panel_parse_calibration_mtd(struct dsi_panel *panel)
 }
 #endif /* CONFIG_MTD */
 
+/*
+ * dsi_panel_parse_calibration_spi - look up the left/right calibration SPI
+ * flash devices from the panel DT node.
+ */
+static int dsi_panel_parse_calibration_spi(struct dsi_panel *panel)
+{
+	struct device_node *np;
+	struct device *dev;
+
+	np = of_parse_phandle(panel->panel_of_node,
+			"qcom,panel-calibration-left", 0);
+	if (!np) {
+		DSI_DEBUG("[%s] calibration SPI left not defined, skipping\n",
+				panel->name);
+	} else {
+		dev = bus_find_device_by_of_node(&spi_bus_type, np);
+		of_node_put(np);
+		if (!dev) {
+			DSI_ERR("[%s] failed to find left calibration SPI device\n",
+					panel->name);
+			return -EPROBE_DEFER;
+		}
+		panel->calibration_spi_left = to_spi_device(dev);
+		DSI_DEBUG("[%s] calibration SPI left: %s\n",
+				panel->name,
+				dev_name(&panel->calibration_spi_left->dev));
+	}
+
+	np = of_parse_phandle(panel->panel_of_node,
+			"qcom,panel-calibration-right", 0);
+	if (!np) {
+		DSI_DEBUG("[%s] calibration SPI right not defined, skipping\n",
+				panel->name);
+	} else {
+		dev = bus_find_device_by_of_node(&spi_bus_type, np);
+		of_node_put(np);
+		if (!dev) {
+			DSI_ERR("[%s] failed to find right calibration SPI device\n",
+					panel->name);
+			if (panel->calibration_spi_left) {
+				put_device(&panel->calibration_spi_left->dev);
+				panel->calibration_spi_left = NULL;
+			}
+			return -EPROBE_DEFER;
+		}
+		panel->calibration_spi_right = to_spi_device(dev);
+		DSI_DEBUG("[%s] calibration SPI right: %s\n",
+				panel->name,
+				dev_name(&panel->calibration_spi_right->dev));
+	}
+
+	return 0;
+}
+
 static int dsi_panel_parse_calibration(struct dsi_panel *panel)
 {
 	struct dsi_parser_utils *utils = &panel->utils;
+	const char *storage_str;
+	int rc = 0;
 
 	panel->calibration_enabled = utils->read_bool(utils->data,
 			"qcom,panel-calibration-enabled");
@@ -3007,7 +3070,39 @@ static int dsi_panel_parse_calibration(struct dsi_panel *panel)
 	if (!panel->calibration_enabled)
 		return 0;
 
-	return dsi_panel_parse_calibration_mtd(panel);
+	rc = utils->read_string(utils->data, "qcom,panel-calibration-storage", &storage_str);
+	if (!rc) {
+		if (!strcmp(storage_str, "spi")) {
+			panel->calibration_storage = DSI_PANEL_CALIBRATION_STORAGE_SPI;
+		} else if (!strcmp(storage_str, "mtd")) {
+			panel->calibration_storage = DSI_PANEL_CALIBRATION_STORAGE_MTD;
+		} else {
+			DSI_ERR("[%s] unrecognized qcom,panel-calibration-storage value: \"%s\"\n",
+					panel->name, storage_str);
+			panel->calibration_enabled = false;
+			panel->calibration_storage = DSI_PANEL_CALIBRATION_STORAGE_NONE;
+			return -EINVAL;
+		}
+	} else {
+		/* Property absent – use legacy mtd */
+		panel->calibration_storage = DSI_PANEL_CALIBRATION_STORAGE_MTD;
+	}
+
+	DSI_DEBUG("[%s] calibration storage provider: %s\n", panel->name,
+		(panel->calibration_storage == DSI_PANEL_CALIBRATION_STORAGE_SPI) ? "spi" :
+		(panel->calibration_storage == DSI_PANEL_CALIBRATION_STORAGE_MTD) ? "mtd" :
+		"none");
+
+	switch (panel->calibration_storage) {
+	case DSI_PANEL_CALIBRATION_STORAGE_SPI:
+		return dsi_panel_parse_calibration_spi(panel);
+
+	case DSI_PANEL_CALIBRATION_STORAGE_MTD:
+		return dsi_panel_parse_calibration_mtd(panel);
+
+	default:
+		return 0;
+	}
 }
 
 static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
@@ -4885,6 +4980,16 @@ void dsi_panel_put(struct dsi_panel *panel)
 		panel->calibration_mtd_right = NULL;
 	}
 #endif
+
+	/* Release SPI device references acquired in dsi_panel_parse_calibration_spi() */
+	if (panel->calibration_spi_left) {
+		put_device(&panel->calibration_spi_left->dev);
+		panel->calibration_spi_left = NULL;
+	}
+	if (panel->calibration_spi_right) {
+		put_device(&panel->calibration_spi_right->dev);
+		panel->calibration_spi_right = NULL;
+	}
 
 	kfree(panel->avr_caps.avr_step_fps_list);
 	kfree(panel);
