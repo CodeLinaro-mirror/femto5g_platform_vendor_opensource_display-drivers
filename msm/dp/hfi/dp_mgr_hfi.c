@@ -1566,9 +1566,11 @@ int dp_mgr_hfi_set_mode(struct dp_client *client, int panel_id, struct dp_displa
 		return rc;
 	}
 
-	rc = dp_mgr_hfi_send_transfer_unit(hfi_priv, hfi_client, mode);
-	if (rc)
-		DP_WARN("couldn't send TU data\n");
+	if (!hfi_priv->mst_st) {
+		rc = dp_mgr_hfi_send_transfer_unit(hfi_priv, hfi_client, mode);
+		if (rc)
+			DP_WARN("couldn't send TU data\n");
+	}
 
 	hfi_mode_info.size            = sizeof(struct hfi_display_mode_info);
 	hfi_mode_info.h_active        =	mode->timing.h_active;
