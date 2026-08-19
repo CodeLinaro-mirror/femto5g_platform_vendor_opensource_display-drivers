@@ -1812,6 +1812,7 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 	struct msm_display_conn_params params;
 	struct sde_vm_ops *vm_ops;
 	int i, rc = 0;
+	struct sde_crtc *sde_crtc;
 
 	if (!kms || !old_state)
 		return;
@@ -1823,6 +1824,10 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 
 	if (!sde_kms_power_resource_is_enabled(sde_kms->dev)) {
 		SDE_ERROR("power resource is not enabled\n");
+		for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i) {
+			sde_crtc = to_sde_crtc(crtc);
+			atomic_set(&sde_crtc->kickoff_in_progress, 0);
+		}
 		return;
 	}
 

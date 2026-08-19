@@ -482,7 +482,7 @@ struct sde_crtc_hal_funcs {
  * @ad_active     : list containing ad properties that are active
  * @crtc_lock     : crtc lock around create, destroy and access.
  * @frame_pending : Whether or not an update is pending
- * @kickoff_in_progress : boolean entry to check if kickoff is in progress
+ * @kickoff_in_progress : atomic entry to check if kickoff is in progress
  * @frame_events  : static allocation of in-flight frame events
  * @frame_event_list : available frame event list
  * @vblank_events  : static allocation of in-flight vblank events
@@ -614,7 +614,7 @@ struct sde_crtc {
 	struct list_head vblank_event_list;
 	spinlock_t spin_lock;
 	spinlock_t event_spin_lock;
-	bool kickoff_in_progress;
+	atomic_t kickoff_in_progress;
 	unsigned long revalidate_mask;
 
 	/* for handling internal event thread */
@@ -1275,7 +1275,8 @@ static inline bool sde_crtc_no_frame_in_progress(struct drm_crtc *crtc)
 	struct sde_crtc *sde_crtc = NULL;
 
 	sde_crtc = to_sde_crtc(crtc);
-	if (sde_crtc && !sde_crtc_frame_pending(crtc) && !sde_crtc->kickoff_in_progress)
+	if (sde_crtc && !sde_crtc_frame_pending(crtc) &&
+			!atomic_read(&sde_crtc->kickoff_in_progress))
 		return true;
 
 	return false;

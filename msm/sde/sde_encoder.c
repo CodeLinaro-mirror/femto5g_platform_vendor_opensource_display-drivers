@@ -3386,7 +3386,7 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 		SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state, SDE_EVTLOG_ERROR);
 		goto end;
 	} else if (sde_crtc_frame_pending(sde_enc->crtc) ||
-			sde_crtc->kickoff_in_progress) {
+			atomic_read(&sde_crtc->kickoff_in_progress)) {
 		SDE_DEBUG_ENC(sde_enc, "skip idle entry");
 		SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state,
 			sde_crtc_frame_pending(sde_enc->crtc), SDE_EVTLOG_ERROR);
@@ -6318,9 +6318,9 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 		sr_timer_expires = hrtimer_get_expires(&phys_enc->sde_vrr_cfg.self_refresh_timer);
 
 		if (sde_crtc && (sde_crtc_frame_pending(sde_enc->crtc) ||
-				sde_crtc->kickoff_in_progress ||
+				atomic_read(&sde_crtc->kickoff_in_progress) ||
 				atomic_read(&phys_enc->pending_kickoff_cnt))) {
-			SDE_EVT32(sde_crtc->kickoff_in_progress,
+			SDE_EVT32(atomic_read(&sde_crtc->kickoff_in_progress),
 				atomic_read(&phys_enc->pending_kickoff_cnt), SDE_EVTLOG_FUNC_CASE3);
 			return;
 		} else if (ktime_compare(sr_timer_expires, current_time) > 0) {
@@ -6823,7 +6823,7 @@ void sde_encoder_early_ept_hint(struct drm_encoder *drm_enc, u64 frame_interval,
 
 		sde_crtc = to_sde_crtc(sde_enc->crtc);
 		if (curr_time - vrr_cfg->last_commit_ept_in_ns < EPT_TIMEOUT_NS ||
-				sde_crtc->kickoff_in_progress) {
+				atomic_read(&sde_crtc->kickoff_in_progress)) {
 			SDE_ERROR("Invalid last_commit_ept_in_ns %llu ,EPt %llu, curr_time %llu\n",
 				vrr_cfg->last_commit_ept_in_ns, ept_ns, curr_time);
 			program_timer = false;
