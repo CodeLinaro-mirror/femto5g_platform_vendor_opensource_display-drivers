@@ -932,6 +932,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_DS_PU_SUPPORTED        Support Destination scaler Partial Update
  * @SDE_FEATURE_MIXER_OP_V1     Mixer ops V1 support
  * @SDE_FEATURE_DISP_OP        Support Display OP switch
+ * @SDE_FEATURE_RSC_CLK_STATE  use CLK state instead of CMD/VID state for RSC
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -987,6 +988,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_MIXER_OP_V1,
 	SDE_FEATURE_SSIP_CLK,
 	SDE_FEATURE_DISP_OP,
+	SDE_FEATURE_RSC_CLK_STATE,
 	SDE_FEATURE_MAX
 };
 
@@ -2146,6 +2148,8 @@ struct sde_perf_cfg {
  * @cwb_blk_stride      offset between each CWB blk
  * @dcwb_count          number of dcwb hardware instances
  * @qultivate_cfg       pointer to display_qultivate configurations
+ * @ddr_count           number of ddr types supported
+ * @ddr_list_index      Index of supported ddr type
  * @reg_dma_count       number of valid reg dma blocks available
  * @dma_cfg             pointer to config containing reg dma blocks
  * @ad_count            number of AD4 hardware instances
@@ -2239,6 +2243,8 @@ struct sde_mdss_cfg {
 
 	/* HW Blocks */
 	u32 mdss_count;
+	u32 ddr_count;
+	u32 ddr_list_index;
 	struct sde_mdss_base_cfg mdss[MAX_BLOCKS];
 	u32 mdss_hw_block_size;
 	u32 mdp_count;

@@ -489,7 +489,7 @@ static int _sde_kms_detach_sec_cb(struct sde_kms *sde_kms, int vmid)
 
 	ret = _sde_kms_scm_call(sde_kms, vmid);
 	if (ret) {
-		SDE_ERROR("scm call failed for vmid:%d\n", vmid);
+		SDE_ERROR("sde scm call failed for vmid:%d\n", vmid);
 		goto scm_error;
 	}
 
@@ -503,12 +503,14 @@ static int _sde_kms_detach_sec_cb(struct sde_kms *sde_kms, int vmid)
 	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) && (csf_ver.max_ver == CSF_2_5_MAX_VER)) {
 		ret = smmu_proxy_switch_sid(sde_kms->dev->dev, SMMU_PROXY_SWITCH_OP_ACQUIRE_SID);
 		if (ret) {
-			SDE_ERROR("smmu proxy switch sid failed, ret:%d\n", ret);
+			SDE_ERROR("smmu proxy acquire sid switch sid failed, ret:%d\n", ret);
 			goto scm_error;
 		}
 	}
 
 	SDE_EVT32(vmid, csf_ver.arch_ver, csf_ver.max_ver, csf_ver.min_ver, ret);
+	SDE_DEBUG("vmid:%d csf_ver:%d.%d.%d ret:%d\n",
+		 vmid, csf_ver.arch_ver, csf_ver.max_ver, csf_ver.min_ver, ret);
 #endif
 	return 0;
 
@@ -540,7 +542,7 @@ static int _sde_kms_attach_sec_cb(struct sde_kms *sde_kms, u32 vmid,
 	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) && (csf_ver.max_ver == CSF_2_5_MAX_VER)) {
 		ret = smmu_proxy_switch_sid(sde_kms->dev->dev, SMMU_PROXY_SWITCH_OP_RELEASE_SID);
 		if (ret) {
-			SDE_ERROR("smmu proxy switch sid failed, rc:%d\n", ret);
+			SDE_ERROR("smmu proxy release switch sid failed, rc:%d\n", ret);
 			goto scm_error;
 		}
 	}
@@ -5717,10 +5719,19 @@ static int sde_kms_pd_enable(struct generic_pm_domain *genpd)
 
 	SDE_DEBUG("\n");
 
-	rc = pm_runtime_resume_and_get(sde_kms->dev->dev);
+	rc = pm_runtime_get_sync(sde_kms->dev->dev);
+	if (rc < 0) {
+		pm_runtime_put_noidle(sde_kms->dev->dev);
+		dev_err(sde_kms->dev->dev, "PM runtime resume failed: %d\n", rc);
+		SDE_EVT32(rc, genpd->device_count,
+			atomic_read(&sde_kms->dev->dev->power.usage_count),
+			pm_runtime_suspended(sde_kms->dev->dev));
+		return rc;
+	}
 	rc = (rc > 0) ? 0 : rc;
 
-	SDE_EVT32(rc, genpd->device_count);
+	SDE_EVT32(rc, genpd->device_count, atomic_read(&sde_kms->dev->dev->power.usage_count),
+		pm_runtime_suspended(sde_kms->dev->dev));
 
 	return rc;
 }
@@ -5733,7 +5744,8 @@ static int sde_kms_pd_disable(struct generic_pm_domain *genpd)
 
 	pm_runtime_put_sync(sde_kms->dev->dev);
 
-	SDE_EVT32(genpd->device_count);
+	SDE_EVT32(genpd->device_count, atomic_read(&sde_kms->dev->dev->power.usage_count),
+		pm_runtime_suspended(sde_kms->dev->dev));
 
 	return 0;
 }
