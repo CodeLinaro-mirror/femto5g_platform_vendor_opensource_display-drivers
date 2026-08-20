@@ -556,7 +556,10 @@ void sde_edid_update_connector_info(struct drm_connector *connector,
 {
 	struct sde_edid_ctrl *edid_ctrl = (struct sde_edid_ctrl *)(input);
 
-	if (!connector || !edid_ctrl || !edid_ctrl->edid) {
+	if (!connector)
+		return;
+
+	if (!edid_ctrl || !edid_ctrl->edid) {
 		drm_connector_update_edid_property(connector, NULL);
 		return;
 	}

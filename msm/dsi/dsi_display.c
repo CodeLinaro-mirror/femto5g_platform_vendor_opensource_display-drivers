@@ -6524,8 +6524,13 @@ static int dsi_display_bind(struct device *dev,
 	if (!display->panel_node && !display->fw)
 		return 0;
 
+	if (!display->panel) {
+		DSI_ERR("[%s] invalid panel\n", display->name);
+		return -EINVAL;
+	}
+
 	/* defer bind if ext bridge driver is not loaded */
-	if (display->panel && display->panel->host_config.ext_bridge_mode) {
+	if (display->panel->host_config.ext_bridge_mode) {
 		for (i = 0; i < display->ext_bridge_cnt; i++) {
 			if (!of_drm_find_bridge(
 					display->ext_bridge[i].node_of)) {
