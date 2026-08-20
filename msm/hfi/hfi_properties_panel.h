@@ -1034,6 +1034,31 @@
  */
 #define HFI_PROPERTY_PANEL_MAX_LANE_COUNT                            0x00040048
 
+/*!
+ * HFI_PROPERTY_PANEL_LANE_TUNING_PARAMS - Provides an arbitrary number of optional lane tuning
+ *                                         parameters. Each parameter is a struct of (id, value)
+ *                                         dp_lane_tuning_params, packed two per u32 payload
+ *                                         entry. Capable of packing a maximum of 16 tuning
+ *                                         parameters. IDs range 1-16 (inclusive) and are defined
+ *                                         by enum dp_phy_tuning_param_id, identifying the target
+ *                                         field in struct dp_phy_lane_tuning_params. Each value
+ *                                         is the raw 8-bit tuning value; DCP stores it in
+ *                                         the lower byte of the corresponding 16-bit field and
+ *                                         sets the upper byte to mark the tuning parameter as
+ *                                         host-overridden. This property is sent to DCP in the
+ *                                         HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_LANE_TUNING_PARAMS
+ *     (u32_key) payload[0]          : HFI_PROPERTY_PANEL_LANE_TUNING_PARAMS \|
+ *                                     (version=0 << 20) \| (dsize=(n/2 + 1) << 24)
+ *   (u32_value) payload[1]          : count(n <= 16) of dp_lane_tuning_params entries
+ *   (u32_value) payload[2..(n/2)+1] : two packed dp_lane_tuning_params entries per u32 \|
+ *                                     ((u8,u8)<id1,value1> \| (u8,u8)<id2,value2>) where id is \|
+ *                                     enum dp_phy_tuning_param_id (1..16) and value is the raw \|
+ *                                     8-bit tuning value stored in the field selected by id
+ */
+#define HFI_PROPERTY_PANEL_LANE_TUNING_PARAMS                        0x00040049
+
 /*
  * All panel property IDs end here
  */

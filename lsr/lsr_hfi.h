@@ -98,5 +98,6 @@ void lsr_hfi_deinitialize(struct lsr_hfi_ops *hdev);
 
 int lsr_fw_reset(void);
 int hfi_lsr_reset(void);
+bool lsr_core_is_ready(void);
 
 #endif

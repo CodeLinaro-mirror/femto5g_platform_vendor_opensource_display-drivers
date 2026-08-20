@@ -1844,6 +1844,8 @@ static int dp_debug_client_hfi_write_mst_sideband_mode(struct dp_debug_client *c
 		return -ENODEV;
 	}
 
+	SDE_EVT32_EXTERNAL(client->mst_con_id, mst_sideband_mode, mst_port_cnt);
+
 	/* Send MST configuration command to DCP with port count
 	 * DCP will handle writing the DPCD DP_MSTM_CAP register (0x021) internally
 	 */
@@ -1867,6 +1869,46 @@ static int dp_debug_client_hfi_write_mst_sideband_mode(struct dp_debug_client *c
 
 	DP_INFO("Sent MST config to DCP: mst_enable=%u, num_streams=%u (DCP will update DPCD)\n",
 			mst_config.mst_enable, mst_config.num_streams);
+
+	return 0;
+}
+
+/* Enable or disable a single MST stream; sends HFI_COMMAND_DEBUG_DP_MST_STREAM_CONTROL */
+static int dp_debug_client_hfi_write_mst_stream_control(struct dp_debug_client *client,
+		u32 display_obj_id, bool enable)
+{
+	struct dp_debug_client_hfi_priv *priv;
+	struct hfi_client_t *hfi_client;
+	u32 stream_control;
+	int rc;
+
+	if (!client)
+		return -EINVAL;
+
+	priv = client->priv;
+
+	hfi_client = dp_debug_hfi_get_client(priv);
+	if (!hfi_client) {
+		DP_ERR("HFI client not available for MST stream control\n");
+		return -ENODEV;
+	}
+
+	SDE_EVT32_EXTERNAL(display_obj_id, enable);
+
+	stream_control = enable;
+
+	rc = dp_debug_hfi_send_cmd(priv, hfi_client,
+			HFI_COMMAND_DEBUG_DP_MST_STREAM_CONTROL,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &stream_control, sizeof(stream_control),
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE,
+			display_obj_id);
+	if (rc) {
+		DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_MST_STREAM_CONTROL, rc=%d\n", rc);
+		return rc;
+	}
+
+	DP_INFO("Sent MST stream control to DCP: display_obj_id=%u, control=%u\n",
+			display_obj_id, stream_control);
 
 	return 0;
 }
@@ -1907,8 +1949,10 @@ static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 
 	priv = client->priv;
 	mgr_priv = _get_mgr_hfi(priv);
-	if (!mgr_priv)
+	if (!mgr_priv || !mgr_priv->hpd) {
+		SDE_EVT32_EXTERNAL(con_id, SDE_EVTLOG_ERROR);
 		return -ENODEV;
+	}
 
 	/* Look up the connector directly from HFI stream connectors */
 	connector = _get_connector(mgr_priv, con_id);
@@ -1916,6 +1960,8 @@ static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 		DP_ERR("invalid connector id %u\n", con_id);
 		return -EINVAL;
 	}
+
+	SDE_EVT32_EXTERNAL(con_id, status);
 
 	/*
 	 * Store the DRM connector and ID for operations such as read_hdr,
@@ -1926,15 +1972,22 @@ static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 	client->mst_con_id = con_id;
 	priv->mst_conn = connector;
 
-	if (status == connector_status_unknown) {
-		DP_DEBUG("mst_con_id set to %d (status query only)\n", con_id);
-		return 0;
-	}
-
-	if (status == connector_status_connected)
+	switch (status) {
+	case connector_status_connected:
 		DP_INFO("plug mst connector %d\n", con_id);
-	else if (status == connector_status_disconnected)
+		break;
+	case connector_status_disconnected:
 		DP_INFO("unplug mst connector %d\n", con_id);
+		break;
+	case connector_status_unknown:
+		DP_INFO("mst_con_id set to %d (status query only)\n", con_id);
+		rc = 0;
+		goto end;
+	default:
+		DP_ERR("connector status %d not supported\n", status);
+		rc = -EINVAL;
+		goto end;
+	}
 
 	/*
 	 * In HFI mode panel_id == stream_id (set in dp_connector_post_init),
@@ -1957,15 +2010,11 @@ static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 	 * here without setting hfi->connected or firing drm_kms_helper_hotplug_event
 	 * ourselves — DCP drives the rest of the connect sequence.
 	 */
-	if (status == connector_status_connected && mgr_priv->active_streams < 2)
-		dp_debug_client_hfi_write_mst_sideband_mode(client, 0,
-				mgr_priv->active_streams + 1);
-	else if (status == connector_status_disconnected && mgr_priv->active_streams > 0)
-		dp_debug_client_hfi_write_mst_sideband_mode(client, 0,
-				mgr_priv->active_streams - 1);
-	if (status == connector_status_connected && mgr_priv && !mgr_priv->configured) {
-		DP_INFO("HFI not configured (teardown), re-init via HPD configure for stream %u\n",
-				stream_id);
+	dp_debug_client_hfi_write_mst_stream_control(client,
+			sde_conn_get_display_obj_id(connector),
+			status == connector_status_connected);
+
+	if (status == connector_status_connected) {
 		mgr_priv->soft_unplug = false;
 		/*
 		 * hfi_priv->connected is still true from the original HPD connect —
@@ -1974,71 +2023,66 @@ static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 		 * hpd_high && !connected, so we must clear connected here.
 		 */
 		mgr_priv->connected = false;
-		if (mgr_priv->hpd) {
-			/*
-			 * Restore simulation pin/orientation values so DCP
-			 * accepts the plug (same logic as write_hpd connect).
-			 */
-			if (client->sim_enable)
-				mgr_priv->hpd->pin_config = 5;
-			if (mgr_priv->hpd->orientation == ORIENTATION_NONE)
-				mgr_priv->hpd->orientation = ORIENTATION_CC1;
-			mgr_priv->hpd->hpd_high = true;
-			mgr_priv->hpd->hpd_irq = false;
-		}
-		rc = dp_mgr_hfi_hpd_configure_cb(mgr_priv);
+
+		mgr_priv->hpd->hpd_high = true;
+		mgr_priv->hpd->hpd_irq = (mgr_priv->active_streams > 0) ? true : false;
+		/*
+		 * Restore simulation pin/orientation values so DCP
+		 * accepts the plug (same logic as write_hpd connect).
+		 */
+		if (client->sim_enable)
+			mgr_priv->hpd->pin_config = 5;
+		if (mgr_priv->hpd->orientation == ORIENTATION_NONE)
+			mgr_priv->hpd->orientation = ORIENTATION_CC1;
+
+		SDE_EVT32_EXTERNAL(con_id, SDE_EVTLOG_FUNC_CASE1, mgr_priv->hpd->hpd_high,
+				mgr_priv->hpd->hpd_irq, mgr_priv->soft_unplug);
+
+		if (!mgr_priv->configured)
+			rc = dp_mgr_hfi_hpd_configure_helper(mgr_priv);
+		else
+			rc = dp_mgr_hfi_hpd_attention_helper(mgr_priv);
+
 		if (rc) {
-			DP_ERR("HPD configure failed for stream %u reconnect, rc=%d\n",
+			DP_ERR("HPD failed for stream %u connect, rc=%d\n",
 					stream_id, rc);
+			SDE_EVT32_EXTERNAL(stream_id, rc);
 		}
-		return rc;
+
+		mgr_priv->hpd->hpd_irq = false;
+		goto end;
 	}
 
-	/*
-	 * When disconnecting a physical display, set soft_unplug before updating
-	 * the connected flag so that any attention callbacks that fire during
-	 * or after the DRM disable sequence are suppressed. The physical DP link
-	 * remains active. When reconnecting, clear soft_unplug first so that the
-	 * attention callback and EDID info handler are re-enabled before the
-	 * hotplug event is fired.
-	 */
 	if (status == connector_status_disconnected) {
 		/*
-		 * Set soft_unplug=true BEFORE firing the attention/disconnect
-		 * callback below. dp_mgr_hfi_hpd_attention_cb() checks soft_unplug
-		 * at entry and returns early when it is set. If soft_unplug is set
-		 * after the call (as it was previously), the attention callback
-		 * runs to completion and sends an extra, unintended
-		 * HFI_COMMAND_DEVICE_HOT_PLUG_DETECT to DCP right after the
-		 * MST_CONFIG command above, causing DCP to tear down the entire
-		 * MST topology instead of just the single port being removed.
+		 * Send an HPD IRQ to DCP before marking the stream as
+		 * soft-unplugged.  The attention callback is gated on
+		 * soft_unplug==false, so the IRQ must be dispatched first.
+		 * This notifies DCP of the MST topology change (monitor
+		 * removed from port) while the physical DP link stays up.
+		 *
+		 * Call the sync variant directly rather than
+		 * dp_mgr_hfi_hpd_attention_cb(), which only queues the
+		 * attention work: soft_unplug is set to true right after
+		 * this call returns, and if the queued work hadn't run yet
+		 * it would see soft_unplug==true and skip sending the IRQ.
 		 */
-		mgr_priv->soft_unplug = true;
-		DP_DEBUG("Set soft_unplug=true for con_id=%d (active_streams=%u)\n",
-			con_id, mgr_priv->active_streams);
+		mgr_priv->hpd->hpd_high = true;
+		mgr_priv->hpd->hpd_irq = true;
 
-		/*
-		 * Send an HPD IRQ to DCP to notify it of the MST topology
-		 * change (monitor removed from port) while the physical DP
-		 * link stays up. For the last stream, the code below performs
-		 * a full disconnect instead.
-		 */
-		if (mgr_priv->hpd) {
-			if (mgr_priv->active_streams > 1 && mgr_priv->hpd_cb.attention) {
-				mgr_priv->hpd->hpd_high = true;
-				mgr_priv->hpd->hpd_irq = true;
-				DP_INFO("Sending HPD IRQ for MST unplug (con_id=%d)\n", con_id);
-				mgr_priv->hpd_cb.attention(mgr_priv);
-				mgr_priv->hpd->hpd_irq = false;
-			} else  if (mgr_priv->hpd_cb.disconnect) {
-				mgr_priv->hpd->hpd_high = false;
-				mgr_priv->hpd->hpd_irq = false;
-				mgr_priv->hpd_cb.disconnect(mgr_priv);
-			}
+		SDE_EVT32_EXTERNAL(con_id, SDE_EVTLOG_FUNC_CASE2, mgr_priv->hpd->hpd_high,
+				mgr_priv->hpd->hpd_irq, mgr_priv->soft_unplug);
+
+		rc = dp_mgr_hfi_hpd_attention_helper(mgr_priv);
+
+		if (rc) {
+			DP_ERR("HPD failed for stream %u disconnect, rc=%d\n",
+					stream_id, rc);
+			SDE_EVT32_EXTERNAL(stream_id, rc);
 		}
-	} else if (status == connector_status_connected) {
-		mgr_priv->soft_unplug = false;
-		DP_DEBUG("Cleared soft_unplug for con_id=%d\n", con_id);
+
+		mgr_priv->hpd->hpd_irq = false;
+		DP_DEBUG("Set soft_unplug=true for con_id=%d\n", con_id);
 	}
 
 	/*
@@ -2054,13 +2098,11 @@ static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 		DP_WARN("Could not update hfi[%u]->connected (mgr_priv=%p)\n", stream_id, mgr_priv);
 	}
 
-	/*
-	 * Fire a hotplug event so userspace re-queries the connector.
-	 * hpd_detect() will now return the updated hfi->connected state.
-	 */
-	drm_kms_helper_hotplug_event(connector->dev);
+	/* Hotplug uevent is already fired by when HLOS receives EDID info event */
+	rc = 0;
 
-	return 0;
+end:
+	return rc;
 }
 
 /* Send a bandwidth code override to DCP */

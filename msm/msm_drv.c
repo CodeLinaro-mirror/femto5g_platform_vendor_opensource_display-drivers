@@ -1311,6 +1311,7 @@ static void msm_lastclose(struct drm_device *dev)
 
 	msm_atomic_flush_display_threads(priv);
 
+#if (KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE)
 	if (priv->fbdev) {
 		rc = drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev);
 		if (rc)
@@ -1322,6 +1323,7 @@ static void msm_lastclose(struct drm_device *dev)
 			DRM_ERROR("client modeset commit failed: %d\n", rc);
 #endif /* (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE) */
 	}
+#endif /* KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE */
 
 	/* wait again, before kms driver does it's lastclose commit */
 	msm_wait_event_timeout(priv->pending_crtcs_event, !priv->pending_crtcs,
@@ -2694,15 +2696,26 @@ static struct platform_driver msm_platform_driver = {
 
 static int __init msm_drm_register(void)
 {
+	struct device_node *node;
+
 	if (!modeset)
 		return -EINVAL;
 
+	/* Skips init when display node is either not available or disabled. */
+	node = of_find_matching_node(NULL, dt_match);
+	if (!of_device_is_available(node)) {
+		of_node_put(node);
+		SDE_INFO("Display device node not found\n");
+		return -ENODEV;
+	}
+	of_node_put(node);
+
 	DBG("init");
-	msm_lsr_init();
 	sde_rsc_rpmh_register();
 	sde_rsc_register();
 	sde_cesta_register();
 	msm_smmu_driver_init();
+	msm_lsr_init();
 	sde_wb_register();
 	platform_driver_register(&msm_platform_driver);
 	dsi_display_register();

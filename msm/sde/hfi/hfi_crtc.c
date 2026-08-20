@@ -128,8 +128,10 @@ static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate, struct sde
 	int rc = 0;
 	int num_mixers;
 	bool is_cmd;
+	bool is_video;
 
 	is_cmd = (sde_crtc_get_intf_mode(&sde_crtc->base, &cstate->base) == INTF_MODE_CMD);
+	is_video = (sde_crtc_get_intf_mode(&sde_crtc->base, &cstate->base) == INTF_MODE_VIDEO);
 
 	num_mixers = get_num_mixers(cstate, sde_crtc);
 
@@ -144,7 +146,7 @@ static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate, struct sde
 		lm_cfg.width = cstate->lm_roi[0].w;
 		lm_cfg.height = cstate->lm_roi[0].h;
 		lm_cfg.reserved = ((u32)cstate->lm_roi[0].x << 16) | (cstate->lm_roi[0].y);
-	} else if (is_cmd) {
+	} else if (is_cmd || is_video) {
 		lm_cfg.res_type = HFI_RESOURCE_LM;
 		lm_cfg.resource_idx = 0;
 		lm_cfg.width = cstate->lm_roi[0].w;
@@ -475,8 +477,8 @@ static int hfi_crtc_populate_custom_kv_setter_props(struct sde_crtc *crtc, u32 d
 			disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
 			hfi_util_kv_helper_get_payload_addr(crtc_hfi->kv_props),
-			kv_count * sizeof(struct hfi_kv_pairs),
-			kv_count);
+			kv_count,
+			kv_count * sizeof(struct hfi_kv_pairs));
 	if (ret) {
 		HFI_ERROR_CRTC(crtc_hfi, "failed to send HFI commands\n");
 		goto end;
@@ -920,11 +922,12 @@ static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
 		return;
 	}
 
-	hfi_crtc = container_of(listener, struct hfi_crtc, hfi_cb_obj);
-	if (!hfi_crtc) {
-		SDE_ERROR("hfi_crtc is NULL\n");
+	if (!listener) {
+		SDE_ERROR("listener is NULL\n");
 		return;
 	}
+
+	hfi_crtc = container_of(listener, struct hfi_crtc, hfi_cb_obj);
 
 	cmd_id = packet_info->cmd;
 	payload = packet_info->payload_ptr;
@@ -938,10 +941,12 @@ static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
 
 	switch (cmd_id) {
 	case HFI_COMMAND_DISPLAY_EVENT_LTM:
-		if (!payload) {
-			SDE_ERROR("Invalid LTM event payload %pK\n", payload);
+		if (!payload || !sde_crtc->crtc_event_cb) {
+			SDE_ERROR("Invalid LTM event payload %pK or crtc_event_cb is NULL\n",
+			payload);
 			return;
 		}
+
 		event_payload = (struct hfi_display_ltm_event_resp *)payload;
 		if (event_payload->event_type == HFI_LTM_HIST_DONE)
 			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_LTM_HIST, event_payload);
@@ -953,8 +958,10 @@ static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
 			SDE_ERROR("unknown LTM event type %d\n", event_payload->event_type);
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_RGB_HIST: {
-		if (!payload) {
-			SDE_ERROR("Invalid RGB hist event payload %pK\n", payload);
+		if (!payload || !sde_crtc->crtc_event_cb) {
+			SDE_ERROR(
+			"Invalid RGB hist event payload %pK or crtc_event_cb is NULL\n",
+			payload);
 			return;
 		}
 		struct hfi_display_rgb_hist_event_resp *event_payload;
@@ -977,8 +984,10 @@ static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
 	}
 	case HFI_COMMAND_DISPLAY_EVENT_PA_HIST:
 	{
-		if (!payload) {
-			SDE_ERROR("Invalid PA hist event payload %pK\n", payload);
+		if (!payload || !sde_crtc->crtc_event_cb) {
+			SDE_ERROR(
+			"Invalid PA hist event payload %pK or crtc_event_cb is NULL\n",
+			payload);
 			return;
 		}
 		struct hfi_display_pa_hist_event_resp *event_payload;
@@ -992,8 +1001,10 @@ static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
 		break;
 	}
 	case HFI_COMMAND_DISPLAY_EVENT_SPR_OPR: {
-		if (!payload) {
-			SDE_ERROR("Invalid SPR OPR event payload %pK\n", payload);
+		if (!payload || !sde_crtc->crtc_event_cb) {
+			SDE_ERROR(
+			"Invalid SPR OPR event payload %pK or crtc_event_cb is NULL\n",
+			payload);
 			return;
 		}
 
@@ -1009,8 +1020,9 @@ static void hfi_crtc_prop_handler(struct hfi_packet_info *packet_info,
 		break;
 	}
 	case HFI_COMMAND_DISPLAY_EVENT_AIQE_COPR_READ:
-		if (!payload) {
-			SDE_ERROR("Invalid COPR event payload %pK\n", payload);
+		if (!payload || !sde_crtc->crtc_event_cb) {
+			SDE_ERROR(
+			"Invalid COPR event payload %pK or crtc_event_cb is NULL\n", payload);
 			return;
 		}
 

@@ -328,6 +328,12 @@ static int lsr_sess_deinit_synx_v2(struct lsr_device *dev)
 	}
 
 	synx_uninitialize(dev->hwfence_data.hw_fence_handle);
+	/*
+	 * Clear the handle after teardown so callers that gate on it
+	 * (lsr_core_is_ready(), lsr_fw_reset()) see the core as not ready
+	 * and do not dereference a freed handle across a release/deinit.
+	 */
+	dev->hwfence_data.hw_fence_handle = NULL;
 	return 0;
 }
 

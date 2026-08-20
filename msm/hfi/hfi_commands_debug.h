@@ -883,6 +883,44 @@
  */
 #define HFI_COMMAND_DEBUG_DP_MST_CONFIG                                0xFF00050C
 
+/*
+ * HFI_COMMAND_DEBUG_DP_MST_STREAM_CONTROL - Enable or disable a single MST
+ *                                 stream in the simulation. From host to DCP,
+ *                                 this command drives DCP's per-port skip
+ *                                 logic in dpmst_parse_topology() and
+ *                                 triggers a topology-changed HPD sequence
+ *                                 for the targeted display_id/stream.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Data Contents:
+ *  struct hfi_dp_mst_stream_control {
+ *      u32 control;   // 1 = stream enabled (plugged), 0 = disabled (skipped)
+ *  }
+ *
+ * Hfi Packet layout                      | Value
+ *----------------------------------------|-------------------------------------
+ * hfi_packet.payload_info (size)         | sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                         | HFI_COMMAND_DEBUG_DP_MST_STREAM_CONTROL
+ * hfi_packet.flags (Host to DCP)         | HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                          | DP instance id
+ * hfi_packet.packet_id                   | unique id
+ * hfi_packet.payload                     | struct hfi_dp_mst_stream_control
+ *
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi Packet layout                      | Value
+ *----------------------------------------|-------------------------------------
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_NONE
+ * hfi_packet.cmd                         | HFI_COMMAND_DEBUG_DP_MST_STREAM_CONTROL
+ * hfi_packet.flags (DCP to Host)         | HFI_RX_FLAGS_SUCCESS
+ */
+#define HFI_COMMAND_DEBUG_DP_MST_STREAM_CONTROL                        0xFF00050D
+
 #define HFI_COMMAND_DEBUG_DP_END                                       0xFF0005FF
 
 #define HFI_COMMAND_DEBUG_END                                        0xFFFFFFFF

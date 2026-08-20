@@ -714,8 +714,8 @@ static int hfi_plane_populate_custom_kv_setter_props(struct sde_plane *plane, u3
 			disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
 			hfi_util_kv_helper_get_payload_addr(phfi->kv_props),
-			kv_count * sizeof(struct hfi_kv_pairs),
-			kv_count);
+			kv_count,
+			kv_count * sizeof(struct hfi_kv_pairs));
 	if (ret) {
 		HFI_ERROR_PLANE(phfi, "failed to send HFI commands\n");
 		goto end;

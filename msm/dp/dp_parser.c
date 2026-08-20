@@ -167,6 +167,69 @@ void dp_parser_max_lane_count(struct dp_parser *parser)
 	return;
 }
 
+static void dp_parser_clear_lane_tuning_params(struct dp_parser *parser)
+{
+	devm_kfree(&parser->pdev->dev, parser->lane_tuning_params);
+	parser->lane_tuning_params = NULL;
+	parser->lane_tuning_count = 0;
+}
+
+void dp_parser_lane_tuning_params(struct dp_parser *parser)
+{
+	struct device *dev = &parser->pdev->dev;
+	struct device_node *of_node = parser->pdev->dev.of_node;
+	const char *property = "qcom,lane-tuning-params";
+	u32 out_val;
+	int rc, num_elems, num_pairs, i;
+
+	parser->lane_tuning_count = 0;
+
+	num_elems = of_property_count_u32_elems(of_node, property);
+	if (num_elems <= 0 || (num_elems % 2)) {
+		DP_DEBUG("%s not found or malformed, skipping\n", property);
+		return;
+	}
+
+	num_pairs = num_elems / 2;
+	if (num_pairs > DP_MAX_LANE_TUNING_PARAMS) {
+		DP_WARN("%s has %d pairs, exceeds max %d, truncating\n",
+				property, num_pairs, DP_MAX_LANE_TUNING_PARAMS);
+		num_pairs = DP_MAX_LANE_TUNING_PARAMS;
+	}
+
+	parser->lane_tuning_params = devm_kzalloc(dev,
+			sizeof(struct dp_lane_tuning_param) * num_pairs, GFP_KERNEL);
+	if (!parser->lane_tuning_params) {
+		DP_ERR("failed to allocate lane tuning params\n");
+		return;
+	}
+
+	for (i = 0; i < num_pairs; i++) {
+		rc = of_property_read_u32_index(of_node, property, i * 2, &out_val);
+		if (rc)
+			goto error;
+		parser->lane_tuning_params[i].id = (u8)(out_val & 0xFF);
+
+		rc = of_property_read_u32_index(of_node, property, (i * 2) + 1, &out_val);
+		if (rc)
+			goto error;
+		parser->lane_tuning_params[i].value = (u8)(out_val & 0xFF);
+
+		DP_DEBUG("%s[%d]: id=0x%x value=0x%x\n", property, i,
+				parser->lane_tuning_params[i].id,
+				parser->lane_tuning_params[i].value);
+	}
+
+	/* all pairs parsed successfully */
+	parser->lane_tuning_count = num_pairs;
+	return;
+
+error:
+	/* partial/failed parse: discard everything, per function contract */
+	DP_WARN("%s parsing failed at pair %d, discarding all entries\n", property, i);
+	dp_parser_clear_lane_tuning_params(parser);
+}
+
 static int dp_parser_misc(struct dp_parser *parser)
 {
 	int rc = 0, len = 0, i = 0;
@@ -1133,6 +1196,7 @@ void dp_parser_put(struct dp_parser *parser)
 	}
 
 	dp_parser_clear_link_training_params(parser);
+	dp_parser_clear_lane_tuning_params(parser);
 	dp_parser_clear_io_buf(parser);
 	devm_kfree(&parser->pdev->dev, parser->io.data);
 	devm_kfree(&parser->pdev->dev, parser);

@@ -215,6 +215,7 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 	if (altmode->dp_cb && altmode->dp_cb->attention)
 		altmode->dp_cb->attention(altmode->dp_cb->data);
 ack:
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp_data, altmode->connected);
 	dp_altmode_send_pan_ack(altmode->amclient, port_index);
 	return rc;
 }
