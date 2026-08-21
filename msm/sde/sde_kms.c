@@ -1043,6 +1043,68 @@ static int _sde_kms_unmap_all_splash_regions(struct sde_kms *sde_kms)
 	return ret;
 }
 
+/* create a permanent 1:1 IOVA mapping for the LPAI display region */
+static int _sde_kms_map_lpai_region(struct sde_kms *sde_kms)
+{
+	struct msm_mmu *mmu;
+	int ret = 0;
+	unsigned long lpai_base = sde_kms->lpai_buf_base;
+	unsigned int lpai_size = sde_kms->lpai_buf_size;
+
+	if (!lpai_base || !lpai_size)
+		return 0;
+
+	if (!sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE] ||
+			!sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE]->mmu) {
+		SDE_ERROR("aspace not found for LPAI region map\n");
+		return -EINVAL;
+	}
+
+	mmu = sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE]->mmu;
+
+	ret = mmu->funcs->one_to_one_map(mmu, lpai_base, lpai_base, lpai_size,
+			IOMMU_READ | IOMMU_WRITE | IOMMU_NOEXEC);
+	if (ret)
+		SDE_ERROR("LPAI region SMMU map failed: %d\n", ret);
+	else
+		SDE_DEBUG("sde: LPAI display region mapped: base=0x%lx size=0x%x\n",
+				lpai_base, lpai_size);
+
+	return ret;
+}
+
+static void _sde_kms_parse_lpai_region(struct sde_kms *sde_kms)
+{
+	struct device_node *parent, *node;
+	struct resource r;
+
+	parent = of_find_node_by_path("/reserved-memory");
+	if (!parent) {
+		SDE_DEBUG("no /reserved-memory node found\n");
+		return;
+	}
+
+	node = of_find_node_by_name(parent, "lpai_display_region");
+	of_node_put(parent);
+	if (!node) {
+		SDE_DEBUG("no LPAI display region defined in DT\n");
+		return;
+	}
+
+	if (of_address_to_resource(node, 0, &r)) {
+		SDE_ERROR("invalid LPAI display region reg property in DT\n");
+		of_node_put(node);
+		return;
+	}
+	of_node_put(node);
+
+	sde_kms->lpai_buf_base = (unsigned long)r.start;
+	sde_kms->lpai_buf_size = (unsigned int)resource_size(&r);
+
+	SDE_DEBUG("LPAI display region: base=0x%lx size=0x%x\n",
+			sde_kms->lpai_buf_base, sde_kms->lpai_buf_size);
+}
+
 static int _sde_kms_get_blank(struct drm_crtc_state *crtc_state,
 		struct drm_connector_state *conn_state)
 {
@@ -6180,6 +6242,14 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 			}
 		}
 
+		if (i == MSM_SMMU_DOMAIN_UNSECURE && sde_kms->lpai_buf_base) {
+			ret = _sde_kms_map_lpai_region(sde_kms);
+			if (ret) {
+				SDE_ERROR("failed to map LPAI region ret:%d\n", ret);
+				goto enable_trans_fail;
+			}
+		}
+
 		if (i == MSM_SMMU_DOMAIN_UNSECURE && sde_kms->catalog->hw_fence_rev &&
 				IS_DISP_OP_HWIO(sde_kms_get_disp_op(sde_kms))) {
 			pdev = to_platform_device(sde_kms->dev->dev);
@@ -7085,6 +7155,8 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	rc = _sde_kms_get_splash_data(dev, &sde_kms->splash_data);
 	if (rc)
 		SDE_DEBUG("sde splash data fetch failed: %d\n", rc);
+
+	_sde_kms_parse_lpai_region(sde_kms);
 
 	rc = _sde_kms_hw_init_blocks(sde_kms, dev, priv);
 	if (rc)
