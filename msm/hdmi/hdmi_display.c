@@ -1310,7 +1310,10 @@ static enum drm_mode_status hdmi_display_validate_mode(
 	struct hdmi_display_private *hdmi;
 	struct hdmi_panel *hdmi_panel;
 	struct hdmi_debug *debug;
+	struct msm_resource_caps_info hdmi_avail_res = {0};
+	struct msm_drm_private *priv;
 	enum drm_mode_status mode_status = MODE_BAD;
+	u32 num_lm = 0;
 	int rc = 0;
 
 	if (!hdmi_display || !mode || !panel ||
@@ -1350,6 +1353,46 @@ static enum drm_mode_status hdmi_display_validate_mode(
 	rc = hdmi_panel->validate_mode(hdmi_panel, mode);
 	if (rc)
 		goto end;
+
+	/*
+	 * Reject the mode if the required LMs are not available for the
+	 * current display configuration.
+	 */
+	if (!hdmi_panel->connector || !hdmi_panel->connector->dev) {
+		HDMI_ERR("[%s] connector or drm_device not set\n", mode->name);
+		goto end;
+	}
+
+	priv = hdmi_panel->connector->dev->dev_private;
+
+	if (!priv) {
+		HDMI_ERR("[%s] drm_device has no private data\n", mode->name);
+		goto end;
+	}
+
+	if (!hdmi_display->get_available_hdmi_resources) {
+		HDMI_ERR("[%s] get_available_hdmi_resources not set\n", mode->name);
+		goto end;
+	}
+
+	rc = hdmi_display->get_available_hdmi_resources(hdmi_display,
+			avail_res, &hdmi_avail_res);
+	if (rc) {
+		HDMI_ERR("[%s] get_available_hdmi_resources failed rc=%d\n",
+				mode->name, rc);
+		goto end;
+	}
+
+	rc = msm_get_mixer_count(priv, mode, &hdmi_avail_res, &num_lm);
+	if (rc) {
+		HDMI_ERR("[%s] failed to get mixer count, rc=%d, skip\n", mode->name, rc);
+		goto end;
+	}
+	if (num_lm > hdmi_avail_res.num_lm) {
+		HDMI_DEBUG_V("[%s] requires %u LMs, only %u available\n",
+				mode->name, num_lm, hdmi_avail_res.num_lm);
+		goto end;
+	}
 
 skip_validation:
 	mode_status = MODE_OK;
