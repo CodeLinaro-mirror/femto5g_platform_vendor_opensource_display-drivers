@@ -197,7 +197,8 @@ msm_gem_address_space_destroy(struct kref *kref)
 	struct msm_gem_address_space *aspace = container_of(kref,
 			struct msm_gem_address_space, kref);
 
-	drm_mm_takedown(&aspace->mm);
+	if (aspace->mm_initialized)
+		drm_mm_takedown(&aspace->mm);
 	if (aspace->mmu)
 		aspace->mmu->funcs->destroy(aspace->mmu);
 	kfree(aspace);
@@ -346,4 +347,3 @@ int msm_gem_address_space_unregister_cb(struct msm_gem_address_space *aspace,
 
 	return -EINVAL;
 }
-

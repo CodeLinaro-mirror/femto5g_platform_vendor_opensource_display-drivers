@@ -964,6 +964,8 @@ static void sde_crtc_destroy(struct drm_crtc *crtc)
 
 	if (sde_crtc->blob_info)
 		drm_property_blob_put(sde_crtc->blob_info);
+	drm_crtc_cleanup(crtc);
+
 	msm_property_destroy(&sde_crtc->property_info);
 	sde_cp_crtc_destroy_properties(crtc);
 
@@ -974,7 +976,6 @@ static void sde_crtc_destroy(struct drm_crtc *crtc)
 	if (sde_crtc->hal_ops.destroy[disp_op])
 		sde_crtc->hal_ops.destroy[disp_op](sde_crtc);
 
-	drm_crtc_cleanup(crtc);
 	mutex_destroy(&sde_crtc->crtc_lock);
 	kfree(sde_crtc);
 }
