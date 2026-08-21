@@ -1144,6 +1144,7 @@ int dp_mgr_hfi_hpd_attention_helper(struct dp_mgr_hfi_priv *hfi_priv)
 	hpd_irq = hfi_priv->hpd->hpd_irq;
 
 	DP_DEBUG("hpd status from %d to %d irq %d\n", hfi_priv->connected, hpd_state, hpd_irq);
+	SDE_EVT32_EXTERNAL(hpd_state, hfi_priv->connected);
 
 	mutex_lock(&hfi_priv->hpd_mutex);
 
@@ -1267,19 +1268,14 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 int dp_mgr_hfi_hpd_attention_cb(void *data)
 {
 	struct dp_mgr_hfi_priv *hfi_priv = data;
+	int rc = 0;
 
 	if (!hfi_priv) {
 		DP_ERR("Invalid hfi_priv data\n");
 		return -EINVAL;
 	}
 
-	if (!hfi_priv->hpd->hpd_high && hfi_priv->connected) {
-		cancel_work_sync(&hfi_priv->configure_work);
-		cancel_work_sync(&hfi_priv->attention_work);
-		cancel_work_sync(&hfi_priv->connect_work);
-		flush_workqueue(hfi_priv->wq);
-	}
-
+	SDE_EVT32_EXTERNAL(hfi_priv->hpd->hpd_high, hfi_priv->connected);
 	if (hfi_priv->hpd->hpd_high && hfi_priv->tui_active) {
 		DP_INFO("TUI is active\n");
 		return 0;
@@ -1292,11 +1288,26 @@ int dp_mgr_hfi_hpd_attention_cb(void *data)
 	/* if hpd plug is waiting on display enable cancel it here */
 	complete_all(&hfi_priv->hpd_comp);
 
-	if (!hfi_priv->wq)
-		return dp_mgr_hfi_hpd_attention_helper(hfi_priv);
+	if (!hfi_priv->hpd->hpd_high && hfi_priv->connected) {
+		cancel_work_sync(&hfi_priv->configure_work);
+		cancel_work_sync(&hfi_priv->attention_work);
+		cancel_work_sync(&hfi_priv->connect_work);
+		flush_workqueue(hfi_priv->wq);
 
-	queue_work(hfi_priv->wq, &hfi_priv->attention_work);
-	return 0;
+		/* handle hpd low asap in the same thread */
+		rc = dp_mgr_hfi_hpd_attention_helper(hfi_priv);
+		if (rc)
+			DP_ERR("attention work failed rc=%d\n", rc);
+
+		return rc;
+	} else {
+		if (!hfi_priv->wq)
+			return dp_mgr_hfi_hpd_attention_helper(hfi_priv);
+
+		queue_work(hfi_priv->wq, &hfi_priv->attention_work);
+	}
+
+	return rc;
 }
 
 static int dp_mgr_hfi_send_type_id_to_sink(struct dp_hfi *hfi, uint8_t stream_type)
