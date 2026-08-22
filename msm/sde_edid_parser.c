@@ -542,6 +542,30 @@ void sde_edid_deinit(void **input)
 	SDE_EDID_DEBUG("%s -", __func__);
 }
 
+/**
+ * sde_edid_update_connector_info - Update connector with EDID-derived info
+ * @connector: Handle to the drm_connector
+ * @input:     Handle to the sde_edid_ctrl structure
+ *
+ * Updates the connector EDID property and parses extended block info
+ * (HDR, colorimetry, VSVDB) and HDMI VSDB block from the EDID.
+ * Unlike _sde_edid_update_modes, this does NOT add display modes.
+ */
+void sde_edid_update_connector_info(struct drm_connector *connector,
+	void *input)
+{
+	struct sde_edid_ctrl *edid_ctrl = (struct sde_edid_ctrl *)(input);
+
+	if (!connector || !edid_ctrl || !edid_ctrl->edid) {
+		drm_connector_update_edid_property(connector, NULL);
+		return;
+	}
+
+	drm_connector_update_edid_property(connector, edid_ctrl->edid);
+	sde_edid_parse_extended_blk_info(connector, edid_ctrl->edid);
+	_sde_edid_extract_hdmi_vsdb_block(connector, edid_ctrl);
+}
+
 int _sde_edid_update_modes(struct drm_connector *connector,
 	void *input)
 {

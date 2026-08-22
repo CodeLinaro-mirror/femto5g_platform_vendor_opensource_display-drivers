@@ -92,9 +92,13 @@ enum hfi_debug_misr_module_type {
  * @brief Features for which DCP supports different debug levels
  *
  * @var HFI_DEBUG_FEATURE_LSR: Setup debug logs levels for LSR feature
+ * @var HFI_DEBUG_FEATURE_TRACE: Trace events capture feature
+ * @var HFI_DEBUG_FEATURE_LOG: Debug log string capture feature
  */
 enum hfi_debug_feature {
 	HFI_DEBUG_FEATURE_LSR = 0x0,
+	HFI_DEBUG_FEATURE_TRACE = 0x1,
+	HFI_DEBUG_FEATURE_LOG = 0x2,
 };
 
 /*!
@@ -310,4 +314,29 @@ struct hfi_debug_subsystem_property {
 	u32 reserved2;
 };
 
+/**
+ * @struct hfi_debug_enable_payload
+ * @brief Payload structure for HFI_PROPERTY_DEBUG_ENABLE
+ *
+ * Encapsulates both the feature type and enable flag in a single structured value.
+ * Used with HFI_PROPERTY_DEBUG_ENABLE property to enable/disable debug features.
+ *
+ * @var feature: Debug feature type (enum hfi_debug_feature)
+ * @var enable: Enable (HFI_TRUE=1) or disable (HFI_FALSE=0) the feature
+ */
+struct hfi_debug_enable_payload {
+	u32 feature;
+	u32 enable;
+};
+
+/**
+ * struct hfi_debug_buffer_addr_payload
+ * @brief Payload for HFI_PROPERTY_DEBUG_BUFFER_ADDR
+ * @var feature: enum hfi_debug_feature - feature this buffer is configured for
+ * @var buff:    buffer descriptor (address, size, version, flags)
+ */
+struct hfi_debug_buffer_addr_payload {
+	u32 feature;
+	struct hfi_buff buff;
+};
 #endif // __H_HFI_DEFS_DEBUG_H__

@@ -502,6 +502,45 @@
  */
 #define HFI_PROPERTY_DEVICE_INIT_SYS_CACHE_STALING                   0x0001001B
 
+/*
+ * HFI_PROPERTY_DEVICE_INIT_ACTIVE_LAYERS - Property to get the layers attached
+ *                                  to a display. Firmware is expected to send
+ *                                  this property as part of HFI_CMD_DEVICE_INIT
+ *                                  command packet payload.
+ *
+ * @BasicFuntionality @DeviceInit - HFI_PROPERTY_DEVICE_INIT_ACTIVE_LAYERS
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DEVICE_INIT_ACTIVE_LAYERS \|
+ * ^                               (version=0 << 20) \|
+ * ^                               (dsize=(1 + num_active_displays *
+ * ^                                      sizeof(hfi_device_active_layers_info)) << 24)
+ *   (u32_value) payload [1]     : num_active_displays
+ *   (u32_value) payload [2..N]  : Array of hfi_device_active_layers_info structs
+ * ^                               for each active display, where
+ * ^                               N = num_active_displays *
+ * ^                                   sizeof(hfi_device_active_layers_info)
+ */
+#define HFI_PROPERTY_DEVICE_INIT_ACTIVE_LAYERS                        0x0001001C
+
+/*!
+ * HFI_PROPERTY_DEVICE_INIT_WB_DNSC_SUPPORT_INDICES - Gets writeback downscale support information
+ *                                  per block index. Firmware is expected to send this property as
+ *                                  part of HFI_COMMAND_DEVICE_INIT_DEVICE_CAPS command packet
+ *                                  payload.
+ *
+ * @BasicFuntionality @DeviceInit - HFI_PROPERTY_DEVICE_INIT_WB_DNSC_SUPPORT_INDICES
+ *
+ * Hfi packet layout            | Value
+ *----------------------------- |------------------------------------------
+ *     (u32_key) payload [0]    | HFI_PROPERTY_DEVICE_INIT_WB_DNSC_SUPPORT_INDICES \|
+ * ^                            | (version=0 << 20) \|
+ * ^                            | (dsize=(n+4) << 24 )
+ *   (u32_key) payload [1]      | writeback block count (n)
+ * (u32_value) payload [2..n+2] | Array of WB indices with (n) values indicating WB DNSC support.
+ * (u32_value) payload [n+3]    | (min_dnsc_ratio << 16) \| max_dnsc_ratio
+ * (u32_value) payload [n+4]    | if integer only downscale HFI_TRUE, HFI_FALSE otherwise
+ */
+#define HFI_PROPERTY_DEVICE_INIT_WB_DNSC_SUPPORT_INDICES             0x0001001D
+
 /* Device Resource Property IDs end here */
 
 /*

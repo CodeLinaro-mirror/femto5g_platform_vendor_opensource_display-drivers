@@ -212,7 +212,7 @@ static void _aiqe_copr_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg->dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, AIQE_COPR);
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -304,7 +304,7 @@ void reg_dmav1_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg.dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, AIQE_COPR);
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
 		if (rc)
 			SDE_ERROR("failed to kick off ret %d\n", rc);
@@ -357,7 +357,7 @@ static void _mdnie_disable_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg->dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, AIQE_MDNIE);
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -460,7 +460,7 @@ void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 			AIQE_MDNIE);
 
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -548,7 +548,7 @@ void reg_dmav1_setup_mdnie_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 			AIQE_MDNIE);
 
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&kick_off, ctx->dpu_idx);
 		if (rc) {
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -638,7 +638,7 @@ static void _aiqe_ssrc_config_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg->dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, AIQE_SSRC_CONFIG);
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -714,7 +714,7 @@ void reg_dmav1_setup_aiqe_ssrc_config_v1(struct sde_hw_dspp *ctx, void *cfg, voi
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg.dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, AIQE_SSRC_CONFIG);
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -798,7 +798,7 @@ void reg_dmav1_setup_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void 
 
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, AIQE_SSRC_DATA);
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -1125,7 +1125,7 @@ static void _aiqe_abc_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg->dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, AIQE_ABC);
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
@@ -1225,7 +1225,7 @@ void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg.dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, AIQE_ABC);
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
 		if (rc)
 			SDE_ERROR("failed to kick off ret %d\n", rc);
@@ -1342,7 +1342,7 @@ void reg_dmav1_setup_aiqe_abc_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg.dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, AIQE_ABC);
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
 		if (rc)
 			SDE_ERROR("failed to kick off ret %d\n", rc);
@@ -1371,7 +1371,7 @@ static int _ai_scaler_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg->dma_buf,
 		REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, AIQE_AI_SCALER);
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
 		if (rc) {
 			SDE_ERROR("failed to kick off ret %d\n", rc);
@@ -1521,7 +1521,7 @@ int reg_dma_setup_ai_scaler_v1(struct sde_hw_dspp *ctx, void *cfg)
 
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, AIQE_AI_SCALER);
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
 		if (rc) {
 			SDE_ERROR("failed to kick off ret %d\n", rc);
@@ -1609,7 +1609,7 @@ int reg_dma_setup_ai_scaler_v2(struct sde_hw_dspp *ctx, void *cfg)
 
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, AIQE_AI_SCALER);
-	if (dma_ops->kick_off[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && dma_ops->kick_off[disp_op]) {
 		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
 		if (rc) {
 			SDE_ERROR("failed to kick off ret %d\n", rc);

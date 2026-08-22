@@ -446,6 +446,76 @@
 #define HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY                       0xFF000013
 
 /*
+ * HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY is sent from host to DCP to
+ * set common debug properties
+ *
+ * Host sends this command to DCP to configure debug features at runtime.
+ * Supports flexible key-value pair properties for enabling/disabling debug
+ * features and configuring debug buffers.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ *(u32) hfi_packet.payload_info : HFI_PAYLOAD_U32_ARRAY
+ *(u32) hfi_packet.cmd          : HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY
+ *(u32) hfi_packet.flags        : HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *                                HFI_TX_FLAGS_NON_DISCARDABLE
+ *(u32) hfi_packet.payload      : <key/value> pairs of debug properties
+ *
+ * Supported Properties:
+ *
+ * @HFI_PROPERTY_DEBUG_ENABLE (dsize=2):
+ *   Enables or disables debug feature capture.
+ *   Payload: struct hfi_debug_enable_payload
+ *   word 0: feature (enum hfi_debug_feature)
+ *   word 1: enable  (HFI_TRUE/HFI_FALSE)
+ *
+ * @HFI_PROPERTY_DEBUG_BUFFER_ADDR (dsize=6):
+ *   Configures buffer address and size for debug data capture.
+ *   Payload: struct hfi_debug_buffer_addr_payload
+ *   word 0: feature (enum hfi_debug_feature)
+ *   word 1-5: struct hfi_buff (addr_l, addr_h, size, version, flags)
+ *
+ * Example Payload (trace enable + log buffer addr):
+ *   payload[0]  = 2 (num_properties)
+ *   payload[1]  = HFI_PACKKEY(HFI_PROPERTY_DEBUG_ENABLE, 0, 2)
+ *   payload[2]  = HFI_DEBUG_FEATURE_TRACE
+ *   payload[3]  = HFI_TRUE
+ *   payload[4]  = HFI_PACKKEY(HFI_PROPERTY_DEBUG_BUFFER_ADDR, 0, 6)
+ *   payload[5]  = HFI_DEBUG_FEATURE_LOG
+ *   payload[6]  = addr_l
+ *   payload[7]  = addr_h
+ *   payload[8]  = size
+ *   payload[9]  = version
+ *   payload[10] = flags
+ */
+#define HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY                      0xFF000014
+
+/*
+ * HFI_COMMAND_DEBUG_DUMP_ALL is sent from Host to DCP to trigger a dump of all debug data
+ * into the pre-allocated memory buffers. Upon receiving this command, DCP will dump all
+ * properties that were previously configured via HFI_COMMAND_DEBUG_SETUP into their
+ * respective memory locations. Once the dump is complete, DCP replies with success to Host.
+ *
+ * Prerequisites:
+ *  Before sending this command, Host must first send HFI_COMMAND_DEBUG_SETUP to establish
+ *  the memory buffer addresses for all properties to be dumped. If this setup command is
+ *  not sent beforehand, HFI_COMMAND_DEBUG_DUMP_ALL will fail.
+
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_NONE
+ *           .cmd                      : HFI_COMMAND_DEBUG_DUMP_ALL
+ *           .flags                    : HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_NONE
+ *           .cmd                      : HFI_COMMAND_DEBUG_DUMP_ALL
+ *           .flags                    : HFI_RX_FLAGS_SUCCESS
+ */
+#define HFI_COMMAND_DEBUG_DUMP_ALL                                   0xFF000015
+
+/*
  * DP Simulation HFI commands
  */
 #define HFI_COMMAND_DEBUG_DP_BEGIN                                     0xFF000500

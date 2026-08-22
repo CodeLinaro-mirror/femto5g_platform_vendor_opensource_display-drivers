@@ -1291,6 +1291,7 @@ static void _sde_cp_crtc_unmap_qrtc_buffer(struct sde_crtc *sde_crtc)
 	sde_crtc->qrtc_buffer.gem = NULL;
 	sde_crtc->qrtc_buffer.aspace = NULL;
 	sde_crtc->qrtc_buffer.fb = NULL;
+	sde_crtc->qrtc_buffer.flags = 0;
 }
 
 static void _sde_cp_crtc_map_qrtc_buffer(struct sde_crtc *sde_crtc, void *cfg)
@@ -1303,6 +1304,7 @@ static void _sde_cp_crtc_map_qrtc_buffer(struct sde_crtc *sde_crtc, void *cfg)
 	struct drm_crtc *crtc;
 	u32 size = 0, expected_size = 0, cached_fd = 0;
 	int ret = 0;
+	enum msm_mmu_domain_type buffer_domain_type = MSM_SMMU_DOMAIN_UNSECURE;
 
 	if (!sde_crtc || !cfg) {
 		DRM_ERROR("invalid parameters sde_crtc %pK cfg %pK\n", sde_crtc, cfg);
@@ -1320,6 +1322,9 @@ static void _sde_cp_crtc_map_qrtc_buffer(struct sde_crtc *sde_crtc, void *cfg)
 		DRM_ERROR("invalid QRTC buffer config\n");
 		return;
 	}
+
+	if (buf_cfg->flags & QRTC_SECURE_BUFF)
+		buffer_domain_type = MSM_SMMU_DOMAIN_SECURE;
 
 	cached_fd = sde_crtc->qrtc_buffer.drm_fb_id;
 	if (cached_fd >= 0 && buf_cfg->fd == cached_fd) {
@@ -1360,7 +1365,7 @@ static void _sde_cp_crtc_map_qrtc_buffer(struct sde_crtc *sde_crtc, void *cfg)
 		drm_framebuffer_put(fb);
 		return;
 	}
-	aspace = msm_gem_smmu_address_space_get(crtc->dev, MSM_SMMU_DOMAIN_UNSECURE);
+	aspace = msm_gem_smmu_address_space_get(crtc->dev, buffer_domain_type);
 	if (PTR_ERR(aspace) == -ENODEV) {
 		DRM_DEBUG("IOMMU not present, relying on VRAM\n");
 	} else if (IS_ERR_OR_NULL(aspace)) {
@@ -1380,6 +1385,8 @@ static void _sde_cp_crtc_map_qrtc_buffer(struct sde_crtc *sde_crtc, void *cfg)
 	sde_crtc->qrtc_buffer.drm_fb_id = buf_cfg->fd;
 	sde_crtc->qrtc_buffer.len = size;
 	sde_crtc->qrtc_buffer.format = buf_cfg->format;
+	if (buf_cfg->flags & QRTC_SECURE_BUFF)
+		sde_crtc->qrtc_buffer.flags = HFI_QRTC_SECURE_BUFF;
 
 	return;
 exit:
@@ -1930,6 +1937,11 @@ static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc, struct sde_h
 		return;
 	}
 
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
+		return;
+	}
+
 	irq_idx = sde_core_irq_idx_lookup(kms, SDE_IRQ_TYPE_HIST_DSPP_DONE,
 					hw_dspp->idx);
 	if (irq_idx < 0) {
@@ -2110,7 +2122,7 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 		for (i = 0; i < num_mixers && !ret; i++) {
 			hw_lm = sde_crtc->mixers[i].hw_lm;
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
-			if (!hw_lm) {
+			if (!hw_lm || !hw_dspp) {
 				ret = -EINVAL;
 				continue;
 			}
@@ -2158,7 +2170,7 @@ disable_feature:
 		for (i = 0; i < num_mixers && !ret; i++) {
 			hw_lm = sde_crtc->mixers[i].hw_lm;
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
-			if (!hw_lm) {
+			if (!hw_lm || !hw_dspp) {
 				ret = -EINVAL;
 				continue;
 			}
@@ -2285,7 +2297,8 @@ static void _sde_cp_dspp_flush_helper(struct sde_crtc *sde_crtc, u32 feature)
 	for (i = 0; i < num_mixers; i++) {
 		ctl = sde_crtc->mixers[i].hw_ctl;
 		dspp = sde_crtc->mixers[i].hw_dspp;
-		if (ctl && dspp && ctl->ops.update_bitmask_dspp_subblk[disp_op]) {
+		if (ctl && dspp && disp_op < MSM_DISP_OP_MAX &&
+		    ctl->ops.update_bitmask_dspp_subblk[disp_op]) {
 			if (feature == SDE_CP_CRTC_DSPP_SB) {
 				if (!dspp->sb_dma_in_use)
 					continue;
@@ -2586,6 +2599,10 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 		for (j = 0; j < hw_cfg.num_of_mixers; j++) {
 			hw_lm = sde_crtc->mixers[j].hw_lm;
 			hw_dspp = sde_crtc->mixers[j].hw_dspp;
+			if (!hw_lm || !hw_dspp) {
+				ret = -EINVAL;
+				continue;
+			}
 			hw_cfg.dspp_idx = hw_dspp->idx;
 			hw_cfg.mixer_info = hw_lm;
 			hw_cfg.ctl = sde_crtc->mixers[j].hw_ctl;
@@ -3360,7 +3377,7 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 		for (i = 0; i < num_mixers && !ret; i++) {
 			hw_lm = sde_crtc->mixers[i].hw_lm;
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
-			if (!hw_lm) {
+			if (!hw_lm || !hw_dspp) {
 				ret = -EINVAL;
 				continue;
 			}
@@ -3413,6 +3430,9 @@ void sde_cp_crtc_clear(struct drm_crtc *crtc)
 	sde_crtc_cp_unmap_ltm_buffers(sde_crtc, sde_crtc->ltm_buffer_cnt);
 	sde_crtc_cp_unmap_rgb_hist_buffers(sde_crtc);
 	_sde_cp_crtc_unmap_qrtc_buffer(sde_crtc);
+
+	_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_RC_PU, false);
+	_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_SPR_PU, false);
 
 	sde_crtc->do_clear_buf = true;
 	sde_crtc->ltm_buffer_cnt = 0;
@@ -4138,7 +4158,7 @@ static int _sde_cp_ad_validate_prop(struct sde_cp_node *prop_node,
 	enum msm_disp_op disp_op;
 
 	disp_op = sde_crtc_get_disp_op(&crtc->base);
-	for (i = 0; i < crtc->num_mixers && !ret; i++) {
+	for (i = 0; i < crtc->num_mixers && i < ARRAY_SIZE(crtc->mixers) && !ret; i++) {
 		if (!crtc->mixers[i].hw_dspp) {
 			ret = -EINVAL;
 			continue;
@@ -4292,6 +4312,12 @@ int sde_cp_ad_interrupt(struct drm_crtc *crtc_drm, bool en,
 
 	if (!hw_dspp) {
 		DRM_ERROR("invalid dspp\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
 		ret = -EINVAL;
 		goto exit;
 	}
@@ -4611,6 +4637,12 @@ void sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg)
 	}
 
 	irq_idx = *(int *)arg;
+
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
+		return;
+	}
+
 	spin_lock_irqsave(&node->state_lock, state_flags);
 	if (node->state == IRQ_ENABLED) {
 		ret = sde_core_irq_disable_nolock(kms, irq_idx);
@@ -4726,6 +4758,11 @@ int sde_cp_hist_interrupt(struct drm_crtc *crtc_drm, bool en,
 			DRM_ERROR("failed to enable/disable pa hist event %d\n", ret);
 
 		return ret;
+	}
+
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
+		return -EINVAL;
 	}
 
 	irq_idx = sde_core_irq_idx_lookup(kms, SDE_IRQ_TYPE_HIST_DSPP_DONE,
@@ -5519,7 +5556,7 @@ int sde_cp_ltm_hist_interrupt(struct drm_crtc *crtc, bool en,
 		return -ENODEV;
 	}
 
-	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op)) {
+	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op) && hw_dspp->hw.disp_op < MSM_DISP_OP_MAX) {
 		if (en) {
 			ret = _sde_cp_ltm_register_irq(kms, sde_crtc, hw_dspp,
 					ltm_irq, SDE_IRQ_TYPE_LTM_STATS_DONE);
@@ -5572,7 +5609,7 @@ int sde_cp_ltm_wb_pb_interrupt(struct drm_crtc *crtc, bool en,
 		return -ENODEV;
 	}
 
-	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op)) {
+	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op) && hw_dspp->hw.disp_op < MSM_DISP_OP_MAX) {
 		if (en) {
 			ret = _sde_cp_ltm_register_irq(kms, sde_crtc, hw_dspp,
 					ltm_irq, SDE_IRQ_TYPE_LTM_STATS_WB_PB);

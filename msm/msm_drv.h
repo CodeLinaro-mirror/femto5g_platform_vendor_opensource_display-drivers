@@ -254,6 +254,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_DIMMING_BL_LUT,
 	CONNECTOR_PROP_DNSC_BLUR,
 	CONNECTOR_PROP_WB_CSC_CONFIG,
+	CONNECTOR_PROP_WB_DNSC,
 
 	/* reprojection blob properties */
 	CONNECTOR_PROP_REPROJ_SPARSE_GRID,
@@ -309,6 +310,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_WB_ROT_TYPE,
 	CONNECTOR_PROP_WB_ROT_BYTES_PER_CLK,
 	CONNECTOR_PROP_BPP_MODE,
+	CONNECTOR_PROP_SPR_MODE,
 
 	/* LSR connector properties*/
 	CONNECTOR_PROP_OUT_FB_LIST,
@@ -497,6 +499,20 @@ enum msm_display_dsc_mode {
 };
 
 /**
+ * enum msm_display_spr_mode - panel spr chroma format mode
+ * @MSM_DISPLAY_SPR_DISABLED: SPR chroma format disabled (RGB 4:4:4)
+ * @MSM_DISPLAY_SPR_YUV_422: SPR chroma format YUV 4:2:2
+ * @MSM_DISPLAY_SPR_YUV_420: SPR chroma format YUV 4:2:0
+ * @MSM_DISPLAY_SPR_MAX: max and invalid SPR chroma foramt
+ */
+enum msm_display_spr_mode {
+	MSM_DISPLAY_SPR_DISABLED,
+	MSM_DISPLAY_SPR_YUV_422,
+	MSM_DISPLAY_SPR_YUV_420,
+	MSM_DISPLAY_SPR_MAX,
+};
+
+/**
  * struct msm_display_mode - wrapper for drm_display_mode
  * @base: drm_display_mode attached to this msm_mode
  * @private_flags: integer holding private driver mode flags
@@ -513,11 +529,13 @@ struct msm_display_mode {
  * @dsc_enabled: boolean used to indicate if dsc should be enabled
  * @pixel_format_mode: used to indicate pixel format mode
  * @emsync_fps: used to indicate emsync fps
+ * @spr_mode: used to indicate spr mode
  */
 struct msm_sub_mode {
 	enum msm_display_dsc_mode dsc_mode;
 	enum msm_display_pixel_format pixel_format_mode;
 	u32 emsync_fps;
+	enum msm_display_spr_mode spr_mode;
 };
 
 /**

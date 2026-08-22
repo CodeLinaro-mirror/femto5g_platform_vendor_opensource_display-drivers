@@ -134,7 +134,7 @@ struct hfi_util_u32_prop_helper *hfi_util_u32_prop_helper_alloc(u32 count);
  * @sz:		Size of the property value.
  */
 int hfi_util_u32_prop_helper_add_prop(struct hfi_util_u32_prop_helper *prop_helper,
-		u32 prop_id, enum hfi_util_prop_type type, void *prop_value, u32 sz);
+		u32 prop_id, enum hfi_util_prop_type type, const void *prop_value, u32 sz);
 
 /**
  * hfi_util_u32_prop_helper_add_prop_by_obj - Helper function to add u32 HFI property
@@ -146,7 +146,8 @@ int hfi_util_u32_prop_helper_add_prop(struct hfi_util_u32_prop_helper *prop_help
  * @sz:		Size of the property value.
  */
 int hfi_util_u32_prop_helper_add_prop_by_obj(struct hfi_util_u32_prop_helper *prop_helper,
-		u32 prop_id, u32 obj_id, enum hfi_util_prop_type type, void *prop_value, u32 sz);
+		u32 prop_id, u32 obj_id, enum hfi_util_prop_type type,
+		const void *prop_value, u32 sz);
 
 /**
  * hfi_util_u32_prop_helper_reset - reset function for u32 HFI property
@@ -158,13 +159,13 @@ int hfi_util_u32_prop_helper_reset(struct hfi_util_u32_prop_helper *prop_helper)
  * hfi_util_u32_prop_helper_prop_count - number of u32 HFI properties
  * @prop_helper:	Pointer to struct hfi_util_u32_prop_helper
  */
-int hfi_util_u32_prop_helper_prop_count(struct hfi_util_u32_prop_helper *prop_helper);
+u32 hfi_util_u32_prop_helper_prop_count(struct hfi_util_u32_prop_helper *prop_helper);
 
 /**
  * hfi_util_u32_prop_helper_get_size - Retrieve the size of u32 HFI properties
  * @prop_helper:	Pointer to struct hfi_util_u32_prop_helper
  */
-int hfi_util_u32_prop_helper_get_size(struct hfi_util_u32_prop_helper *prop_helper);
+u32 hfi_util_u32_prop_helper_get_size(struct hfi_util_u32_prop_helper *prop_helper);
 
 /**
  * hfi_util_u32_prop_helper_prop_count - Get paylaod address

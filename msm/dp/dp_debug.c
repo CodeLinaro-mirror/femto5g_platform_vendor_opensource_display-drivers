@@ -50,7 +50,6 @@ struct dp_debug_private {
 	bool fifo_error_enable;
 	bool ssc_en;
 
-	u32 max_lclk_khz;
 	u32 lane_count;
 	u32 link_bw_code;
 	u32 max_supported_bpp;
@@ -489,6 +488,58 @@ static ssize_t dp_debug_bw_code_write(struct file *file,
 	mutex_lock(&priv->lock);
 	if (priv->client.write_bw_code)
 		priv->client.write_bw_code(&priv->client, buf, count);
+	rc = count;
+	mutex_unlock(&priv->lock);
+
+bail:
+	kfree(buf);
+	return rc;
+}
+
+static ssize_t dp_debug_max_lclk_khz_write(struct file *file,
+		const char __user *user_buff, size_t count, loff_t *ppos)
+{
+	struct dp_debug_private *priv = file->private_data;
+	char *buf;
+	char bw_code_buf[16];
+	ssize_t rc = count;
+	u32 max_bw_code, max_lclk_khz = 0;
+	int bw_code_len;
+
+	if (!priv || !priv->client.write_bw_code)
+		return -ENODEV;
+
+	if (*ppos)
+		return 0;
+
+	buf = kzalloc(count + 1, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	if (copy_from_user(buf, user_buff, count)) {
+		rc = -EFAULT;
+		goto bail;
+	}
+
+	buf[count] = '\0';
+
+	if (kstrtoint(buf, 10, &max_lclk_khz) != 0) {
+		rc = -EINVAL;
+		goto bail;
+	}
+
+	if ((max_lclk_khz % 270000) != 0) {
+		rc = -EINVAL;
+		goto bail;
+	}
+
+	max_bw_code = max_lclk_khz / 270000;
+
+	bw_code_len = scnprintf(bw_code_buf, sizeof(bw_code_buf), "%u", max_bw_code);
+
+	mutex_lock(&priv->lock);
+	if (priv->client.write_bw_code)
+		priv->client.write_bw_code(&priv->client, bw_code_buf, bw_code_len);
 	rc = count;
 	mutex_unlock(&priv->lock);
 
@@ -1436,6 +1487,46 @@ static const struct file_operations mmrm_clk_cb_fops = {
 	.write = dp_debug_mmrm_clk_cb_write,
 };
 
+static ssize_t dp_debug_max_lclk_khz_read(struct file *file,
+	char __user *user_buff, size_t count, loff_t *ppos)
+{
+	struct dp_debug_private *priv = file->private_data;
+	char *buf;
+	int const buf_size = SZ_4K;
+	u32 len = 0;
+	int rc;
+
+	if (!priv || !priv->client.read_max_lclk_khz)
+		return -ENODEV;
+
+	if (*ppos)
+		return 0;
+
+	buf = kzalloc(buf_size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	mutex_lock(&priv->lock);
+	rc = priv->client.read_max_lclk_khz(&priv->client, buf, buf_size);
+	if (rc > 0)
+		len = rc;
+	mutex_unlock(&priv->lock);
+
+	len = min_t(size_t, count, len);
+	if (len > 0 && !copy_to_user(user_buff, buf, len))
+		*ppos += len;
+
+	kfree(buf);
+
+	return len;
+}
+
+static const struct file_operations max_lclk_khz_fops = {
+	.open = simple_open,
+	.read = dp_debug_max_lclk_khz_read,
+	.write = dp_debug_max_lclk_khz_write,
+};
+
 static int dp_debug_init_mst(struct dp_debug_private *priv, struct dentry *dir)
 {
 	int rc = 0;
@@ -1524,7 +1615,12 @@ static int dp_debug_init_link(struct dp_debug_private *priv,
 		return rc;
 	}
 
-	debugfs_create_u32("max_lclk_khz", 0644, dir, &priv->max_lclk_khz);
+	file = debugfs_create_file("max_lclk_khz", 0644, dir, priv, &max_lclk_khz_fops);
+	if (IS_ERR_OR_NULL(file)) {
+		rc = PTR_ERR(file);
+		DP_ERR("[%s] debugfs max_lclk_khz failed, rc=%d\n", priv->name, rc);
+		return rc;
+	}
 
 	debugfs_create_u32("lane_count", 0644, dir, &priv->lane_count);
 

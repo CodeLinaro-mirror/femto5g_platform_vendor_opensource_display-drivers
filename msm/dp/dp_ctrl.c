@@ -1109,7 +1109,7 @@ static void dp_ctrl_mst_stream_setup(struct dp_ctrl_private *ctrl,
 {
 	u32 x_int, y_frac_enum;
 	int i;
-	struct dp_tu_mst_rg_in mst_rg_calc_in;
+	struct dp_tu_mst_rg_in mst_rg_calc_in = {0};
 	struct dp_tu_mst_rg_out mst_rg_calc_out;
 
 	if (!ctrl->mst_mode)

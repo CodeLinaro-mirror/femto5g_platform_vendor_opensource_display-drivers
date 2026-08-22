@@ -45,6 +45,11 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 	struct sde_mdss_cfg *catalog = NULL;
 	u32 major_version, version;
 
+	if (!crtc) {
+		DRM_ERROR("invalid crtc %pK\n", crtc);
+		return;
+	}
+
 	kms = get_kms(crtc);
 	catalog = kms->catalog;
 	if (!catalog->ssip_allowed) {
@@ -273,6 +278,11 @@ int sde_dspp_copr_read_status(struct sde_hw_dspp *hw_dspp,
 
 	if (!copr_status || !hw_dspp)
 		return -EINVAL;
+
+	if (hw_dspp->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", hw_dspp->hw.disp_op);
+		return -EINVAL;
+	}
 
 	if (!hw_dspp->ops.read_copr_status[hw_dspp->hw.disp_op])
 		return IS_DISP_OP_HFI(hw_dspp->hw.disp_op) ? 0 : -EINVAL;

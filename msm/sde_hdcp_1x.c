@@ -864,6 +864,11 @@ static int sde_hdcp_1x_write_ksv_fifo(struct sde_hdcp_1x *hdcp)
 		return -EINVAL;
 	}
 
+	if (!ksv_bytes) {
+		pr_err("invalid ksv_bytes\n");
+		return -EINVAL;
+	}
+
 	/* reset SHA Controller */
 	DSS_REG_W(sec_io, reg_set->sec_sha_ctrl, 0x1);
 	DSS_REG_W(sec_io, reg_set->sec_sha_ctrl, 0x0);

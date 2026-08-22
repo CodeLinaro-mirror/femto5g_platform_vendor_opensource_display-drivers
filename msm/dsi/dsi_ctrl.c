@@ -411,11 +411,13 @@ static void dsi_ctrl_dma_cmd_wait_for_done(struct dsi_ctrl *dsi_ctrl)
 			&dsi_ctrl->irq_info.cmd_dma_done,
 			msecs_to_jiffies(DSI_CTRL_TX_TO_MS));
 	if (ret == 0 && !atomic_read(&dsi_ctrl->dma_irq_trig)) {
-		if (dsi_hw_ops.get_interrupt_status[dsi_ctrl->disp_op])
+		if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+		    dsi_hw_ops.get_interrupt_status[dsi_ctrl->disp_op])
 			status = dsi_hw_ops.get_interrupt_status[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 		if (status & mask) {
 			status |= (DSI_CMD_MODE_DMA_DONE | DSI_BTA_DONE);
-			if (dsi_hw_ops.clear_interrupt_status[dsi_ctrl->disp_op])
+			if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+			    dsi_hw_ops.clear_interrupt_status[dsi_ctrl->disp_op])
 				dsi_hw_ops.clear_interrupt_status[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 						status);
 			SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_CASE1);
@@ -451,12 +453,14 @@ static void dsi_ctrl_clear_dma_status(struct dsi_ctrl *dsi_ctrl)
 	dsi_hw_ops = dsi_ctrl->hw.ops;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
-	if (dsi_hw_ops.poll_dma_status[dsi_ctrl->disp_op])
+	if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+	    dsi_hw_ops.poll_dma_status[dsi_ctrl->disp_op])
 		status = dsi_hw_ops.poll_dma_status[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY, status);
 
 	status |= (DSI_CMD_MODE_DMA_DONE | DSI_BTA_DONE);
-	if (dsi_hw_ops.clear_interrupt_status[dsi_ctrl->disp_op])
+	if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+	    dsi_hw_ops.clear_interrupt_status[dsi_ctrl->disp_op])
 		dsi_hw_ops.clear_interrupt_status[dsi_ctrl->disp_op](&dsi_ctrl->hw, status);
 
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
@@ -477,7 +481,8 @@ static void dsi_ctrl_post_cmd_transfer(struct dsi_ctrl *dsi_ctrl)
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
-	if (dsi_ctrl->hw.ops.reset_trig_ctrl[dsi_ctrl->disp_op])
+	if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+	    dsi_ctrl->hw.ops.reset_trig_ctrl[dsi_ctrl->disp_op])
 		dsi_ctrl->hw.ops.reset_trig_ctrl[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.common_config);
 
@@ -2052,18 +2057,21 @@ static int dsi_disable_ulps(struct dsi_ctrl *dsi_ctrl)
 void dsi_ctrl_toggle_error_interrupt_status(struct dsi_ctrl *dsi_ctrl, bool enable)
 {
 	if (!enable) {
-		if (dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op])
+		if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+		    dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op])
 			dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op](
 					&dsi_ctrl->hw, 0);
 	} else {
 		if (dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE &&
 				!dsi_ctrl->host_config.u.video_engine.bllp_lp11_en &&
 				!dsi_ctrl->host_config.u.video_engine.eof_bllp_lp11_en) {
-			if (dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op])
+			if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+			    dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op])
 				dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op](
 					&dsi_ctrl->hw, 0xFF00A0);
 		} else {
-			if (dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op])
+			if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+			    dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op])
 				dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op](
 					&dsi_ctrl->hw, 0xFF00E0);
 		}
@@ -2924,11 +2932,13 @@ static void dsi_ctrl_handle_error_status(struct dsi_ctrl *dsi_ctrl,
 	cb_info = dsi_ctrl->irq_info.irq_err_cb;
 
 	/* disable error interrupts */
-	if (dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op])
+	if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+	    dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op])
 		dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op](&dsi_ctrl->hw, false);
 
 	/* clear error interrupts first */
-	if (dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op])
+	if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+	    dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op])
 		dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					error);
 
@@ -2960,7 +2970,8 @@ static void dsi_ctrl_handle_error_status(struct dsi_ctrl *dsi_ctrl,
 	if (error & 0xF0000) {
 		u32 mask = 0;
 
-		if (dsi_ctrl->hw.ops.get_error_mask[dsi_ctrl->disp_op])
+		if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+		    dsi_ctrl->hw.ops.get_error_mask[dsi_ctrl->disp_op])
 			mask = dsi_ctrl->hw.ops.get_error_mask[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 		/* no need to report FIFO overflow if already masked */
 		if (cb_info.event_cb && !(mask & 0xf0000)) {
@@ -3000,13 +3011,15 @@ static void dsi_ctrl_handle_error_status(struct dsi_ctrl *dsi_ctrl,
 	 */
 	if (dsi_ctrl_check_for_spurious_error_interrupts(dsi_ctrl) &&
 				dsi_ctrl->esd_check_underway) {
-		if (dsi_ctrl->hw.ops.soft_reset[dsi_ctrl->disp_op])
+		if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+		    dsi_ctrl->hw.ops.soft_reset[dsi_ctrl->disp_op])
 			dsi_ctrl->hw.ops.soft_reset[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 		return;
 	}
 
 	/* enable back DSI interrupts */
-	if (dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op])
+	if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+	    dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op])
 		dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op](&dsi_ctrl->hw, true);
 }
 
@@ -3030,15 +3043,18 @@ static irqreturn_t dsi_ctrl_isr(int irq, void *ptr)
 	dsi_ctrl = ptr;
 
 	/* check status interrupts */
-	if (dsi_ctrl->hw.ops.get_interrupt_status[dsi_ctrl->disp_op])
+	if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+	    dsi_ctrl->hw.ops.get_interrupt_status[dsi_ctrl->disp_op])
 		status = dsi_ctrl->hw.ops.get_interrupt_status[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 
 	/* check error interrupts */
-	if (dsi_ctrl->hw.ops.get_error_status[dsi_ctrl->disp_op])
+	if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+	    dsi_ctrl->hw.ops.get_error_status[dsi_ctrl->disp_op])
 		errors = dsi_ctrl->hw.ops.get_error_status[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 
 	/* clear interrupts */
-	if (dsi_ctrl->hw.ops.clear_interrupt_status[dsi_ctrl->disp_op])
+	if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+	    dsi_ctrl->hw.ops.clear_interrupt_status[dsi_ctrl->disp_op])
 		dsi_ctrl->hw.ops.clear_interrupt_status[dsi_ctrl->disp_op](&dsi_ctrl->hw, 0x0);
 
 	SDE_EVT32_IRQ(dsi_ctrl->cell_index, status, errors);
@@ -3089,7 +3105,8 @@ static irqreturn_t dsi_ctrl_isr(int irq, void *ptr)
 		dsi_ctrl_disable_status_interrupt(dsi_ctrl,
 					DSI_SINT_BTA_DONE);
 		complete_all(&dsi_ctrl->irq_info.bta_done);
-		if (dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op])
+		if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+		    dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op])
 			dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					fifo_overflow_mask);
 	}
@@ -3191,13 +3208,15 @@ void dsi_ctrl_enable_status_interrupt(struct dsi_ctrl *dsi_ctrl,
 
 		/* update hardware mask */
 		dsi_ctrl->irq_info.irq_stat_mask |= BIT(intr_idx);
-		if (dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op])
+		if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+		    dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op])
 			dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					dsi_ctrl->irq_info.irq_stat_mask);
 	}
 
 	if (intr_idx == DSI_SINT_CMD_MODE_DMA_DONE)
-		if (dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op])
+		if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+		    dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op])
 			dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					dsi_ctrl->irq_info.irq_stat_mask);
 	++(dsi_ctrl->irq_info.irq_stat_refcount[intr_idx]);
@@ -3225,7 +3244,8 @@ void dsi_ctrl_disable_status_interrupt(struct dsi_ctrl *dsi_ctrl,
 	if (dsi_ctrl->irq_info.irq_stat_refcount[intr_idx])
 		if (--(dsi_ctrl->irq_info.irq_stat_refcount[intr_idx]) == 0) {
 			dsi_ctrl->irq_info.irq_stat_mask &= ~BIT(intr_idx);
-			if (dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op])
+			if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+			    dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op])
 				dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op]
 						(&dsi_ctrl->hw,
 						dsi_ctrl->irq_info.irq_stat_mask);
@@ -3369,7 +3389,9 @@ int dsi_ctrl_host_init(struct dsi_ctrl *dsi_ctrl, bool skip_op)
 		}
 	}
 
-	dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op](&dsi_ctrl->hw, 0x0);
+	if (dsi_ctrl->disp_op < MSM_DISP_OP_MAX &&
+	    dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op](&dsi_ctrl->hw, 0x0);
 	dsi_ctrl_toggle_error_interrupt_status(dsi_ctrl, true);
 
 	DSI_CTRL_DEBUG(dsi_ctrl, "Host initialization complete, skip op: %d\n",
@@ -4500,7 +4522,8 @@ u32 dsi_ctrl_collect_misr(struct dsi_ctrl *dsi_ctrl)
 void dsi_ctrl_mask_error_status_interrupts(struct dsi_ctrl *dsi_ctrl, u32 idx,
 		bool mask_enable)
 {
-	if (!dsi_ctrl || !dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op]
+	if (!dsi_ctrl || dsi_ctrl->disp_op >= MSM_DISP_OP_MAX ||
+	    !dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op]
 			|| !dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op]) {
 		DSI_CTRL_ERR(dsi_ctrl, "Invalid params\n");
 		return;

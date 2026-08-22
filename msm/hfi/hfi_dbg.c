@@ -186,6 +186,7 @@ static ssize_t hfi_devcoredump_read(char *buffer, loff_t offset, size_t count)
 	ssize_t copied = 0;
 	ssize_t rd_buf_offset;
 	ssize_t rd_buf_cpy, evtlog_cpy;
+	ssize_t ret;
 
 	if (!hfi_dbg || !hfi_dbg->base->evtlog || !hfi_dbg->base->evtlog->dumped_evtlog ||
 		!hfi_dbg->base->read_buf)
@@ -213,7 +214,11 @@ static ssize_t hfi_devcoredump_read(char *buffer, loff_t offset, size_t count)
 		copied += rd_buf_cpy;
 	}
 
-	return (offset < total_sz) ? copied : 0;
+	ret = (offset < total_sz) ? copied : 0;
+	if (!ret) /* reset devcoredump pending in last write*/
+		hfi_dbg->base->coredump_pending = false;
+
+	return ret;
 }
 
 #if IS_ENABLED(CONFIG_QCOM_VA_MINIDUMP)

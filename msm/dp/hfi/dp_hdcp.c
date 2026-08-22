@@ -532,6 +532,40 @@ int dp_hdcp2x_enable_encryption(void *input)
 }
 
 /**
+ * dp_hdcp2x_force_encryption() - Force HDCP 2.x encryption in TrustZone
+ * @input: HDCP 2.x context handle
+ * @enable: true to force encryption, false otherwise
+ *
+ * Calls TrustZone to force HDCP 2.x encryption. This is invoked after
+ * encryption has been enabled when the force_encryption debug flag is set,
+ * mirroring the legacy sde_hdcp_2x behavior.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_hdcp2x_force_encryption(void *input, bool enable)
+{
+	struct dp_hdcp2x_ctx *ctx = input;
+	int rc = 0;
+
+	if (!ctx) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	DP_DEBUG("Forcing HDCP 2.x encryption: %s\n", enable ? "enabled" : "disabled");
+
+#if IS_ENABLED(CONFIG_HDCP_QSEECOM)
+	rc = hdcp2_force_encryption(ctx->hdcp2_handle, enable ? 1 : 0);
+	if (rc)
+		DP_ERR("hdcp2_force_encryption failed: %d\n", rc);
+	else
+		DP_DEBUG("HDCP 2.x encryption forced %s\n", enable ? "on" : "off");
+#endif
+
+	return rc;
+}
+
+/**
  * dp_hdcp2x_process_msg() - Process HDCP 2.x message from sink
  * @input: HDCP 2.x context handle
  * @req_buf: Request message buffer from sink

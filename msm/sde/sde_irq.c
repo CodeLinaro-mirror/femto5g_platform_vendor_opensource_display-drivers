@@ -37,7 +37,8 @@ irqreturn_t sde_irq(struct msm_kms *kms)
 	struct sde_kms *sde_kms = to_sde_kms(kms);
 	u32 interrupts = 0;
 
-	if (sde_kms->hw_intr->ops.get_interrupt_sources[sde_kms->hw_intr->hw.disp_op])
+	if (sde_kms->hw_intr->hw.disp_op < MSM_DISP_OP_MAX &&
+			sde_kms->hw_intr->ops.get_interrupt_sources[sde_kms->hw_intr->hw.disp_op])
 		sde_kms->hw_intr->ops.get_interrupt_sources[sde_kms->hw_intr->hw.disp_op](
 			sde_kms->hw_intr, &interrupts);
 

@@ -24,6 +24,7 @@ def define_bengal():
                     "CONFIG_THERMAL_OF",
                     "CONFIG_MDSS_HFI_ADAPTER",
                     "CONFIG_MDSS_HFI",
+                    "CONFIG_QTI_HFI_CORE",
                     "CONFIG_QCOM_SPEC_SYNC"
                 ],
             )

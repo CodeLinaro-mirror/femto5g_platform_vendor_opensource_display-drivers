@@ -19,6 +19,32 @@ struct hw_event_state {
 };
 
 /**
+ * enum hfi_dump_evt_request - control values written to the
+ *   "hfi_debug_ondemand_dump" debugfs node
+ * @DUMP_REQUEST: trigger a new on-demand dump (write 0x1)
+ * @DUMP_RESET:   acknowledge dump completion and reset state (write 0x2)
+ */
+enum hfi_dump_evt_request {
+	DUMP_REQUEST = 0x1,
+	DUMP_RESET   = 0x2,
+};
+
+/**
+ * enum hfi_dump_state - state machine for on-demand HFI debug dump
+ * @READY_TO_DUMP:   idle; a new dump request may be accepted
+ * @DUMP_TRIGGERED:  user wrote 0x1; waiting for FW command to be sent
+ * @DUMP_ON_GOING:   HFI command dispatched; waiting for FW response
+ * @DUMP_READY:      FW responded and dump is complete; waiting for user
+ *                   to acknowledge by writing 0x2
+ */
+enum hfi_dump_state {
+	READY_TO_DUMP  = 0,
+	DUMP_TRIGGERED = 1,
+	DUMP_ON_GOING  = 2,
+	DUMP_READY     = 3,
+};
+
+/**
  * struct hfi_encoder - hfi implementation extension of sde_encoder object
  * @sde_base: Pointer to sde encoder base structure
  * @event_cbs: event ops for sde encoder
@@ -34,6 +60,8 @@ struct hw_event_state {
  * @misr_read_listener: hfi listener call back object for MISR
  * @ps_listener_packet_id: cache PANIC_SUBSCRIBE listener packet_id to remove during enc disable
  * @panic_events_state: maintains state of panic events registration
+ * @dbg_dump_listener: listener for debug dump
+ * @dump_state: current state of the on-demand debug dump state machine (atomic)
  */
 struct hfi_encoder {
 	struct sde_encoder_virt *sde_base;
@@ -51,6 +79,8 @@ struct hfi_encoder {
 	struct hfi_prop_listener misr_read_listener;
 	u32 ps_listener_packet_id[2];
 	bool panic_events_state;
+	struct hfi_prop_listener dbg_dump_listener;
+	atomic_t dump_state;
 };
 
 #if IS_ENABLED(CONFIG_MDSS_HFI)
@@ -63,6 +93,13 @@ struct hfi_encoder {
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc);
 
 /**
+ * hfi_enc_debugfs_init - register HFI encoder debugfs nodes
+ * @enc:        Pointer to virtual sde encoder structure
+ * @Returns:    0 on success, or error code on failure
+ */
+int hfi_enc_debugfs_init(struct sde_encoder_virt *enc);
+
+/**
  * hfi_set_power_vote - set power vote for HFI HW fence resources
  * @enable:     true to enable, false to disable
  * @Returns:    0 on success, error code on failure
@@ -72,6 +109,11 @@ int hfi_set_power_vote(bool enable);
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)
 {
 	return -HFI_ERROR;
+}
+
+static inline int hfi_enc_debugfs_init(struct sde_encoder_virt *enc)
+{
+	return 0;
 }
 
 static inline int hfi_set_power_vote(bool enable)

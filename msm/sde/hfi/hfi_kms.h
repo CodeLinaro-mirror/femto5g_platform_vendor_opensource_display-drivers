@@ -46,6 +46,9 @@
  * @max_display_count	Max display count
  * @wb_count		Number of writeback blocks
  * @wb_indices		Writeback block indices
+ * @wb_dnsc_indices	Writeback DNSC support indices
+ * @wb_dnsc_range	Valid range of scale ratio for WB DNSC
+ * @wb_dnsc_integer_only	Whether WB DNSC supports only integer scaling
  * @csc_wb_count	Number of CSC writeback blocks
  * @csc_wb_indices	CSC writeback block indices
  * @repro_wb_count	Number of Repro writeback blocks
@@ -62,6 +65,7 @@
  * @ds_count		count of destination scaler blocks
  * @ds_indices		DS block indices
  * @max_ds_resolution	Max resolution support of DS
+ * @active_pipes_mask	Array of active pipes mask
  */
 struct hfi_catalog_base {
 	u32 dcp_hw_rev;
@@ -82,6 +86,9 @@ struct hfi_catalog_base {
 	u32 max_display_count;
 	u32 wb_count;
 	u32 wb_indices[MAX_BLOCKS];
+	u32 wb_dnsc_indices[MAX_BLOCKS];
+	u32 wb_dnsc_range;
+	u32 wb_dnsc_integer_only;
 	u32 csc_wb_count;
 	u32 csc_wb_indices[MAX_BLOCKS];
 	u32 repro_wb_count;
@@ -97,6 +104,7 @@ struct hfi_catalog_base {
 	u32 ds_count;
 	u32 ds_indices[MAX_BLOCKS];
 	u32 max_ds_resolution;
+	u32 active_pipes_mask[MAX_SPLASH_DISPLAYS];
 };
 
 #if IS_ENABLED(CONFIG_QTI_HW_FENCE)
@@ -145,6 +153,7 @@ struct hfi_kms {
 	struct hfi_prop_listener device_init_listener;
 	struct hfi_prop_listener resource_vote_listener;
 	struct hfi_prop_listener trace_cfg_listener;
+	struct hfi_prop_listener debug_set_prop_listener;
 	atomic_t cat_init_done;
 	struct hfi_catalog_base *catalog;
 	struct hfi_connector *primary_connector;

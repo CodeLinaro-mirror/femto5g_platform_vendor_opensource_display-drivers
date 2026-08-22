@@ -25,26 +25,12 @@
 
 int dsi_display_hfi_panel_enable_supplies(struct dsi_display *display, bool enable)
 {
-	struct sde_kms *sde_kms;
-	struct msm_kms *msm_kms;
-	bool is_cont_splash = false;
 	int rc = 0;
 
 	if (!display->panel) {
 		DSI_ERR("invalid panel\n");
 		return -EINVAL;
 	}
-
-	sde_kms = sde_connector_get_kms(display->drm_conn);
-	if (!sde_kms)
-		return -EINVAL;
-
-	msm_kms = &sde_kms->base;
-	if (!msm_kms)
-		return -EINVAL;
-
-	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
-		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
 
 	mutex_lock(&display->panel->panel_lock);
 
@@ -54,7 +40,7 @@ int dsi_display_hfi_panel_enable_supplies(struct dsi_display *display, bool enab
 			goto error;
 
 		DSI_DEBUG("powering on panel\n");
-		rc = dsi_panel_power_on(display->panel, is_cont_splash);
+		rc = dsi_panel_power_on(display->panel, display->is_cont_splash_enabled);
 		if (rc) {
 			DSI_ERR("dsi panel failed to enable power supplies\n");
 			goto error;
@@ -143,9 +129,6 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 {
 	int rc = 0;
 	bool hfi_power_enable = true;
-	struct sde_kms *sde_kms;
-	struct msm_kms *msm_kms;
-	bool is_cont_splash = false;
 	struct dsi_display_mode poms_mode;
 	struct dsi_display_mode *mode;
 
@@ -156,17 +139,6 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 
 	if (display->trusted_vm_env)
 		return rc;
-
-	sde_kms = sde_connector_get_kms(display->drm_conn);
-	if (!sde_kms)
-		return -EINVAL;
-
-	msm_kms = &sde_kms->base;
-	if (!msm_kms)
-		return -EINVAL;
-
-	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
-		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
 
 	/*
 	 * For POMS (Panel Operating Mode Switch) transitions, display_prepare
@@ -205,7 +177,7 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 			goto end;
 	}
 
-	if (!is_cont_splash) {
+	if (!display->is_cont_splash_enabled) {
 		rc = dsi_panel_i2c_tx_cmd_set(display->panel);
 		if (rc) {
 			DSI_ERR("[%s] failed to send i2c cmds, rc=%d\n",
@@ -225,8 +197,6 @@ end:
 int dsi_display_hfi_enable(struct dsi_display *display)
 {
 	struct sde_kms *sde_kms;
-	struct msm_kms *msm_kms;
-	bool is_cont_splash = false;
 	struct hfi_kms *hfi_kms;
 	struct hfi_client_t *hfi_client;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_ENABLE;
@@ -245,10 +215,6 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)
 		return -EINVAL;
-
-	msm_kms = &sde_kms->base;
-	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
-		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
 
 	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms)
@@ -275,7 +241,7 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 		enum dsi_cmd_set_type cmd_type;
 
 		DSI_DEBUG("powering on panel\n");
-		rc = dsi_panel_power_on(display->panel, is_cont_splash);
+		rc = dsi_panel_power_on(display->panel, display->is_cont_splash_enabled);
 		if (rc) {
 			DSI_ERR("dsi panel failed to enable power supplies\n");
 			mutex_unlock(&display->panel->panel_lock);
@@ -285,7 +251,7 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 		display->panel->powered = true;
 
 		/* For continuous splash case - avoid sending custom DCS ON */
-		if (!is_cont_splash) {
+		if (!display->is_cont_splash_enabled) {
 			if (!display->panel->cur_mode || !display->panel->cur_mode->priv_info) {
 				mutex_unlock(&display->panel->panel_lock);
 				return -EINVAL;
@@ -297,7 +263,7 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 			cmd_type = (priv_info->cmd_sets[DSI_CMD_SET_CUSTOM_ON].count > 0) ?
 				   DSI_CMD_SET_CUSTOM_ON : DSI_CMD_SET_ON;
 
-			rc = dsi_panel_tx_cmd_set(display->panel, cmd_type, false);
+			rc = dsi_hfi_exec_dcs_cmd_type(display, cmd_type, true);
 			if (rc)
 				DSI_ERR("Could not send dcs on cmd, rc=%d\n", rc);
 		}
@@ -548,6 +514,12 @@ static void dsi_display_aspace_cb_locked(void *cb_data, bool is_detach)
 		msm_gem_put_vaddr(display->tx_cmd_buf);
 		msm_gem_vunmap(display->tx_cmd_buf, OBJ_LOCK_NORMAL);
 
+		if (display->tx_cmd_buf_non_embedded) {
+			display->cmd_buffer_iova_non_embedded = 0;
+			msm_gem_put_vaddr(display->tx_cmd_buf_non_embedded);
+			msm_gem_vunmap(display->tx_cmd_buf_non_embedded, OBJ_LOCK_NORMAL);
+		}
+
 	} else {
 		rc = msm_gem_get_iova(display->tx_cmd_buf,
 				display->aspace, &(display->cmd_buffer_iova));
@@ -562,6 +534,23 @@ static void dsi_display_aspace_cb_locked(void *cb_data, bool is_detach)
 		if (IS_ERR_OR_NULL(display->vaddr)) {
 			DSI_ERR("failed to get va rc %d\n", rc);
 			goto end;
+		}
+
+		if (display->tx_cmd_buf_non_embedded) {
+			rc = msm_gem_get_iova(display->tx_cmd_buf_non_embedded,
+					display->aspace, &(display->cmd_buffer_iova_non_embedded));
+			if (rc) {
+				DSI_ERR("failed to get non-embedded iova rc %d\n", rc);
+				goto end;
+			}
+
+			display->vaddr_non_embedded =
+				(void *) msm_gem_get_vaddr(display->tx_cmd_buf_non_embedded);
+
+			if (IS_ERR_OR_NULL(display->vaddr_non_embedded)) {
+				DSI_ERR("failed to get non-embedded va rc %d\n", rc);
+				goto end;
+			}
 		}
 	}
 
@@ -634,6 +623,62 @@ free_gem:
 	mutex_lock(&display->drm_dev->struct_mutex);
 #endif
 	msm_gem_free_object(display->tx_cmd_buf);
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
+	mutex_unlock(&display->drm_dev->struct_mutex);
+#endif
+error:
+	return rc;
+}
+
+int dsi_hfi_host_alloc_cmd_tx_buffer_non_embedded(struct dsi_display *display)
+{
+	int rc = 0;
+
+	if (!display->aspace) {
+		DSI_ERR("non-embedded cmd tx buffer allocation failed: aspace is not initialized\n");
+		rc = -EINVAL;
+		goto error;
+	}
+
+	display->tx_cmd_buf_non_embedded = msm_gem_new(display->drm_dev,
+			DSI_TX_CMD_BUF_NON_EMBEDDED_SIZE,
+			MSM_BO_UNCACHED);
+
+	if ((display->tx_cmd_buf_non_embedded) == NULL) {
+		DSI_ERR("Failed to allocate non-embedded cmd tx buf memory\n");
+		rc = -ENOMEM;
+		goto error;
+	}
+
+	display->cmd_buffer_size_non_embedded = DSI_TX_CMD_BUF_NON_EMBEDDED_SIZE;
+
+	rc = msm_gem_get_iova(display->tx_cmd_buf_non_embedded, display->aspace,
+				&(display->cmd_buffer_iova_non_embedded));
+	if (rc) {
+		DSI_ERR("failed to get the iova for non-embedded buf rc %d\n", rc);
+		goto free_gem;
+	}
+
+	display->vaddr_non_embedded =
+		(void *)msm_gem_get_vaddr(display->tx_cmd_buf_non_embedded);
+
+	if (IS_ERR_OR_NULL(display->vaddr_non_embedded)) {
+		DSI_ERR("failed to get va for non-embedded buf rc %d\n", rc);
+		rc = -EINVAL;
+		goto put_iova;
+	}
+
+	return rc;
+
+put_iova:
+	msm_gem_put_iova(display->tx_cmd_buf_non_embedded, display->aspace);
+	display->cmd_buffer_iova_non_embedded = 0;
+free_gem:
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
+	mutex_lock(&display->drm_dev->struct_mutex);
+#endif
+	msm_gem_free_object(display->tx_cmd_buf_non_embedded);
+	display->tx_cmd_buf_non_embedded = NULL;
 #if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_unlock(&display->drm_dev->struct_mutex);
 #endif

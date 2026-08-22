@@ -221,7 +221,8 @@ struct sde_cp_crtc_skip_blend_plane {
  * @drm_fb_id: framebuffer id associated with this buffer
  * @iova: device address
  * @len: buffer length
- * @len: buffer format
+ * @format: buffer format
+ * @flags: buffer flags, bit 0 is used for buffer security info.
  */
 struct sde_qrtc_buffer {
 	struct drm_framebuffer *fb;
@@ -231,6 +232,7 @@ struct sde_qrtc_buffer {
 	u64 iova;
 	u32 len;
 	u32 format;
+	u32 flags;
 };
 
 /**

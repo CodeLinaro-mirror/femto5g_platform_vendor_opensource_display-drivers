@@ -22,7 +22,7 @@ def define_artvm():
                     "CONFIG_QCOM_MDSS_PLL",
                     "CONFIG_DRM_MSM_REGISTER_LOGGING",
                     "CONFIG_DRM_SDE_VM",
-                    "CONFIG_DRM_LOW_MSM_MEM_FOOTPRINT",
+                    "CONFIG_DRM_MSM_LOW_MEM_FOOTPRINT",
                     "CONFIG_QTI_HFI_CORE",
                 ],
                 vm_target = True,

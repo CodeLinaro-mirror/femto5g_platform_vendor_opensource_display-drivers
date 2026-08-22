@@ -616,33 +616,36 @@ int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 		goto error;
 	}
 
-	for (i = 0; i < count; i++) {
-		cmds->ctrl_flags = 0;
+	if (panel->disp_op == MSM_DISP_OP_HFI) {
+		struct dsi_display *display;
 
-		if (state == DSI_CMD_SET_STATE_LP)
-			cmds->msg.flags |= MIPI_DSI_MSG_USE_LPM;
+		display = container_of(panel->host, struct dsi_display, host);
+		rc = dsi_hfi_tx_cmd_set(display, &mode->priv_info->cmd_sets[idx]);
+		if (rc) {
+			DSI_ERR("failed to send cmds(%d) via HFI, rc=%d\n", type, rc);
+			goto error;
+		}
+	} else {
+		for (i = 0; i < count; i++) {
+			cmds->ctrl_flags = 0;
 
-		if (do_peripheral_flush || (type == DSI_CMD_SET_VID_SWITCH_OUT))
-			cmds->msg.flags |= MIPI_DSI_MSG_ASYNC_OVERRIDE;
+			if (state == DSI_CMD_SET_STATE_LP)
+				cmds->msg.flags |= MIPI_DSI_MSG_USE_LPM;
 
-		if (panel->disp_op == MSM_DISP_OP_HFI) {
-			rc = dsi_hfi_host_transfer_sub(panel->host, cmds);
-			if (rc) {
-				DSI_ERR("failed to set cmds(%d), rc=%d\n", type, rc);
-				goto error;
-			}
-		} else {
+			if (do_peripheral_flush || (type == DSI_CMD_SET_VID_SWITCH_OUT))
+				cmds->msg.flags |= MIPI_DSI_MSG_ASYNC_OVERRIDE;
+
 			len = dsi_host_transfer_sub(panel->host, cmds, do_peripheral_flush);
 			if (len < 0) {
 				rc = len;
 				DSI_ERR("failed to set cmds(%d), rc=%d\n", type, rc);
 				goto error;
 			}
+			if (cmds->post_wait_ms)
+				usleep_range(cmds->post_wait_ms*1000,
+						((cmds->post_wait_ms*1000)+10));
+			cmds++;
 		}
-		if (cmds->post_wait_ms)
-			usleep_range(cmds->post_wait_ms*1000,
-					((cmds->post_wait_ms*1000)+10));
-		cmds++;
 	}
 error:
 	return rc;

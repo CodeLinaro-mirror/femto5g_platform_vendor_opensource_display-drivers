@@ -190,6 +190,19 @@ void dp_hdcp2x_stop(void *input);
 int dp_hdcp2x_enable_encryption(void *input);
 
 /**
+ * dp_hdcp2x_force_encryption() - Force HDCP 2.x encryption in TrustZone
+ * @input: HDCP 2.x context handle
+ * @enable: true to force encryption, false otherwise
+ *
+ * Calls TrustZone to force HDCP 2.x encryption. This is invoked after
+ * encryption has been enabled when the force_encryption debug flag is set,
+ * for CTS testing.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_hdcp2x_force_encryption(void *input, bool enable);
+
+/**
  * dp_hdcp2x_query_stream() - Query stream management from TrustZone
  * @input: HDCP 2.x context handle
  * @resp_buf: Pointer to store response buffer (REP_STREAM_MANAGE from TZ)

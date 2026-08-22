@@ -886,6 +886,11 @@ static const struct sde_format sde_format_map_dma[] = {
 		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
 		C2_R_Cr, C0_G_Y, C1_B_Cb,
 		SDE_CHROMA_RGB, SDE_FORMAT_FLAG_DMA, SDE_FETCH_LINEAR, 1),
+	INTERLEAVED_RGB_FMT(RGB888,
+		0, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C1_B_Cb, C0_G_Y, C2_R_Cr, 0, 3,
+		false, 3, SDE_FORMAT_FLAG_DMA,
+		SDE_FETCH_LINEAR, 1),
 };
 
 bool sde_format_is_tp10_ubwc(const struct sde_format *fmt)

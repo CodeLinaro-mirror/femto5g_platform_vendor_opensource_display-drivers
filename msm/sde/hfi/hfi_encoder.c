@@ -28,14 +28,14 @@ static ktime_t hfi_enc_unpack_frame_event(void *payload, u32 *idx, struct sde_en
 	struct hfi_encoder *hfi_enc;
 	struct drm_encoder *drm_enc;
 
-	if (!payload) {
-		SDE_ERROR("No payload specified\n");
+	if (!payload || !sde_enc) {
+		SDE_ERROR("No payload %d or sde_enc %d specified\n", !payload, !sde_enc);
 		return 0;
 	}
 
 	hfi_enc = to_hfi_encoder(sde_enc);
 	if (!hfi_enc)
-		return -EINVAL;
+		return 0;
 
 	drm_enc = &sde_enc->base;
 	fps = sde_encoder_get_fps(drm_enc);
@@ -71,14 +71,14 @@ static ktime_t hfi_enc_unpack_vsync_event(void *payload, u32 *idx, struct sde_en
 	struct hfi_encoder *hfi_enc;
 	struct drm_encoder *drm_enc;
 
-	if (!payload) {
-		SDE_ERROR("No payload specified\n");
+	if (!payload || !sde_enc) {
+		SDE_ERROR("No payload %d or sde_enc %d specified\n", !payload, !sde_enc);
 		return 0;
 	}
 
 	hfi_enc = to_hfi_encoder(sde_enc);
 	if (!hfi_enc)
-		return -EINVAL;
+		return 0;
 
 	drm_enc = &sde_enc->base;
 	fps = sde_encoder_get_fps(drm_enc);
@@ -148,7 +148,7 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 	bool frame_event_trigger;
 
 	if (!sde_enc) {
-		SDE_ERROR("invalid param\n");
+		SDE_ERROR("invalid param: sde_enc\n");
 		return;
 	}
 
@@ -345,8 +345,7 @@ static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, vo
 static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		void *payload, u32 size, struct hfi_prop_listener *listener)
 {
-	struct hfi_encoder *hfi_enc = container_of(listener,
-			struct hfi_encoder, hfi_cb_obj);
+	struct hfi_encoder *hfi_enc;
 	struct sde_encoder_virt *sde_enc;
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
@@ -354,8 +353,16 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 	bool recovery_events;
 	u32 *data = payload;
 
+	if (!listener) {
+		SDE_ERROR("invalid listener from FW for cmd_id %x obj_id %x size %d\n",
+			cmd_id, obj_id, size);
+		return;
+	}
+
+	hfi_enc = container_of(listener,
+			struct hfi_encoder, hfi_cb_obj);
 	if (!hfi_enc) {
-		SDE_ERROR("invalid object or listener from FW\n");
+		SDE_ERROR("invalid hfi encoder hfi_enc %pK\n", hfi_enc);
 		return;
 	}
 
@@ -422,7 +429,6 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 
 		recovery_events = sde_encoder_recovery_events_enabled(&sde_enc->base);
 
-		drm_enc = &sde_enc->base;
 		conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
 		if (!conn) {
 			SDE_ERROR("invalid connector\n");
@@ -481,7 +487,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	int ret = 0;
 
 	if (!enc) {
-		SDE_ERROR("Invalid param\n");
+		SDE_ERROR("Invalid encoder\n");
 		return -EINVAL;
 	}
 
@@ -489,7 +495,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
 
 	if (!hfi_enc || !hfi_kms) {
-		SDE_ERROR("invalid connector\n");
+		SDE_ERROR("Invalid hfi_enc %d or hfi_kms %d\n", !hfi_enc, !hfi_kms );
 		return -EINVAL;
 	}
 
@@ -605,7 +611,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	int ret;
 
 	if (!enc) {
-		SDE_ERROR("invalid param\n");
+		SDE_ERROR("invalid encoder\n");
 		return -EINVAL;
 	}
 
@@ -613,7 +619,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
 
 	if (!hfi_enc || !hfi_kms) {
-		SDE_ERROR("invalid params\n");
+		SDE_ERROR("invalid hfi_enc %d or hfi_kms %d\n", !hfi_enc, !hfi_kms);
 		return -EINVAL;
 	}
 
@@ -731,7 +737,8 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 		return -EINVAL;
 	}
 
-	panel = hfi_encoder_get_panel(sde_enc);
+	if (!sde_encoder_is_wb_display(&sde_enc->base))
+		panel = hfi_encoder_get_panel(sde_enc);
 	do {
 		rc = wait_event_timeout(*(info->wq),
 				(atomic_read(info->atomic_cnt) == info->count_check) ||
@@ -891,7 +898,14 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 				hfi_enc->hw_events_state[event].state);
 			SDE_EVT32(DRMID(drm_enc), event, enable,
 				hfi_enc->hw_events_state[event].state, SDE_EVTLOG_ERROR);
-			return 0;
+			if (event != MSM_ENC_CAPTURE_COMPLETE || !enable)
+				return 0;
+
+			/* Deregister first so FW clears its packet_id before re-registration */
+			ret = _hfi_enc_register_hw_event(enc, event, false, false);
+			if (ret)
+				SDE_ERROR("enc:%d failed to deregister CAPTURE_COMPLETE: %d\n",
+					DRMID(drm_enc), ret);
 		}
 
 		ret = _hfi_enc_register_hw_event(enc, event, enable, false);
@@ -1349,18 +1363,14 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 		sde_encoder_is_wb_display(&enc->base)) {
 		/* Disable exactly what we enabled in the enable path */
 		if (sde_encoder_in_clone_mode(&enc->base)) {
-			/* For CWB: Disable frame capture complete */
-			ret = _hfi_enc_wait_for_tx_complete(hfi_enc);
-			if (ret <= 0) {
-				ret = -ETIMEDOUT;
-				SDE_ERROR("wait for event failure\n");
-				return ret;
-			}
-			ret = hfi_enc_enable_hw_event(enc, MSM_ENC_CAPTURE_COMPLETE, false);
-			if (ret) {
-				SDE_ERROR("failed to send capture complete command\n");
-				return ret;
-			}
+			/*
+			 * For CWB clone mode: skip the wait and the
+			 * CAPTURE_COMPLETE deregister here.  The wait must
+			 * happen in sde_kms_wait_for_commit_done() so that the
+			 * primary display commit is not blocked inside
+			 * msm_disable.  hfi_enc_deregister_cwb_events() is called
+			 * from there after the wait completes.
+			 */
 		} else {
 			/* For regular WB: Disable TX complete */
 			ret = hfi_enc_enable_hw_event(enc, MSM_ENC_TX_COMPLETE, false);
@@ -1947,6 +1957,391 @@ static ktime_t hfi_enc_get_vblank_timestamp(struct sde_encoder_virt *enc)
 	return ts;
 }
 
+/**
+ * _hfi_dbg_dump_handler - HFI property listener callback for debug dump response
+ * @display_id: display identifier
+ * @cmd_id:     HFI command identifier
+ * @payload:    response payload from firmware
+ * @size:       payload size in bytes
+ * @listener:   HFI property listener structure
+ *
+ * Invoked by the HFI framework when the firmware responds to
+ * HFI_COMMAND_DEBUG_DUMP_ALL.  Triggers the local dump operations.
+ */
+static void _hfi_dbg_dump_handler(u32 display_id, u32 cmd_id,
+		void *payload, u32 size, struct hfi_prop_listener *listener)
+{
+	struct hfi_encoder *hfi_enc = container_of(listener,
+			struct hfi_encoder, dbg_dump_listener);
+	struct sde_encoder_virt *sde_enc;
+	struct drm_encoder *drm_enc;
+	bool recovery_events;
+	struct drm_connector *conn;
+	static u32 counter;
+
+	if (!hfi_enc) {
+		SDE_ERROR("invalid object or listener from FW\n");
+		return;
+	}
+
+	sde_enc = hfi_enc->sde_base;
+	if (!sde_enc) {
+		SDE_ERROR("invalid sde base in hfi encoder sde_enc %pK\n", sde_enc);
+		return;
+	}
+
+	drm_enc = &sde_enc->base;
+	if (!drm_enc) {
+		SDE_ERROR("invalid drm base in sde encoder drm_enc %pK\n", drm_enc);
+		return;
+	}
+
+	recovery_events = sde_encoder_recovery_events_enabled(&sde_enc->base);
+	if (!recovery_events) {
+		SDE_ERROR("recovery events is disabled\n");
+		return;
+	}
+
+	conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
+	if (!conn) {
+		SDE_ERROR("invalid connector\n");
+		return;
+	}
+
+	if (cmd_id == HFI_COMMAND_DEBUG_DUMP_ALL) {
+		SDE_EVT32(display_id, cmd_id, counter++);
+		SDE_DEBUG("Debug dump response received\n");
+		SDE_DBG_DUMP(SDE_DBG_BUILT_IN_ALL);
+		sde_connector_event_notify(conn, DRM_EVENT_SDE_HW_RECOVERY,
+				sizeof(uint8_t), SDE_RECOVERY_CAPTURE);
+
+		/*
+		 * Sleep for 1 ms after notifying userspace to allow it
+		 * sufficient time to collect the dump data before the
+		 * state machine is advanced to DUMP_READY and a subsequent
+		 * reset (0x2) is permitted.
+		 */
+		usleep_range(1000, 1100);
+
+		atomic_set(&hfi_enc->dump_state, DUMP_READY);
+		SDE_DEBUG("dump_state -> DUMP_READY\n");
+	} else {
+		SDE_ERROR("invalid hfi command 0x%x for dump handler\n", cmd_id);
+	}
+}
+
+/**
+ * hfi_dbg_trigger_dump - send HFI_COMMAND_DEBUG_DUMP_ALL to DCP firmware
+ * @dev:     Pointer to device structure
+ * @sde_enc: pointer to the virtual SDE encoder
+ *
+ * Sends HFI_COMMAND_DEBUG_DUMP_ALL to DCP to trigger a dump of all debug
+ * data into the pre-allocated memory buffers previously configured via
+ * HFI_COMMAND_DEBUG_SETUP.  The command carries no payload and requires
+ * a response (HFI_TX_FLAGS_RESPONSE_REQUIRED).  On success DCP replies
+ * with HFI_RX_FLAGS_SUCCESS.
+ *
+ * Returns: 0 on success, negative error code on failure
+ */
+static int hfi_dbg_trigger_dump(struct device *dev, struct sde_encoder_virt *sde_enc)
+{
+	int ret;
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_kms *hfi_kms;
+	struct platform_device *pdev;
+	struct drm_device *ddev;
+	struct msm_drm_private *priv;
+	struct sde_kms *kms;
+	struct hfi_encoder *hfi_enc;
+	u32 packet_id = 0;
+
+	if (!dev || !sde_enc) {
+		SDE_ERROR("invalid params %d %d\n", !dev, !sde_enc);
+		return -EINVAL;
+	}
+
+	pdev = to_platform_device(dev);
+	ddev = platform_get_drvdata(pdev);
+	if (!ddev || !ddev->dev_private) {
+		SDE_ERROR("invalid drm device\n");
+		return -EINVAL;
+	}
+
+	priv = ddev->dev_private;
+	kms = to_sde_kms(priv->kms);
+	if (!kms) {
+		SDE_ERROR("invalid sde_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(kms);
+	if (!hfi_kms) {
+		SDE_ERROR("invalid hfi_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_enc = to_hfi_encoder(sde_enc);
+	if (!hfi_enc)
+		return -EINVAL;
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
+	hfi_enc->dbg_dump_listener.hfi_prop_handler = _hfi_dbg_dump_handler;
+	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEBUG_DUMP_ALL, MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_NONE,
+			NULL, 0,
+			&hfi_enc->dbg_dump_listener,
+			HFI_TX_FLAGS_RESPONSE_REQUIRED,
+			false, &packet_id);
+	if (ret) {
+		SDE_ERROR("failed to add debug dump command\n");
+		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		return ret;
+	}
+
+	atomic_set(&hfi_enc->dump_state, DUMP_ON_GOING);
+	SDE_DEBUG("dump_state -> DUMP_ON_GOING\n");
+
+	ret = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
+	if (ret)
+		SDE_ERROR("failed to send debug dump command\n");
+	else
+		SDE_INFO("Debug dump command sent successfully\n");
+
+	hfi_adapter_remove_listener_by_packet_id(&hfi_kms->hfi_client, packet_id);
+	return ret;
+}
+
+/**
+ * _hfi_enc_notify_recovery_success - notify userspace that the on-demand dump
+ *   cycle has completed successfully.
+ * @sde_enc: pointer to the virtual SDE encoder
+ *
+ * Resolves the DRM connector associated with @sde_enc and fires a
+ * DRM_EVENT_SDE_HW_RECOVERY event carrying SDE_RECOVERY_SUCCESS, signalling
+ * to userspace that the hardware has recovered and normal operation may resume.
+ */
+static void _hfi_enc_notify_recovery_success(struct sde_encoder_virt *sde_enc)
+{
+	struct drm_encoder *drm_enc;
+	struct drm_connector *conn;
+
+	if (!sde_enc) {
+		SDE_ERROR("invalid sde encoder\n");
+		return;
+	}
+
+	drm_enc = &sde_enc->base;
+	conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
+	if (!conn) {
+		SDE_ERROR("invalid connector\n");
+		return;
+	}
+
+	sde_connector_event_notify(conn, DRM_EVENT_SDE_HW_RECOVERY,
+			sizeof(uint8_t), SDE_RECOVERY_SUCCESS);
+}
+
+/**
+ * hfi_enc_debugfs_read_ondemand_dump - debugfs read handler for on-demand
+ *   HFI debug dump, registered as the read op for the "hfi_debug_ondemand_dump" node.
+ *
+ * Returns the current dump_state value of the encoder as a decimal integer
+ * followed by a newline, so the caller can poll the state machine without
+ * having to trigger or reset it.
+ *
+ * Returns: number of bytes copied to userspace, or a negative error code.
+ */
+static ssize_t hfi_enc_debugfs_read_ondemand_dump(struct file *file,
+		char __user *buf, size_t count, loff_t *ppos)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct hfi_encoder *hfi_enc;
+	char state_buf[16];
+	int len;
+
+	if (*ppos)
+		return 0;
+
+	if (!file || !file->private_data)
+		return -EINVAL;
+
+	sde_enc = file->private_data;
+	hfi_enc = to_hfi_encoder(sde_enc);
+	if (!hfi_enc)
+		return -EINVAL;
+
+	len = scnprintf(state_buf, sizeof(state_buf), "%d\n", atomic_read(&hfi_enc->dump_state));
+
+	if (copy_to_user(buf, state_buf, len))
+		return -EFAULT;
+
+	*ppos += len;
+	return len;
+}
+
+static const char *_hfi_dump_state_str(enum hfi_dump_state state)
+{
+	switch (state) {
+	case READY_TO_DUMP:  return "READY_TO_DUMP";
+	case DUMP_TRIGGERED: return "DUMP_TRIGGERED";
+	case DUMP_ON_GOING:  return "DUMP_ON_GOING";
+	case DUMP_READY:     return "DUMP_READY";
+	default:             return "UNKNOWN";
+	}
+}
+
+/**
+ * hfi_enc_debugfs_write_ondemand_dump - debugfs write handler for on-demand
+ *   HFI debug dump, registered as the write op for the "hfi_debug_ctrl" node.
+ *
+ * The dump follows a strict state machine (dump_state):
+ *
+ *   READY_TO_DUMP  (0) -- user writes 0x1 --> DUMP_TRIGGERED
+ *   DUMP_TRIGGERED (1) -- HFI command sent --> DUMP_ON_GOING  (set in hfi_dbg_trigger_dump)
+ *   DUMP_ON_GOING  (2) -- FW responds      --> DUMP_READY     (set in _hfi_dbg_dump_handler)
+ *   DUMP_READY     (3) -- user writes 0x2  --> READY_TO_DUMP
+ *
+ * Any write received while dump_state != READY_TO_DUMP (for a 0x1 trigger)
+ * or dump_state != DUMP_READY (for a 0x2 reset) is rejected with -EBUSY.
+ *
+ * Returns: number of bytes consumed, or a negative error code.
+ */
+static ssize_t hfi_enc_debugfs_write_ondemand_dump(struct file *file,
+		const char __user *buf, size_t count, loff_t *ppos)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct hfi_encoder *hfi_enc;
+	struct device *dev;
+	unsigned long dump_evt_request;
+	char input_str[32] = {0};
+	int ret;
+
+	if (*ppos) {
+		SDE_ERROR("invalid ppos\n");
+		return 0;
+	}
+
+	if (!file || !file->private_data) {
+		SDE_ERROR("invalid %d\n", !file);
+		return -EINVAL;
+	}
+
+	sde_enc = file->private_data;
+	hfi_enc = to_hfi_encoder(sde_enc);
+	if (!hfi_enc) {
+		SDE_ERROR("invalid hfi encoder\n");
+		return -EINVAL;
+	}
+
+	if (count >= sizeof(input_str)) {
+		SDE_ERROR("input buffer too large\n");
+		return -EINVAL;
+	}
+
+	if (copy_from_user(input_str, buf, count)) {
+		SDE_ERROR("failed to copy from user\n");
+		return -EFAULT;
+	}
+	input_str[count] = '\0';
+
+	ret = kstrtoul(input_str, 0, &dump_evt_request);
+	if (ret) {
+		SDE_ERROR("failed to parse input value\n");
+		return ret;
+	}
+
+	if (dump_evt_request == DUMP_REQUEST) {
+		/* Trigger a new dump — only allowed from READY_TO_DUMP */
+		if (atomic_read(&hfi_enc->dump_state) != READY_TO_DUMP) {
+			SDE_ERROR("dump rejected: dump_state=%s(%d) (expected:READY_TO_DUMP(%d))\n",
+					_hfi_dump_state_str(atomic_read(&hfi_enc->dump_state)),
+					atomic_read(&hfi_enc->dump_state), READY_TO_DUMP);
+			return -EBUSY;
+		}
+
+		atomic_set(&hfi_enc->dump_state, DUMP_TRIGGERED);
+		SDE_DEBUG("dump_state -> DUMP_TRIGGERED\n");
+
+		dev = sde_enc->base.dev->dev;
+		ret = hfi_dbg_trigger_dump(dev, sde_enc);
+		if (ret) {
+			SDE_ERROR("hfi_dbg_trigger_dump failed: %d\n", ret);
+			/* Roll back to READY_TO_DUMP so the caller may retry */
+			atomic_set(&hfi_enc->dump_state, READY_TO_DUMP);
+			SDE_DEBUG("dump_state -> READY_TO_DUMP (error rollback)\n");
+		}
+	} else if (dump_evt_request == DUMP_RESET) {
+		/* Acknowledge completion — only allowed from DUMP_READY */
+		if (atomic_read(&hfi_enc->dump_state) != DUMP_READY) {
+			SDE_ERROR("reset rejected: dump_state=%s(%d) (expected:DUMP_READY(%d))\n",
+					_hfi_dump_state_str(atomic_read(&hfi_enc->dump_state)),
+					atomic_read(&hfi_enc->dump_state), DUMP_READY);
+			return -EBUSY;
+		}
+
+		_hfi_enc_notify_recovery_success(sde_enc);
+		atomic_set(&hfi_enc->dump_state, READY_TO_DUMP);
+		SDE_DEBUG("dump_state -> READY_TO_DUMP\n");
+	} else {
+		SDE_ERROR("unsupported value 0x%lx (use 0x1 to trigger, 0x2 to reset)\n",
+				dump_evt_request);
+		return -EINVAL;
+	}
+
+	return ret ? ret : count;
+}
+
+static const struct file_operations hfi_enc_dbg_fops = {
+	.open = simple_open,
+	.read = hfi_enc_debugfs_read_ondemand_dump,
+	.write = hfi_enc_debugfs_write_ondemand_dump,
+};
+
+/**
+ * hfi_dbg_debugfs_register - register debugfs entries for hfi debug
+ * @dev:     Pointer to device structure
+ * @fops:    file_operations for the hfi_debug_ctrl debugfs node; provided
+ *           by the caller (e.g. sde_encoder) so the write handler lives
+ *           in the appropriate layer.
+ * Returns: 0 on success, negative error code on failure
+ */
+static int hfi_dbg_debugfs_register(struct sde_encoder_virt *sde_enc)
+{
+	int ret = 0;
+
+	if (!sde_enc->debugfs_root) {
+		SDE_DEBUG("debugfs_root not initialized\n");
+		return 0;
+	}
+
+	/* only expose debug dump for primary encoder */
+	if (sde_encoder_is_primary_display(&sde_enc->base))
+		debugfs_create_file("hfi_debug_ondemand_dump", 0600,
+			sde_enc->debugfs_root, sde_enc, &hfi_enc_dbg_fops);
+
+	return ret;
+}
+
+/**
+ * hfi_enc_debugfs_init - register the HFI encoder debugfs nodes.
+ * Called directly by sde_encoder.c at the end of _sde_encoder_init_debugfs.
+ * @enc: Pointer to sde encoder structure
+ * Returns: 0 on success, negative error code on failure
+ */
+int hfi_enc_debugfs_init(struct sde_encoder_virt *sde_enc)
+{
+	if (!sde_enc)
+		return -EINVAL;
+
+	return hfi_dbg_debugfs_register(sde_enc);
+}
+
 #else
 static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct seq_file *s)
 {
@@ -1972,7 +2367,81 @@ static ktime_t hfi_enc_get_vblank_timestamp(struct sde_encoder_virt *enc)
 {
 	return 0;
 }
+
+int hfi_enc_debugfs_init(struct sde_encoder_virt *enc)
+{
+	return 0;
+}
+
 #endif /* CONFIG_DEBUG_FS */
+
+/*
+ * hfi_enc_deregister_cwb_events - called from sde_kms_wait_for_commit_done() after
+ * the FRAME_CAPTURE_COMPLETE wait has returned for a CWB disable commit.
+ * Deregisters the capture-complete HFI event.
+ */
+static int hfi_enc_deregister_cwb_events(struct sde_encoder_virt *enc)
+{
+	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
+	struct hfi_kms *hfi_kms;
+	struct hfi_cmdbuf_t *cmd_buf;
+	u32 display_id, packet_id = 0;
+	int ret = 0;
+	u32 capture_complete_event = HFI_EVENT_FRAME_CAPTURE_COMPLETE;
+
+	if (!enc) {
+		SDE_ERROR("invalid params\n");
+		return -EINVAL;
+	}
+
+	if (!sde_encoder_in_clone_mode(&enc->base)) {
+		SDE_DEBUG("encoder not in clone mode, skipping post disable\n");
+		return 0;
+	}
+
+	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi_kms\n");
+		return -EINVAL;
+	}
+
+	display_id = hfi_crtc_get_display_id(enc->crtc, enc->crtc ? enc->crtc->state : NULL);
+	if (display_id == U32_MAX) {
+		SDE_ERROR("failed to get display_id for cwb post disable\n");
+		return -EINVAL;
+	}
+
+	/* Deregister the FRAME_CAPTURE_COMPLETE event */
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			display_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		SDE_ERROR("enc:%d failed to get cmd buf for cwb post disable display:%d\n",
+				enc->base.base.id, display_id);
+		return -EINVAL;
+	}
+
+	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DISPLAY_EVENT_DEREGISTER, display_id,
+			HFI_PAYLOAD_TYPE_U32, &capture_complete_event,
+			sizeof(capture_complete_event), &hfi_enc->hfi_cb_obj,
+			HFI_HOST_FLAGS_NON_DISCARDABLE, false, &packet_id);
+	if (ret) {
+		SDE_ERROR("failed to deregister capture complete event\n");
+		return ret;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+	SDE_EVT32(enc->base.base.id, display_id, HFI_COMMAND_DISPLAY_EVENT_DEREGISTER, ret);
+	if (ret) {
+		SDE_ERROR("failed to send capture complete deregister command\n");
+		return ret;
+	}
+
+	hfi_enc->hw_events_state[MSM_ENC_CAPTURE_COMPLETE].state = false;
+	hfi_enc->hw_events_state[MSM_ENC_CAPTURE_COMPLETE].pending = false;
+
+	return ret;
+}
 
 static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 {
@@ -1993,6 +2462,7 @@ static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 								hfi_enc_register_panel_dead_event;
 
 	sde_enc->hal_ops.misr_setup[MSM_DISP_OP_HFI] = hfi_enc_misr_setup;
+	sde_enc->hal_ops.deregister_cwb_events[MSM_DISP_OP_HFI] = hfi_enc_deregister_cwb_events;
 }
 
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)
@@ -2014,6 +2484,7 @@ int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)
 
 	memset(&hfi_enc->hw_events_state, 0, sizeof(struct hw_event_state) * MSM_ENC_EVENT_MAX);
 	hfi_enc->panic_events_state = false;
+	atomic_set(&hfi_enc->dump_state, READY_TO_DUMP);
 
 	return 0;
 }

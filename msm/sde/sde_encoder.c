@@ -3754,6 +3754,7 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 
 		intf_mode = sde_encoder_get_intf_mode(drm_enc);
 		if (msm_is_mode_seamless_dms(msm_mode) ||
+				msm_is_mode_seamless_spr_mode_switch(msm_mode) ||
 				(msm_is_mode_seamless_dyn_clk(msm_mode) &&
 				 is_cmd_mode)) {
 			/* restore resource state before releasing them */
@@ -3774,6 +3775,7 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 		}
 	} else {
 		if (msm_is_mode_seamless_dms(msm_mode) ||
+				msm_is_mode_seamless_spr_mode_switch(msm_mode) ||
 				(msm_is_mode_seamless_dyn_clk(msm_mode) &&
 				is_cmd_mode))
 			sde_encoder_resource_control(&sde_enc->base,
@@ -4396,6 +4398,7 @@ static void sde_encoder_populate_encoder_phys(struct drm_encoder *drm_enc,
 			 * new mode.
 			 */
 			if ((msm_is_mode_seamless_dms(msm_mode) ||
+				msm_is_mode_seamless_spr_mode_switch(msm_mode) ||
 				msm_is_mode_seamless_dyn_clk(msm_mode)) &&
 					phys->ops.restore)
 				phys->ops.restore(phys);
@@ -4410,6 +4413,7 @@ static void sde_encoder_populate_encoder_phys(struct drm_encoder *drm_enc,
 	}
 
 	if ((msm_is_mode_seamless_dms(msm_mode) ||
+			msm_is_mode_seamless_spr_mode_switch(msm_mode) ||
 			msm_is_mode_seamless_dyn_clk(msm_mode)) &&
 			sde_enc->cur_master->ops.restore)
 		sde_enc->cur_master->ops.restore(sde_enc->cur_master);
@@ -4508,6 +4512,7 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 			!(msm_is_mode_seamless_vrr(msm_mode)
 			|| msm_is_mode_seamless_dms(msm_mode)
 			|| msm_is_mode_seamless_dms_vid(msm_mode)
+			|| msm_is_mode_seamless_spr_mode_switch(msm_mode)
 			|| msm_is_mode_seamless_dyn_clk(msm_mode)))
 		kthread_init_delayed_work(&sde_enc->delayed_off_work,
 			sde_encoder_off_work);
@@ -4562,6 +4567,7 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 		atomic_set(&sde_enc->frame_done_cnt[i], 0);
 	}
 
+	mutex_lock(&sde_enc->enc_lock);
 	sde_enc->cur_master = NULL;
 	/*
 	 * clear the cached crtc in sde_enc on use case finish, after all the
@@ -4570,6 +4576,7 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 	sde_enc->crtc = NULL;
 	memset(&sde_enc->mode_info, 0, sizeof(sde_enc->mode_info));
 	sde_crtc_state->cached_cwb_enc_mask = 0;
+	mutex_unlock(&sde_enc->enc_lock);
 	SDE_DEBUG_ENC(sde_enc, "encoder disabled\n");
 
 	sde_rm_release(&sde_kms->rm, drm_enc, false);
@@ -8409,7 +8416,8 @@ static int _sde_encoder_init_debugfs(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc;
 	struct sde_kms *sde_kms;
-	int i;
+	enum msm_disp_op disp_op;
+	int i, ret;
 
 	static const struct file_operations debugfs_status_fops = {
 		.open =		_sde_encoder_debugfs_status_open,
@@ -8489,6 +8497,15 @@ static int _sde_encoder_init_debugfs(struct drm_encoder *drm_enc)
 			sde_enc->phys_encs[i]->ops.late_register(
 					sde_enc->phys_encs[i],
 					sde_enc->debugfs_root);
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (IS_DISP_OP_HFI(disp_op)) {
+		ret = hfi_enc_debugfs_init(sde_enc);
+		if (ret) {
+			SDE_ERROR_ENC(sde_enc, "failed to init hfi debugfs %d\n", ret);
+			return ret;
+		}
+	}
 
 	return 0;
 }
@@ -9381,6 +9398,7 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 	struct drm_bridge *bridge;
 	int ret = 0, i;
 	struct msm_sub_mode sub_mode;
+	enum msm_disp_op disp_op;
 
 	if (!encoder) {
 		SDE_ERROR("invalid drm enc\n");
@@ -9394,6 +9412,7 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 		return -EINVAL;
 	}
 
+	disp_op = sde_encoder_get_disp_op(encoder);
 	priv = encoder->dev->dev_private;
 
 	if (!priv->num_connectors) {
@@ -9448,6 +9467,7 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 
 	sub_mode.dsc_mode = splash_display->dsc_cnt ? MSM_DISPLAY_DSC_MODE_ENABLED :
 			MSM_DISPLAY_DSC_MODE_DISABLED;
+	sub_mode.spr_mode = MSM_DISPLAY_SPR_MAX;
 	drm_mode = &encoder->crtc->state->adjusted_mode;
 	ret = sde_connector_get_mode_info(&sde_conn->base,
 		drm_mode, &sub_mode, &sde_conn_state->mode_info);
@@ -9498,6 +9518,9 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 	} else {
 		SDE_ERROR_ENC(sde_enc, "No bridge attached to encoder\n");
 	}
+
+	if (IS_DISP_OP_HFI(disp_op))
+		return ret;
 
 	_sde_encoder_cache_hw_res_cont_splash(encoder, sde_kms);
 

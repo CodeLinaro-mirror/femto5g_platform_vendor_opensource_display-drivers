@@ -1101,6 +1101,21 @@ struct sde_drm_dnsc_blur_cfg {
 	__u32 dither_matrix[DNSC_BLUR_DITHER_MATRIX_SZ];
 };
 
+#define FEATURE_WB_DNSC
+#define WB_DNSC_DISABLE		(1 << 0)
+
+/**
+ * struct sde_drm_dnsc_blur_cfg - Downscale Blur config structure
+ * @flags: Flags
+ * @dst_width: Destination width configuration
+ * @dst_height: Destination height configuration
+ */
+struct sde_drm_wb_dnsc_cfg {
+	__u32 flags;
+	__u32 dst_width;
+	__u32 dst_height;
+};
+
 /**
  * struct drm_msm_opaque_config - Opaque configuration
  * @size: Size of the payload.

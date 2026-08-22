@@ -90,6 +90,8 @@ enum dsi_op_mode {
  *         Seamless transition is dynamic mode switch on vid panel.
  * @DSI_MODE_FLAG_MODE_IDX_VALID:
  *         Panel timing mode index in reserved1[15:0] is valid.
+ * @DSI_MODE_FLAG_SPR_MODE_SWITCH:
+ *         Seamless transition is SPR chroma format switch
  */
 enum dsi_mode_flags {
 	DSI_MODE_FLAG_SEAMLESS			= BIT(0),
@@ -104,7 +106,8 @@ enum dsi_mode_flags {
 	DSI_MODE_FLAG_NONDSC_BPP_SWITCH		= BIT(9),
 	DSI_MODE_FLAG_EMSYNC_FPS_SWITCH		= BIT(10),
 	DSI_MODE_FLAG_DMS_VID			= BIT(11),
-	DSI_MODE_FLAG_MODE_IDX_VALID		= BIT(12)
+	DSI_MODE_FLAG_MODE_IDX_VALID		= BIT(12),
+	DSI_MODE_FLAG_SPR_MODE_SWITCH           = BIT(13)
 };
 
 /**

@@ -1242,6 +1242,20 @@ static void msm_lastclose(struct drm_device *dev)
 
 	kms = priv->kms;
 
+	/* Prevent concurrent lastclose execution */
+	if (atomic_xchg(&kms->lastclose_active, 1)) {
+		SDE_DEBUG("lastclose already running, waiting...\n");
+		/* poll until prior lastclose finishes or timeout */
+		unsigned long timeout = jiffies +
+				msecs_to_jiffies(LASTCLOSE_TIMEOUT_MS);
+		while (atomic_read(&kms->lastclose_active) &&
+				time_before(jiffies, timeout))
+			msleep(20);
+		if (atomic_read(&kms->lastclose_active))
+			DRM_INFO("wait for lastclose active timeout\n");
+		return;
+	}
+
 	/* check for splash status before triggering cleanup
 	 * if we end up here with splash status ON i.e before first
 	 * commit then ignore the last close call
@@ -1256,7 +1270,7 @@ static void msm_lastclose(struct drm_device *dev)
 
 		rc = kms->funcs->trigger_null_flush(kms);
 		if (rc)
-			return;
+			goto end;
 	}
 
 	/*
@@ -1311,6 +1325,10 @@ static void msm_lastclose(struct drm_device *dev)
 
 	if (kms->funcs && kms->funcs->lastclose)
 		kms->funcs->lastclose(kms);
+
+end:
+	/* Release lastclose guard */
+	atomic_set(&kms->lastclose_active, 0);
 }
 
 static void msm_postclose(struct drm_device *dev, struct drm_file *file)
@@ -2449,11 +2467,11 @@ msm_gem_smmu_address_space_get(struct drm_device *dev,
 	const struct msm_kms_funcs *funcs;
 	struct msm_gem_address_space *aspace;
 
-	if (!mdss_iommu_present(dev))
-		return ERR_PTR(-ENODEV);
-
 	if ((!dev) || (!dev->dev_private))
 		return ERR_PTR(-EINVAL);
+
+	if (!mdss_iommu_present(dev))
+		return ERR_PTR(-ENODEV);
 
 	priv = dev->dev_private;
 	kms = priv->kms;

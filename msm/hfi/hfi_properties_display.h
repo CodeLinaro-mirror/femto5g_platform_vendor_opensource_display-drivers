@@ -2145,6 +2145,24 @@
  */
 #define HFI_PROPERTY_LAYER_EXCLUSION_RECTANGLE_ROI                   0x0003002A
 
+/*!
+ * @def HFI_PROPERTY_OUTPUT_LAYER_DNSC_CFG - This property is used to configure downscale
+ *                                      (DNSC) settings for display output layer. Host is expected
+ *                                      to send this packet as part of
+ *                                      HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @brief - Payload contains configuration information pertaining to output layer downscale.
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_OUTPUT_LAYER_DNSC_CFG |
+ *                               | (version=0 << 20) |
+ *                               | (sizeof(struct hfi_dnsc_cfg)/4) << 24)
+ *     (u32_value) payload [1]   | wb_id
+ *     (u32_value) payload [2-4] | struct hfi_dnsc_cfg
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_DNSC_CFG                           0x0003002B
+
 /*
  * @def HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY - Gets the security policy for output layer.
  *                                           Host is expected to send this packet
