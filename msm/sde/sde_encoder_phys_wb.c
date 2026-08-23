@@ -2374,7 +2374,7 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 	}
 
 	sde_crtc = to_sde_crtc(sde_enc->crtc);
-	if (sde_crtc)
+	if (sde_crtc && sde_enc->crtc->state->active)
 		sde_crtc->cached_encoder_mask &= ~drm_encoder_mask(phys_enc->parent);
 
 	wb_enc->crtc = NULL;

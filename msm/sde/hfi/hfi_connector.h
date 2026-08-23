@@ -55,7 +55,8 @@ void sde_connector_add_roi_v1(u32 hfi_prop, struct sde_connector *conn,
 	struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf);
 
 void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
-	struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf, bool is_cont_splash);
+	struct sde_connector_state *old_state, bool is_cont_splash,
+	struct hfi_util_u32_prop_helper *prop_collector);
 
 /**
  * hfi_conn_send_panel_init - send panel config and opertaing modes to fw
@@ -79,6 +80,13 @@ int hfi_conn_send_panel_init(struct drm_connector *drm_conn)
 {
 	return 0;
 }
+
+static inline void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
+	struct sde_connector_state *old_state, bool is_cont_splash,
+	struct hfi_util_u32_prop_helper *prop_collector)
+{
+}
+
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)
 
 #endif  // _HFI_CONNECTOR_H_
