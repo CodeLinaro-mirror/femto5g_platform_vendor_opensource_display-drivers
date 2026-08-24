@@ -1909,7 +1909,7 @@ static void virtio_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	}
 	mutex_lock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 
-	unexport_flags |= HABMM_EXPIMP_FLAGS_FD;
+	unexport_flags |= HABMM_EXPIMP_FLAGS_DMABUF;
 	rc = habmm_unexport(
 			handle,
 			mem->shmem_id,
