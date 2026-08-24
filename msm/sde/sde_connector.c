@@ -4887,10 +4887,14 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 
 	if (connector_type == DRM_MODE_CONNECTOR_DSI &&
 			display_info->display_type == SDE_CONNECTOR_PRIMARY &&
-			test_bit(SDE_FEATURE_GMU_REPROJ, sde_kms->catalog->features))
+			test_bit(SDE_FEATURE_GMU_REPROJ, sde_kms->catalog->features)) {
 		msm_property_install_range(&c_conn->property_info,
 			"gmu_dcp_intf_mem", 0x0, 0, U32_MAX, 0,
 			CONN_PROP_GMU_DCP_INTF_MEM);
+		msm_property_install_range(&c_conn->property_info,
+			"gmu_reproj_num_slices", 0x0, 0, U32_MAX, 0,
+			CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES);
+	}
 
 	return 0;
 }
