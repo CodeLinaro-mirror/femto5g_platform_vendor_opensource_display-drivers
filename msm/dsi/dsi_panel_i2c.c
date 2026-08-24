@@ -710,9 +710,8 @@ int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
 			rc = dsi_panel_i2c_tx_cmd(adapter, slave_addr,
 						  cmd->data, cmd->len);
 			if (rc) {
-				DSI_ERR("[%s] failed cmd %u/%u (set %d), rc=%d\n",
+				DSI_WARN("[%s] failed cmd %u/%u (set %d), rc=%d\n",
 					panel->name, i + 1, set->count, type, rc);
-				return rc;
 			}
 		}
 
@@ -722,7 +721,7 @@ int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
 		}
 	}
 
-	return rc;
+	return 0;
 }
 
 /* ---- JBD4040 calibration ---- */
