@@ -7,6 +7,7 @@
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
 #include <linux/version.h>
+#include <media/cec-notifier.h>
 #include <drm/drm_probe_helper.h>
 
 #include "msm_drv.h"
@@ -18,7 +19,7 @@
 #include "hdmi_debug.h"
 #include "hdmi_pll.h"
 #include "hdmi_phy.h"
-//#include "hdmi_cec.h"
+#include "hdmi_cec.h"
 #include "sde_hdcp.h"
 #include "hdmi_util.h"
 #include "sde_edid_parser.h"
@@ -172,7 +173,7 @@ struct hdmi_display_private {
 	struct hdmi_phy     *phy;
 	struct hdmi_ddc     *ddc;
 	struct hdmi_audio   *audio;
-	//struct hdmi_cec     *cec;
+	struct hdmi_cec     *cec;
 	struct hdmi_io_data *io_data;
 
 	bool hdmi_mode;
@@ -521,13 +522,13 @@ static int hdmi_init_sub_modules(struct hdmi_display_private *hdmi)
 		goto error_phy;
 	}
 
-	//hdmi->cec = hdmi_cec_get(hdmi->pdev, hdmi->parser);
-	//if (IS_ERR(hdmi->cec)) {
-	//	rc = PTR_ERR(hdmi->cec);
-	//	HDMI_ERR("failed to initialize cec, rc = %d\n", rc);
-	//	hdmi->cec = NULL;
-	//	goto error_phy;
-	//}
+	hdmi->cec = hdmi_cec_get(hdmi->pdev, hdmi->parser);
+	if (IS_ERR(hdmi->cec)) {
+		rc = PTR_ERR(hdmi->cec);
+		HDMI_ERR("failed to initialize cec, rc = %d\n", rc);
+		hdmi->cec = NULL;
+		goto error_cec;
+	}
 
 	debug_in.panel = hdmi->panel;
 	debug_in.connector = connector;
@@ -564,6 +565,8 @@ error_audio:
 	hdmi_audio_put(hdmi->audio);
 error_debug:
 	hdmi_debug_put(hdmi->debug);
+error_cec:
+	hdmi_cec_put(hdmi->cec);
 error_phy:
 	hdmi_phy_put(hdmi->phy);
 error_edid:
@@ -588,7 +591,7 @@ static void hdmi_display_deinit_sub_modules(struct hdmi_display_private *hdmi)
 	hdmi_debug_put(hdmi->debug);
 	hdmi_phy_put(hdmi->phy);
 	sde_edid_deinit((void **)&hdmi->panel->edid_ctrl);
-	//TODO:hdmi_cec_put(hdmi->cec);
+	hdmi_cec_put(hdmi->cec);
 	hdmi_panel_put(hdmi->panel);
 	hdmi_power_put(hdmi->power);
 	hdmi_ddc_put(hdmi->ddc);
@@ -742,8 +745,8 @@ static void hdmi_display_hotplug_work(struct work_struct *work)
 		}
 		//TODO: default value of hdmi_mode must be set to true
 
-		//cec_notifier_set_phys_addr_from_edid(hdmi->cec->notifier,
-		//		hdmi->edid_ctrl->edid);
+		if (hdmi->cec)
+			hdmi_cec_set_phys_addr_from_edid(hdmi->cec, hdmi->panel->edid_ctrl->edid);
 		//Enable Audio post HPD connect
 		rc = hdmi->audio->on(hdmi->audio);
 		if (rc)
@@ -753,8 +756,10 @@ static void hdmi_display_hotplug_work(struct work_struct *work)
 		hdmi_display_state_remove(HDMI_STATE_DISCONNECTED);
 	} else {
 		sde_free_edid((void **)&hdmi->panel->edid_ctrl);
-		//cec_notifier_set_phys_addr_from_edid(hdmi->cec->notifier,
-		//		NULL);
+
+		if (hdmi->cec)
+			hdmi_cec_invalidate_phys_addr(hdmi->cec);
+
 		//Disable Audio post HPD disconnect
 		rc = hdmi->audio->off(hdmi->audio, 0);
 		if (rc)
@@ -803,7 +808,8 @@ static irqreturn_t hdmi_display_irq(int irq, void *dev_id)
 	hdmi->ddc->isr(hdmi->ddc->i2c);
 
 	/* Process CEC: */
-	//hdmi->cec->isr(hdmi->cec);
+	if (hdmi->cec && hdmi->cec->isr)
+		hdmi->cec->isr(hdmi->cec);
 
 	return IRQ_HANDLED;
 }
