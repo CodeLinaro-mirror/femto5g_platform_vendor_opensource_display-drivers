@@ -902,7 +902,7 @@ static int lt9611uxd_get_mute(struct snd_kcontrol *kcontrol,
 		struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_component *component =
-		snd_soc_kcontrol_component(kcontrol);
+		(struct snd_soc_component *)snd_kcontrol_chip(kcontrol);
 	struct lt9611uxd *priv = snd_soc_component_get_drvdata(component);
 
 	ucontrol->value.integer.value[0] = priv->mute;
@@ -913,7 +913,7 @@ static int lt9611uxd_put_mute(struct snd_kcontrol *kcontrol,
 		struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_component *component =
-		snd_soc_kcontrol_component(kcontrol);
+		(struct snd_soc_component *)snd_kcontrol_chip(kcontrol);
 	struct lt9611uxd *priv = snd_soc_component_get_drvdata(component);
 
 	lt9611uxd_i2c_mute(priv, ucontrol->value.integer.value[0]);
