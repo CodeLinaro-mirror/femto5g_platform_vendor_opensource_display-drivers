@@ -94,11 +94,9 @@ struct dp_debug_client {
 	int (*write_exe_mode)(struct dp_debug_client *client, const char *buf, size_t count);
 	int (*write_hdcp)(struct dp_debug_client *client, const char *buf, size_t count);
 	int (*write_sim)(struct dp_debug_client *client, const char *buf, size_t count);
-	int (*write_attention)(struct dp_debug_client *client, const char *buf, size_t count);
 	int (*write_dump)(struct dp_debug_client *client, const char *buf, size_t count);
 	int (*write_mmrm_clk_cb)(struct dp_debug_client *client, const char *buf, size_t count);
 	int (*write_sim_mode)(struct dp_debug_client *client, bool sim);
-	int (*simulate_attention)(struct dp_debug_client *client, int vdo);
 
 	void (*abort)(struct dp_debug_client *client);
 };

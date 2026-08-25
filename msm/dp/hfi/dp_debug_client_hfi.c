@@ -2280,27 +2280,6 @@ static int dp_debug_client_hfi_write_sim(struct dp_debug_client *client,
 	return count;
 }
 
-/* Trigger a simulated attention event with the given VDO value */
-static int dp_debug_client_hfi_write_attention(struct dp_debug_client *client,
-		const char *buf, size_t count)
-{
-	int vdo = 0;
-
-	if (!client || !buf)
-		return -EINVAL;
-
-	if (kstrtoint(buf, 10, &vdo) != 0)
-		return -EINVAL;
-
-	DP_DEBUG("Attention simulation: vdo=%d\n", vdo);
-
-	/* Call simulate_attention through client like legacy implementation */
-	if (client->simulate_attention)
-		return client->simulate_attention(client, vdo);
-
-	return count;
-}
-
 /* Stub: register dump trigger (rejects qfprom_physical, accepts others) */
 static int dp_debug_client_hfi_write_dump(struct dp_debug_client *client,
 		const char *buf, size_t count)
@@ -2364,32 +2343,6 @@ static int dp_debug_client_hfi_write_sim_mode(struct dp_debug_client *client, bo
 			dp_debug_hfi_get_base_obj_id(priv));
 	if (rc)
 		DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_SIMULATION_CONTROL, rc=%d\n", rc);
-
-	return rc;
-}
-
-/* Send a simulated attention event to DCP via HFI_COMMAND_DEBUG_DP_SET_ATTENTION */
-static int dp_debug_client_hfi_simulate_attention(struct dp_debug_client *client, int vdo)
-{
-	struct dp_debug_client_hfi_priv *priv;
-	struct hfi_client_t *hfi_client;
-	int rc;
-
-	if (!client)
-		return -EINVAL;
-
-	priv = client->priv;
-	hfi_client = dp_debug_hfi_get_client(priv);
-	if (!hfi_client)
-		return -ENODEV;
-
-	rc = dp_debug_hfi_send_cmd(priv, hfi_client,
-			HFI_COMMAND_DEBUG_DP_SET_ATTENTION,
-			HFI_PAYLOAD_TYPE_U32_ARRAY, &vdo, sizeof(vdo),
-			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE,
-			dp_debug_hfi_get_base_obj_id(priv));
-	if (rc)
-		DP_ERR("Failed to send HFI_COMMAND_DEBUG_DP_SET_ATTENTION, rc=%d\n", rc);
 
 	return rc;
 }
@@ -2484,8 +2437,6 @@ int dp_debug_client_hfi_get(struct dp_debug_client *client)
 
 	/* Simulation Functions */
 	client->write_sim = dp_debug_client_hfi_write_sim;
-	client->write_attention = dp_debug_client_hfi_write_attention;
-	client->simulate_attention = dp_debug_client_hfi_simulate_attention;
 
 	client->write_mmrm_clk_cb = NULL;
 	/* Stub - not applicable for HFI */

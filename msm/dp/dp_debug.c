@@ -1278,9 +1278,9 @@ static ssize_t dp_debug_write_attention(struct file *file,
 	if (kstrtoint(buf, 10, &vdo) != 0)
 		goto end;
 
-	/* Call simulate_attention through client */
-	if (priv->client.simulate_attention)
-		priv->client.simulate_attention(&priv->client, vdo);
+	/* Call simulate_attention through client's HPD */
+	if (priv->client.hpd->simulate_attention)
+		priv->client.hpd->simulate_attention(priv->client.hpd, vdo);
 end:
 	return len;
 }
