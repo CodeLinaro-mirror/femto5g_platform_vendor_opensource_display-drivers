@@ -23,6 +23,10 @@
 #define ISL97900_BL_CMD_COUNT    5
 #define ISL97900_BL_CMD_LEN      2
 
+#define ISL97900_CALIB_LED_R	0xFF /* Calibration mask for 10-bit Gain control DAC */
+#define ISL97900_CALIB_LED_G	0xFF
+#define ISL97900_CALIB_LED_B	0xFF
+
 /*
  * JBD4040 luminance control command constants
  * Slave address : 0x58
@@ -392,6 +396,7 @@ static int dsi_panel_i2c_isl97900_update_brightness(struct dsi_panel *panel, u32
 {
 	struct dsi_panel_i2c_config *cfg;
 	struct dsi_panel_i2c_cmd_set *bset;
+	u16 red_lvl, green_lvl, blue_lvl;
 	u32 msb;
 	int rc = 0;
 
@@ -414,16 +419,25 @@ static int dsi_panel_i2c_isl97900_update_brightness(struct dsi_panel *panel, u32
 	if (bl_lvl > ISL97900_MAX_LEVEL)
 		bl_lvl = ISL97900_MAX_LEVEL;
 
+	/* Apply RGB calibration */
+	red_lvl = DIV_ROUND_CLOSEST(ISL97900_CALIB_LED_R * bl_lvl, 1023);
+	green_lvl = DIV_ROUND_CLOSEST(ISL97900_CALIB_LED_G * bl_lvl, 1023);
+	blue_lvl = DIV_ROUND_CLOSEST(ISL97900_CALIB_LED_B * bl_lvl, 1023);
+
 	/* Pack the 2-bit MSB of each channel into the shared MSB register */
-	msb  = ((bl_lvl >> 8) & 0x03) << 6; /* red   [7:6] */
-	msb |= ((bl_lvl >> 8) & 0x03) << 4; /* green [5:4] */
-	msb |= ((bl_lvl >> 8) & 0x03) << 2; /* blue  [3:2] */
+	msb  = ((red_lvl >> 8) & 0x03) << 6;   /* red   [7:6] */
+	msb |= ((green_lvl >> 8) & 0x03) << 4; /* green [5:4] */
+	msb |= ((blue_lvl >> 8) & 0x03) << 2;  /* blue  [3:2] */
 
 	/* Update brightness value bytes in-place (cmd[0] ENABLE_CONTROL is fixed) */
-	bset->cmds[1].data[1] = (u8)(bl_lvl & 0xFF); /* LED_R_LSB */
-	bset->cmds[2].data[1] = (u8)(bl_lvl & 0xFF); /* LED_G_LSB */
-	bset->cmds[3].data[1] = (u8)(bl_lvl & 0xFF); /* LED_B_LSB */
+	bset->cmds[1].data[1] = (u8)(red_lvl & 0xFF); /* LED_R_LSB */
+	bset->cmds[2].data[1] = (u8)(green_lvl & 0xFF); /* LED_G_LSB */
+	bset->cmds[3].data[1] = (u8)(blue_lvl & 0xFF); /* LED_B_LSB */
 	bset->cmds[4].data[1] = (u8)msb;              /* LED_RGB_MSB */
+
+	DSI_DEBUG("bl_lvl 0x%x, r 0x%x, g 0x%x, b 0x%x, msb 0x%x\n",
+		bl_lvl,	bset->cmds[1].data[1], bset->cmds[2].data[1],
+		bset->cmds[3].data[1], bset->cmds[4].data[1]);
 
 	if (cfg->left_adapter) {
 		rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_BRIGHTNESS,
