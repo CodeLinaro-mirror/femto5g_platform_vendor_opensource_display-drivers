@@ -3819,7 +3819,7 @@ static int _sde_vbif_populate_qos_parsing(struct sde_mdss_cfg *sde_cfg,
 		for (j = 0; j < vbif->qos_tbl[i].count; j++) {
 			vbif->qos_tbl[i].priority_lvl[j] =
 				PROP_VALUE_ACCESS(prop_value, prop_index,
-				vbif->qos_tbl[i].npriority_lvl
+				vbif->qos_tbl[i].count
 				* sde_cfg->ddr_list_index + j);
 			SDE_DEBUG("client:%d, prop:%d, lvl[%d]=%u\n", i, prop_index, j,
 					vbif->qos_tbl[i].priority_lvl[j]);
