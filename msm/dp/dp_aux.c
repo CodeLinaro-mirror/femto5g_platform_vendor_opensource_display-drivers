@@ -817,8 +817,19 @@ static int dp_aux_configure_fsa_switch(struct dp_aux *dp_aux,
 
 	rc = fsa4480_switch_event(aux->aux_switch_node, event);
 
-	if (rc)
+	/*
+	 * FSA4480 may be disabled in DT (status = "disabled").
+	 * Ignore the error and let DP proceed without FSA4480 switch,
+	 * similar to configurations where FSA4480 switch is not
+	 * required for DP proceed.
+	 */
+	if (rc == -EINVAL || rc == -ENODEV || rc == -EPROBE_DEFER) {
+		DP_AUX_WARN(dp_aux, "fsa4480 unavailable (%d), continuing without aux switch\n",
+				rc);
+		rc = 0;
+	} else if (rc) {
 		DP_AUX_ERR(dp_aux, "failed to configure fsa4480 i2c device (%d)\n", rc);
+	}
 end:
 	return rc;
 }
