@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -140,6 +140,7 @@ int dp_display_get_info(void *dp_display, struct dp_display_info *dp_info);
 int edp_display_get_num_of_displays(struct drm_device *dev);
 int dp_display_cont_splash_config(void *display);
 int dp_display_cont_splash_res_disable(void *display);
+int dp_display_splash_res_cleanup(struct dp_display *dp_display);
 #else
 static inline int dp_display_get_num_of_displays(void)
 {
@@ -175,6 +176,10 @@ static inline int dp_display_cont_splash_config(void *dp_display)
 	return 0;
 }
 static inline int dp_display_cont_splash_res_disable(void *dp_display)
+{
+	return 0;
+}
+static inline int dp_display_splash_res_cleanup(struct dp_display *dp_display)
 {
 	return 0;
 }
