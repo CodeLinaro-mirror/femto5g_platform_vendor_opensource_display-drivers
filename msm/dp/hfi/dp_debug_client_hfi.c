@@ -2085,18 +2085,6 @@ static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 		DP_DEBUG("Set soft_unplug=true for con_id=%d\n", con_id);
 	}
 
-	/*
-	 * HFI is configured (other streams still active, or disconnecting):
-	 * update the per-stream connected flag and fire a hotplug event so
-	 * the DRM core re-queries the connector via dp_mgr_hfi_hpd_detect().
-	 */
-	if (mgr_priv && stream_id < mgr_priv->max_streams && hfi) {
-		hfi->connected = (status == connector_status_connected);
-		DP_DEBUG("Set hfi[%u]->connected = %d for con_id=%d\n", stream_id, hfi->connected,
-				con_id);
-	} else {
-		DP_WARN("Could not update hfi[%u]->connected (mgr_priv=%p)\n", stream_id, mgr_priv);
-	}
 
 	/* Hotplug uevent is already fired by when HLOS receives EDID info event */
 	rc = 0;
