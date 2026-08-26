@@ -1578,4 +1578,12 @@ void sde_crtc_cp_unmap_ltm_buffers(struct sde_crtc *sde_crtc, int num);
 void sde_crtc_cp_unmap_rgb_hist_buffers(struct sde_crtc *sde_crtc);
 
 
+/**
+ * sde_crtc_register_power_event_cb - register or deregister the display
+ *	power event callback for all encoders attached to a CRTC.
+ * @crtc:   pointer to drm_crtc
+ * @enable: true to register, false to deregister
+ */
+void sde_crtc_register_power_event_cb(struct drm_crtc *crtc, bool enable);
+
 #endif /* _SDE_CRTC_H_ */

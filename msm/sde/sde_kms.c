@@ -1143,7 +1143,7 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 	struct drm_crtc *crtc;
 	struct sde_connector *c_conn;
 	struct sde_encoder_virt *sde_enc;
-	int i, old_mode, new_mode, old_fps, new_fps;
+	int i, old_mode, new_mode, old_fps, new_fps, old_lp_mode, new_lp_mode;
 	enum panel_event_notifier_tag panel_type;
 
 	for_each_old_connector_in_state(old_state, connector,
@@ -1155,6 +1155,8 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 
 		new_fps = drm_mode_vrefresh(&crtc->state->mode);
 		new_mode = _sde_kms_get_blank(crtc->state, connector->state);
+		new_lp_mode = sde_connector_get_property(connector->state,
+								CONNECTOR_PROP_LP);
 
 		if (old_conn_state->crtc) {
 #if (KERNEL_VERSION(6, 19, 0) <= LINUX_VERSION_CODE)
@@ -1168,14 +1170,17 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 			old_fps = drm_mode_vrefresh(&old_crtc_state->mode);
 			old_mode = _sde_kms_get_blank(old_crtc_state,
 							old_conn_state);
+			old_lp_mode = sde_connector_get_property(old_conn_state,
+								CONNECTOR_PROP_LP);
 		} else {
 			old_fps = 0;
 			old_mode = DRM_PANEL_EVENT_BLANK;
 		}
 
-		if ((old_mode != new_mode) || (old_fps != new_fps)) {
+		if ((old_mode != new_mode) || (old_fps != new_fps)
+				|| (old_lp_mode != new_lp_mode)) {
 			c_conn = to_sde_connector(connector);
-			SDE_EVT32(old_mode, new_mode, old_fps, new_fps,
+			SDE_EVT32(old_mode, new_mode, old_fps, new_fps, old_lp_mode, new_lp_mode,
 				c_conn->panel, crtc->state->active,
 				old_conn_state->crtc);
 			pr_debug("change detected for connector:%s (power mode %d->%d, fps %d->%d)\n",
@@ -5549,6 +5554,7 @@ int sde_kms_suspend_helper(struct sde_kms *sde_kms)
 	struct drm_encoder *enc;
 	struct drm_connector_list_iter conn_iter;
 	struct drm_atomic_state *state = NULL;
+	struct sde_encoder_virt *sde_enc;
 	int ret = 0, num_crtcs = 0;
 
 	if (!sde_kms || !sde_kms->dev)
@@ -5581,6 +5587,11 @@ int sde_kms_suspend_helper(struct sde_kms *sde_kms)
 			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_CASE1, SDE_EVTLOG_FUNC_EXIT);
 			return -EINVAL;
 		}
+	}
+	drm_for_each_encoder(enc, ddev) {
+		sde_enc = to_sde_encoder_virt(enc);
+		if (sde_enc->crtc)
+			sde_crtc_register_power_event_cb(sde_enc->crtc, false);
 	}
 
 	/* acquire modeset lock(s) */
@@ -5743,6 +5754,7 @@ static int sde_kms_freeze_helper(struct sde_kms *sde_kms)
 	struct drm_encoder *enc;
 	struct drm_connector_list_iter conn_iter;
 	struct drm_atomic_state *state = NULL;
+	struct sde_encoder_virt *sde_enc;
 	int ret = 0, num_crtcs = 0;
 
 	if (!sde_kms || !sde_kms->dev)
@@ -5773,6 +5785,11 @@ static int sde_kms_freeze_helper(struct sde_kms *sde_kms)
 		}
 	}
 
+	drm_for_each_encoder(enc, ddev) {
+		sde_enc = to_sde_encoder_virt(enc);
+		if (sde_enc->crtc)
+			sde_crtc_register_power_event_cb(sde_enc->crtc, false);
+	}
 	/* acquire modeset lock(s) */
 	drm_modeset_acquire_init(&ctx, 0);
 
@@ -6068,6 +6085,7 @@ int sde_kms_resume_helper(struct sde_kms *sde_kms)
 	struct sde_crtc *sde_crtc;
 	struct drm_modeset_acquire_ctx ctx;
 	int ret, i;
+	struct sde_encoder_virt *sde_enc;
 
 	if (!sde_kms || !sde_kms->dev)
 		return -EINVAL;
@@ -6127,6 +6145,12 @@ retry:
 
 		drm_atomic_state_put(sde_kms->suspend_state);
 		sde_kms->suspend_state = NULL;
+
+		drm_for_each_encoder(enc, ddev) {
+			sde_enc = to_sde_encoder_virt(enc);
+			if (sde_enc->crtc)
+				sde_crtc_register_power_event_cb(sde_enc->crtc, true);
+		}
 	}
 
 end:
