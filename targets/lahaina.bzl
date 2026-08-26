@@ -25,7 +25,7 @@ def define_lahaina():
             "CONFIG_DRM_MSM_REGISTER_LOGGING",
             "CONFIG_QCOM_MDSS_PLL",
             #"CONFIG_DRM_SDE_VM",
-            #"CONFIG_HDCP_QSEECOM",
+            "CONFIG_HDCP_QSEECOM",
             #"CONFIG_QCOM_WCD939X_I2C",
             "CONFIG_THERMAL_OF",
 	    "CONFIG_MSM_MMRM",
