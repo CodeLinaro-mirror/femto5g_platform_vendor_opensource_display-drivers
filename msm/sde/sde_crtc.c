@@ -8588,6 +8588,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		{MSM_DISP_LSR_MODE_DISABLED, "lsr_mode_disabled"},
 		{MSM_DISP_LSR_MODE_ENABLED, "lsr_mode_enabled"},
 	};
+	static const struct drm_prop_enum_list e_gmu_reproj_mode[] = {
+		{MSM_DISP_GMU_REPROJ_MODE_DISABLED, "gmu_reproj_mode_disabled"},
+		{MSM_DISP_GMU_REPROJ_MODE_ENABLED, "gmu_reproj_mode_enabled"},
+	};
 
 	SDE_DEBUG("\n");
 
@@ -8667,6 +8671,13 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			"lsr_mode", 0, 0, e_lsr_mode, ARRAY_SIZE(e_lsr_mode),
 			MSM_DISP_LSR_MODE_DISABLED, CRTC_PROP_LSR_MODE);
 	}
+
+	if (test_bit(SDE_FEATURE_GMU_REPROJ, catalog->features))
+		msm_property_install_enum(&sde_crtc->property_info,
+			"gmu_reproj_mode", 0, 0, e_gmu_reproj_mode,
+			ARRAY_SIZE(e_gmu_reproj_mode),
+			MSM_DISP_GMU_REPROJ_MODE_DISABLED,
+			CRTC_PROP_GMU_REPROJ_MODE);
 
 	if (test_bit(SDE_SYS_CACHE_DISP, catalog->sde_sys_cache_type_map) ||
 			test_bit(SDE_FEATURE_LSR, catalog->features))
