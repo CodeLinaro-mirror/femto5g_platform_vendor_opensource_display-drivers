@@ -76,6 +76,7 @@ struct dp_panel_private {
 	struct dp_parser *parser;
 	struct dp_catalog_panel *catalog;
 	struct dp_panel *base;
+	struct platform_device *panel_pdev;
 	bool panel_on;
 	bool vsc_supported;
 	bool vscext_supported;
@@ -3310,9 +3311,20 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 		if (!of_node) {
 			DP_ERR("phandle for default panel not found\n");
 		} else {
-			drm_panel_init(&dp_panel->drm_panel, in->dev, NULL,
-					DRM_MODE_CONNECTOR_eDP);
-			drm_panel_add(&dp_panel->drm_panel);
+			struct platform_device *panel_pdev =
+					of_platform_device_create(of_node, NULL, in->dev);
+
+			if (!panel_pdev) {
+				DP_ERR("failed to create panel device for of_node %pOF\n", of_node);
+			} else {
+				drm_panel_init(&dp_panel->drm_panel, &panel_pdev->dev, NULL,
+						DRM_MODE_CONNECTOR_eDP);
+				drm_panel_add(&dp_panel->drm_panel);
+				panel->panel_pdev = panel_pdev;
+				DP_INFO("drm_panel registered for %s\n",
+						dev_name(&panel_pdev->dev));
+			}
+
 			of_node_put(of_node);
 		}
 	}
@@ -3338,15 +3350,24 @@ void dp_panel_put(struct dp_panel *dp_panel)
 
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
 
+	sde_conn = to_sde_connector(dp_panel->connector);
+
+	if (sde_conn) {
+		sde_conn->drv_panel = NULL;
+		if (sde_conn->panel == &dp_panel->drm_panel)
+			sde_conn->panel = NULL;
+	}
+
 	dp_panel_edid_deregister(panel);
 	if (dp_panel->drm_panel.dev) {
 		drm_panel_remove(&dp_panel->drm_panel);
 		dp_panel->drm_panel.dev = NULL;
 	}
-	sde_conn = to_sde_connector(dp_panel->connector);
 
-	if (sde_conn)
-		sde_conn->drv_panel = NULL;
+	if (panel->panel_pdev) {
+		of_platform_device_destroy(&panel->panel_pdev->dev, NULL);
+		panel->panel_pdev = NULL;
+	}
 
 	devm_kfree(panel->dev, panel);
 }
