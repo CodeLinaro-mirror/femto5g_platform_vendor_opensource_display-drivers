@@ -67,6 +67,7 @@ struct dp_hpd_cb {
  * @orientation: plug orientation configuration, USBPD type only.
  * @hpd_high: Hot Plug Detect signal is high.
  * @hpd_irq: Change in the status since last message
+ * @psm_enabled: source-initiated power management (D3 suspend) intent
  * @alt_mode_cfg_done: bool to specify alt mode status
  * @multi_func: multi-function preferred, USBPD type only
  * @peer_usb_com: downstream supports usb data communication
@@ -86,6 +87,7 @@ struct dp_hpd {
 	u32 orientation;
 	bool hpd_high;
 	bool hpd_irq;
+	bool psm_enabled;
 	bool alt_mode_cfg_done;
 	bool multi_func;
 	bool peer_usb_comm;

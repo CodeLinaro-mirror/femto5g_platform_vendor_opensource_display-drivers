@@ -272,6 +272,10 @@ static int dp_altmode_simulate_attention(struct dp_hpd *dp_hpd, int vdo)
 
 	status = &altmode->dp_altmode;
 
+	/*
+	 * BIT(1) = source-initiated power management (D3 suspend).
+	 */
+	status->base.psm_enabled = (vdo & BIT(1)) ? true : false;
 	status->base.hpd_high  = (vdo & BIT(7)) ? true : false;
 	status->base.hpd_irq   = (vdo & BIT(8)) ? true : false;
 

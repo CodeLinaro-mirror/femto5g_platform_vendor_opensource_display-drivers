@@ -1279,8 +1279,12 @@ static ssize_t dp_debug_write_attention(struct file *file,
 		goto end;
 
 	/* Call simulate_attention through client's HPD */
-	if (priv->client.hpd->simulate_attention)
+	mutex_lock(&priv->lock);
+	if (priv->client.hpd && priv->client.hpd->simulate_attention)
 		priv->client.hpd->simulate_attention(priv->client.hpd, vdo);
+	else
+		DP_ERR("attention: no hpd->simulate_attention\n");
+	mutex_unlock(&priv->lock);
 end:
 	return len;
 }

@@ -856,7 +856,11 @@ static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 	config->port_index = hfi_priv->hpd->port_id;
 	config->pin_config = hfi_priv->hpd->pin_config;
 	config->hpd_state = hfi_priv->hpd->hpd_high;
-	config->hpd_irq = hfi_priv->hpd->hpd_irq;
+
+	/*
+	 * hpd_irq: bit0(0x1) = IRQ_HPD. psm_enabled: bit1(0x2) = PSM intent.
+	 */
+	config->hpd_irq = hfi_priv->hpd->hpd_irq | (hfi_priv->hpd->psm_enabled ? BIT(1) : 0);
 	config->port_index = hfi_priv->hpd->port_id;
 	config->pin_config = hfi_priv->hpd->pin_config;
 	if (hfi_priv->debug->force_multi_func) {
@@ -866,9 +870,9 @@ static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 			config->pin_config = DPAM_HPD_F;
 	}
 
-	DP_DEBUG("orientation=%u, port=%u, pin=%u, hpd=%u, irq=%u\n",
+	DP_DEBUG("orientation=%u, port=%u, pin=%u, hpd=%u, irq=%u psm=%u\n",
 		config->orientation, config->port_index, config->pin_config,
-		config->hpd_state, config->hpd_irq);
+		config->hpd_state, config->hpd_irq, hfi_priv->hpd->psm_enabled);
 }
 
 static int _aux_switch_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
@@ -2786,6 +2790,13 @@ static int dp_mgr_hfi_post_init(struct dp_client *client)
 		DP_DEBUG("Registered HDCP min_enc_level callback\n");
 	}
 
+	/*
+	 * Without this, priv->client.hpd is NULL in the
+	 * HFI path and dp_debug_write_attention() would dereference NULL.
+	 */
+	if (hfi_priv->debug)
+		hfi_priv->debug->hpd = hfi_priv->hpd;
+
 	return 0;
 
 clear_aux_switch:
@@ -3380,6 +3391,8 @@ static void dp_mgr_hfi_unbind(struct device *dev, struct device *master,
 
 	/* Clean up HPD and HFI resources */
 	if (hfi_priv->hpd) {
+		if (hfi_priv->debug && hfi_priv->debug->hpd == hfi_priv->hpd)
+			hfi_priv->debug->hpd = NULL;
 		dp_hpd_put(hfi_priv->hpd);
 		hfi_priv->hpd = NULL;
 	}
