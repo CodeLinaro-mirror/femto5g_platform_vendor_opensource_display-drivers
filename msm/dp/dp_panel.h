@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -93,6 +93,8 @@ struct dp_panel_in {
 	struct drm_connector *connector;
 	struct dp_panel *base_panel;
 	struct dp_parser *parser;
+	bool is_edp;
+	bool panel_notifier_support;
 };
 
 struct dp_dsc_caps {
@@ -114,6 +116,7 @@ struct dp_panel {
 	u8 fec_dpcd;
 	u8 fec_sts_dpcd[DP_RECEIVER_FEC_STATUS_SIZE + 1];
 
+	struct drm_panel drm_panel;
 	struct drm_dp_link link_info;
 	struct sde_edid_ctrl *edid_ctrl;
 	struct dp_panel_info pinfo;
