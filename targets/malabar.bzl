@@ -22,9 +22,11 @@ def define_malabar():
                      "CONFIG_QCOM_MDSS_PLL",
                      "CONFIG_THERMAL_OF",
                      "CONFIG_MSM_SDE_ROTATOR",
+                    "CONFIG_DRM_SDE_VM",
                      "CONFIG_SYNC_FILE",
                      "CONFIG_MSM_SDE_ROTATOR_EVTLOG_DEBUG",
                      "CONFIG_DEBUG_FS",
                      "CONFIG_SMMU_PROXY",
+                     "CONFIG_QCOM_SPEC_SYNC",
                 ],
         )

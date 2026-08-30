@@ -6623,6 +6623,7 @@ static void _sde_get_hw_caps_for_malabar(struct sde_mdss_cfg *sde_cfg, uint32_t 
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
 	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
+	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 }
 
 

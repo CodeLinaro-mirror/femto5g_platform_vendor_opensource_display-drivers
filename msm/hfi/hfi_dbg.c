@@ -256,7 +256,7 @@ static void hfi_dbg_add_va_region(void)
 			hfi_dbg->buff_map.dbg_bus_addr.local_addr);
 }
 #else
-void hfi_dbg_add_va_region(void)
+static void hfi_dbg_add_va_region(void)
 {
 
 }
@@ -511,6 +511,11 @@ void hfi_dbg_destroy(void)
 		return;
 	}
 	pdev = to_platform_device(dev);
+
+	if (!pdev) {
+		SDE_ERROR("Invalid platform device\n");
+		return;
+	}
 	ddev = platform_get_drvdata(pdev);
 
 	if (!ddev || !ddev->dev_private) {

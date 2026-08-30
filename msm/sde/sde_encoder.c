@@ -1407,6 +1407,12 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 			return ret;
 		}
 
+		/* Skip RM allocation for Primary during CWB usecase */
+		if (!crtc_state->mode_changed && !crtc_state->active_changed &&
+			crtc_state->connectors_changed && (conn_state->crtc ==
+			conn_state->connector->state->crtc))
+			goto skip_reserve;
+
 		/* Reserve dynamic resources, indicating atomic_check phase */
 		ret = sde_rm_reserve(&sde_kms->rm, drm_enc, crtc_state,
 			conn_state, true);
@@ -1417,6 +1423,7 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 			return ret;
 		}
 
+skip_reserve:
 		/**
 		 * Update connector state with the topology selected for the
 		 * resource set validated. Reset the topology if we are
@@ -3386,7 +3393,7 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 		SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state, SDE_EVTLOG_ERROR);
 		goto end;
 	} else if (sde_crtc_frame_pending(sde_enc->crtc) ||
-			sde_crtc->kickoff_in_progress) {
+			atomic_read(&sde_crtc->kickoff_in_progress)) {
 		SDE_DEBUG_ENC(sde_enc, "skip idle entry");
 		SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state,
 			sde_crtc_frame_pending(sde_enc->crtc), SDE_EVTLOG_ERROR);
@@ -6318,9 +6325,9 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 		sr_timer_expires = hrtimer_get_expires(&phys_enc->sde_vrr_cfg.self_refresh_timer);
 
 		if (sde_crtc && (sde_crtc_frame_pending(sde_enc->crtc) ||
-				sde_crtc->kickoff_in_progress ||
+				atomic_read(&sde_crtc->kickoff_in_progress) ||
 				atomic_read(&phys_enc->pending_kickoff_cnt))) {
-			SDE_EVT32(sde_crtc->kickoff_in_progress,
+			SDE_EVT32(atomic_read(&sde_crtc->kickoff_in_progress),
 				atomic_read(&phys_enc->pending_kickoff_cnt), SDE_EVTLOG_FUNC_CASE3);
 			return;
 		} else if (ktime_compare(sr_timer_expires, current_time) > 0) {
@@ -6823,7 +6830,7 @@ void sde_encoder_early_ept_hint(struct drm_encoder *drm_enc, u64 frame_interval,
 
 		sde_crtc = to_sde_crtc(sde_enc->crtc);
 		if (curr_time - vrr_cfg->last_commit_ept_in_ns < EPT_TIMEOUT_NS ||
-				sde_crtc->kickoff_in_progress) {
+				atomic_read(&sde_crtc->kickoff_in_progress)) {
 			SDE_ERROR("Invalid last_commit_ept_in_ns %llu ,EPt %llu, curr_time %llu\n",
 				vrr_cfg->last_commit_ept_in_ns, ept_ns, curr_time);
 			program_timer = false;
@@ -7119,6 +7126,33 @@ void sde_encoder_early_wakeup(struct drm_encoder *drm_enc)
 	kthread_queue_work(&disp_thread->worker,
 				&sde_enc->early_wakeup_work);
 	SDE_ATRACE_END("queue_early_wakeup_work");
+}
+
+int sde_encoder_idle_timer_immediate_expiry(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = NULL;
+	enum msm_disp_op disp_op;
+	int rc = 0;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	SDE_EVT32(DRMID(drm_enc), disp_op, SDE_EVTLOG_FUNC_ENTRY);
+
+	if (sde_enc->hal_ops.idle_timer_immediate_expiry[disp_op]) {
+		rc = sde_enc->hal_ops.idle_timer_immediate_expiry[disp_op](sde_enc);
+		if (rc)
+			SDE_ERROR_ENC(sde_enc, "failed to send idle timer immediate expiry hint\n");
+	}
+
+	SDE_EVT32(DRMID(drm_enc), disp_op, rc, SDE_EVTLOG_FUNC_EXIT);
+
+	return rc;
 }
 
 void sde_encoder_handle_hw_fence_error(int ctl_idx, struct sde_kms *sde_kms, u32 handle, int error)

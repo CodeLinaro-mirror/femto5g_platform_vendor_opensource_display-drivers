@@ -150,6 +150,15 @@ struct dp_mgr_hfi_priv {
 	bool configured;
 	bool soft_unplug;
 
+	/*
+	 * Tracks the last programmed aux switch state so _aux_switch_enable()
+	 * can no-op a redundant call instead of re-running init()/configure()
+	 * (an I2C mux reprogram) against an already-configured, possibly
+	 * already-trained link. See _aux_switch_enable() in dp_mgr_hfi.c.
+	 */
+	bool aux_switch_ready;
+	u32 aux_switch_orientation;
+
 	struct dp_audio *audio;
 	bool audio_supported;
 	u8 min_enc_level;

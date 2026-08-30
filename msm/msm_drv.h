@@ -233,6 +233,7 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_FLUSH_SYNC_EN,
 	CRTC_PROP_DISPLAY_OP,
 	CRTC_PROP_LSR_MODE,
+	CRTC_PROP_GMU_REPROJ_MODE,
 	CRTC_PROP_BATCH_SIZE,
 	CRTC_PROP_BATCH_INDEX,
 	CRTC_PROP_BATCH_TYPE,
@@ -289,6 +290,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_PRIVACY_LAYER_V2,
 	CONNECTOR_PROP_VSYNC_OFFSET,
 	CONN_PROP_GMU_DCP_INTF_MEM,
+	CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES,
 
 	/* enum/bitmask properties */
 	CONNECTOR_PROP_TOPOLOGY_NAME,
@@ -1340,6 +1342,16 @@ enum msm_disp_op {
 enum lsr_mode {
 	MSM_DISP_LSR_MODE_DISABLED,
 	MSM_DISP_LSR_MODE_ENABLED,
+};
+
+/**
+ * enum gmu_reproj_mode: GMU reprojection mode status on primary display
+ * @MSM_DISP_GMU_REPROJ_MODE_DISABLED: GMU reprojection is disabled.
+ * @MSM_DISP_GMU_REPROJ_MODE_ENABLED: GMU reprojection is enabled.
+ */
+enum gmu_reproj_mode {
+	MSM_DISP_GMU_REPROJ_MODE_DISABLED,
+	MSM_DISP_GMU_REPROJ_MODE_ENABLED,
 };
 
 /**

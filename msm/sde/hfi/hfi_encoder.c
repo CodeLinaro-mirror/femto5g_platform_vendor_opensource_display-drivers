@@ -105,7 +105,7 @@ static ktime_t hfi_enc_unpack_vsync_event(void *payload, u32 *idx, struct sde_en
 	return ts;
 }
 
-static bool _hfi_encoder_check_frame_event_trigger(struct sde_encoder_virt *sde_enc)
+static bool _hfi_encoder_check_frame_event_trigger(struct sde_encoder_virt *sde_enc, u32 event)
 {
 	struct sde_kms *sde_kms = sde_encoder_get_kms(&sde_enc->base);
 	struct hfi_encoder *hfi_enc = to_hfi_encoder(sde_enc);
@@ -124,13 +124,23 @@ static bool _hfi_encoder_check_frame_event_trigger(struct sde_encoder_virt *sde_
 			!sde_encoder_is_wb_display(&sde_enc->base)) {
 		int cnt = atomic_read(&hfi_enc->hfi_frame_done_cnt);
 		int seqno = atomic_read(&hfi_enc->hfi_frame_done_seqno);
+		bool release_fence_signal;
 
-		if ((cnt > seqno) || (atomic_read(&sde_enc->pending_commit_cnt) > 0)) {
-			atomic_set(&hfi_enc->hfi_frame_done_seqno, cnt);
-			SDE_EVT32(cnt, seqno, atomic_read(&sde_enc->pending_commit_cnt));
-		} else {
+		release_fence_signal = sde_enc->cur_master &&
+			sde_encoder_check_curr_mode(&sde_enc->base,
+			MSM_DISPLAY_CMD_MODE) &&
+			(event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE) &&
+			!(event & SDE_ENCODER_FRAME_EVENT_ERROR) &&
+			atomic_read(&sde_enc->cur_master->pending_release_fence_cnt);
+
+		if ((cnt <= seqno) &&
+				(atomic_read(&sde_enc->pending_commit_cnt) <= 0) &&
+				!release_fence_signal) {
 			return false; /* true duplicate, suppress */
 		}
+
+		atomic_set(&hfi_enc->hfi_frame_done_seqno, cnt);
+		SDE_EVT32(cnt, seqno, atomic_read(&sde_enc->pending_commit_cnt));
 	}
 
 	return true;
@@ -174,7 +184,7 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 	ts = hfi_enc_unpack_frame_event(payload, NULL, sde_enc);
 
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
-	frame_event_trigger = _hfi_encoder_check_frame_event_trigger(sde_enc);
+	frame_event_trigger = _hfi_encoder_check_frame_event_trigger(sde_enc, event);
 	if (frame_event_trigger) {
 		if (event & SDE_ENCODER_FRAME_EVENT_DONE ||
 					sde_encoder_in_clone_mode(&sde_enc->base))
@@ -1814,6 +1824,67 @@ static int hfi_enc_early_wakeup_call(struct sde_encoder_virt *enc)
 	return ret;
 }
 
+static int hfi_enc_idle_timer_immediate_expiry(struct sde_encoder_virt *enc)
+{
+	struct drm_connector *conn;
+	struct hfi_encoder *hfi_enc;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_cmdbuf_t *cmd_buf;
+	u32 disp_id, payload = 0;
+	int ret = 0;
+
+	if (!enc) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+
+	hfi_enc = to_hfi_encoder(enc);
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi_kms\n");
+		return -EINVAL;
+	}
+
+	conn = sde_encoder_get_connector(enc->base.dev, &enc->base);
+	if (!conn) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	disp_id = sde_conn_get_display_obj_id(conn);
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client, MSM_DRV_HFI_ID,
+			HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get a valid command buffer\n");
+		return -EINVAL;
+	}
+
+	payload = HFI_IMMEDIATE;
+
+	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, disp_id, HFI_PAYLOAD_TYPE_U32,
+			&payload, sizeof(payload), HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (ret) {
+		SDE_ERROR("failed to add idle timer immediate expiry hint\n");
+		return ret;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+	SDE_EVT32(enc->base.base.id, disp_id, HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL,
+			HFI_IMMEDIATE, ret);
+
+	if (ret)
+		SDE_ERROR("failed to send idle timer immediate expiry command\n");
+
+	return ret;
+}
+
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct seq_file *s)
 {
@@ -2566,6 +2637,8 @@ static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 	sde_enc->hal_ops.get_vblank_timestamp[MSM_DISP_OP_HFI] = hfi_enc_get_vblank_timestamp;
 	sde_enc->hal_ops.register_power_event_notify[MSM_DISP_OP_HFI] = hfi_enc_register_pwr_event;
 	sde_enc->hal_ops.early_wakeup_call[MSM_DISP_OP_HFI] = hfi_enc_early_wakeup_call;
+	sde_enc->hal_ops.idle_timer_immediate_expiry[MSM_DISP_OP_HFI] =
+							hfi_enc_idle_timer_immediate_expiry;
 	sde_enc->hal_ops.register_panel_dead_event_notify[MSM_DISP_OP_HFI] =
 								hfi_enc_register_panel_dead_event;
 	sde_enc->hal_ops.register_dcs_cmd_error_event_notify[MSM_DISP_OP_HFI] =
