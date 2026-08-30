@@ -33,6 +33,8 @@
 #define ALTMODE_CONFIGURE_MASK (0x3f)
 #define ALTMODE_HPD_STATE_MASK (0x40)
 #define ALTMODE_HPD_IRQ_MASK (0x80)
+/* Byte index of the DP Status VDO within the altmode payload (USB-PD altmode spec) */
+#define ALTMODE_VDO_HPD_BYTE 8
 #define NB7_TYPEC_GET_RETRIES 50
 #define NB7_TYPEC_GET_DELAY_MS 20
 
@@ -43,6 +45,8 @@ struct dp_altmode_private {
 	struct dp_altmode dp_altmode;
 	struct altmode_client *amclient;
 	bool connected;
+	bool custom_payload_enable;
+	bool needs_custom_payload_change;
 	u32 lanes;
 	int orientation;
 	u16 svid;
@@ -375,10 +379,30 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 	u8 pin, hpd_state, hpd_irq;
 	bool force_multi_func = altmode->dp_altmode.base.force_multi_func;
 
+	/*
+	 * Due to hardware design reasons, in USB peripheral mode, the communication
+	 * between PD chip with always on power supply and PMIC CC is abnormal,
+	 * causing the HPD bit in the altmode VDO to be incorrectly reported as 0.
+	 * Work around this with a two-notification toggle: on the first notification
+	 * with HPD=0 the flag is armed; on the second such notification the HPD bit
+	 * is forcibly set to 1 so the display stack sees a valid HPD assertion.
+	 */
+	if (altmode->custom_payload_enable &&
+		!(payload[ALTMODE_VDO_HPD_BYTE] & ALTMODE_HPD_STATE_MASK)) {
+		if (altmode->needs_custom_payload_change) {
+			payload[ALTMODE_VDO_HPD_BYTE] |= ALTMODE_HPD_STATE_MASK;
+			altmode->needs_custom_payload_change = false;
+			DP_DEBUG("altmode payload modified\n");
+		} else {
+			altmode->needs_custom_payload_change = true;
+		}
+	} else {
+		altmode->needs_custom_payload_change = false;
+	}
 	port_index = payload[0];
 	orientation = payload[1];
 	raw_orientation = orientation;
-	dp_data = payload[8];
+	dp_data = payload[ALTMODE_VDO_HPD_BYTE];
 
 	pin = dp_data & ALTMODE_CONFIGURE_MASK;
 	hpd_state = (dp_data & ALTMODE_HPD_STATE_MASK) >> 6;
@@ -414,6 +438,7 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 			altmode->dp_altmode.base.alt_mode_cfg_done = false;
 			altmode->dp_altmode.base.orientation = ORIENTATION_NONE;
 			altmode->orientation = ORIENTATION_NONE;
+			altmode->needs_custom_payload_change = false;
 			rc = dp_altmode_configure_nb7_retimer(altmode, false,
 				raw_orientation, pin, hpd_state, hpd_irq);
 			if (rc)
@@ -579,6 +604,10 @@ static void dp_altmode_register(void *priv)
 	struct altmode_client_data cd = {
 		.callback	= &dp_altmode_notify,
 	};
+
+	/* Enable workaround payload override if the DT property is present. */
+	altmode->custom_payload_enable = of_property_read_bool(altmode->dev->of_node,
+							"qcom,custom-altmode-payload");
 
 	cd.name = "displayport";
 	cd.svid = USB_SID_DISPLAYPORT;
