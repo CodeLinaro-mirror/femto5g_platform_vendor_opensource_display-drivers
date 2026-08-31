@@ -196,6 +196,9 @@ static int dp_parser_misc(struct dp_parser *parser)
 	parser->max_fps_mode_en = of_property_read_bool(of_node,
 			"qcom,dp-max-fps-mode-en");
 
+	parser->dp_cec_feature = of_property_read_bool(of_node,
+			"qcom,dp-cec-feature");
+
 	return 0;
 }
 
