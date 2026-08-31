@@ -2673,7 +2673,7 @@ static void adjust_timing_by_ctrl_count(const struct dsi_display *display,
 		mode->timing.h_skew /= sublinks_count;
 		mode->pixel_clk_khz /= sublinks_count;
 	} else {
-		if (mode->priv_info->dsc_enabled && mode_set)
+		if (mode->priv_info && mode->priv_info->dsc_enabled && mode_set)
 			mode->priv_info->dsc.config.pic_width =
 				mode->timing.h_active;
 		mode->timing.h_active /= display->ctrl_count;
@@ -7313,12 +7313,16 @@ static int dsi_display_drm_ext_get_modes(
 		const struct msm_resource_caps_info *avail_res)
 {
 	struct dsi_display *display = disp;
+	struct drm_property_blob *edid_blob;
 	struct drm_display_mode *pmode, *pt;
 	int count;
 
 	/* if there are modes defined in panel, ignore external modes */
 	if (display->panel->num_timing_nodes)
 		return dsi_connector_get_modes(connector, disp, avail_res);
+
+	if (!display->ext_conn || !display->ext_conn->helper_private)
+		return 0;
 
 	count = display->ext_conn->helper_private->get_modes(
 			display->ext_conn);
@@ -7328,7 +7332,23 @@ static int dsi_display_drm_ext_get_modes(
 		list_move_tail(&pmode->head, &connector->probed_modes);
 	}
 
-	connector->display_info = display->ext_conn->display_info;
+	/*
+	 * Do not shallow-copy display_info from ext_conn. A struct copy
+	 * aliases the info->vics pointer between two connectors: when the
+	 * framework calls drm_connector_update_edid_property(sde_conn, NULL)
+	 * on disconnect it frees sde_conn->display_info.vics, but
+	 * ext_conn->display_info.vics still holds the same address. On the
+	 * next connect drm_add_edid_modes() calls drm_reset_display_info()
+	 * on ext_conn and tries to kfree that already-freed pointer, causing
+	 * a double-free kernel panic.
+	 *
+	 * Instead, use drm_connector_update_edid_property() so the DRM core
+	 * initialises the sde_connector's display_info independently from its
+	 * own EDID blob, giving each connector its own vics allocation.
+	 */
+	edid_blob = display->ext_conn->edid_blob_ptr;
+	drm_connector_update_edid_property(connector,
+		edid_blob ? (const struct edid *)edid_blob->data : NULL);
 
 	return count;
 }
@@ -7341,10 +7361,17 @@ static enum drm_mode_status dsi_display_drm_ext_mode_valid(
 	struct dsi_display *display = disp;
 	enum drm_mode_status status;
 
-	/* always do internal mode_valid check */
-	status = dsi_conn_mode_valid(connector, mode, disp, avail_res);
-	if (status != MODE_OK)
-		return status;
+	/*
+	 * Skip the internal mode_valid check for ext-bridge displays without
+	 * DT timing nodes — they have no panel modes to match against, so
+	 * dsi_display_find_mode() will always fail and return MODE_ERROR,
+	 * preventing the bridge's own mode_valid from ever being reached.
+	 */
+	if (display->panel->num_timing_nodes) {
+		status = dsi_conn_mode_valid(connector, mode, disp, avail_res);
+		if (status != MODE_OK)
+			return status;
+	}
 
 	return display->ext_conn->helper_private->mode_valid(
 			display->ext_conn, mode);
@@ -7410,6 +7437,7 @@ static int dsi_display_ext_get_mode_info(struct drm_connector *connector,
 	void *display, const struct msm_resource_caps_info *avail_res)
 {
 	struct msm_display_topology *topology;
+	struct dsi_display *ext_display = (struct dsi_display *)display;
 
 	if (!drm_mode || !mode_info ||
 			!avail_res || !avail_res->max_mixer_width)
@@ -7426,6 +7454,19 @@ static int dsi_display_ext_get_mode_info(struct drm_connector *connector,
 	topology->num_intf = topology->num_lm;
 
 	mode_info->comp_info.comp_type = MSM_DISPLAY_COMPRESSION_NONE;
+	if (ext_display->panel &&
+			ext_display->panel->host_config.ext_bridge_dyn_topology) {
+		u32 num_lm = topology->num_lm;
+		u32 ctrl_count = ext_display->ctrl_count;
+
+		topology->num_lm = (num_lm >= ctrl_count) ? num_lm : ctrl_count;
+		topology->num_enc = 0;
+		topology->num_intf = ctrl_count;
+	}
+
+	DSI_DEBUG("%dx%d : %d %d %d\n",
+		drm_mode->hdisplay, drm_mode->vdisplay,
+		topology->num_lm, topology->num_enc, topology->num_intf);
 
 	return 0;
 }
@@ -7697,6 +7738,16 @@ int dsi_display_drm_ext_bridge_init(struct dsi_display *display,
 			ext_bridge->funcs = &ext_bridge_info->bridge_funcs;
 		}
 
+		/*
+		 * Set get_info, get_mode_info, mode_valid and get_modes before
+		 * drm_bridge_attach so that mode enumeration callbacks fired
+		 * during attach use the ext-bridge paths.
+		 */
+		sde_conn->ops.get_info      = dsi_display_ext_get_info;
+		sde_conn->ops.get_mode_info = dsi_display_ext_get_mode_info;
+		sde_conn->ops.mode_valid    = dsi_display_drm_ext_mode_valid;
+		sde_conn->ops.get_modes     = dsi_display_drm_ext_get_modes;
+
 		rc = drm_bridge_attach(encoder, ext_bridge, prev_bridge,
 					DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 		if (rc) {
@@ -7757,22 +7808,9 @@ int dsi_display_drm_ext_bridge_init(struct dsi_display *display,
 		if (display->ext_conn->funcs->detect)
 			sde_conn->ops.detect = dsi_display_drm_ext_detect;
 
-		if (display->ext_conn->helper_private->get_modes)
-			sde_conn->ops.get_modes =
-				dsi_display_drm_ext_get_modes;
-
-		if (display->ext_conn->helper_private->mode_valid)
-			sde_conn->ops.mode_valid =
-				dsi_display_drm_ext_mode_valid;
-
 		if (display->ext_conn->helper_private->atomic_check)
 			sde_conn->ops.atomic_check =
 				dsi_display_drm_ext_atomic_check;
-
-		sde_conn->ops.get_info =
-				dsi_display_ext_get_info;
-		sde_conn->ops.get_mode_info =
-				dsi_display_ext_get_mode_info;
 
 		/* add support to attach/detach */
 		display->host.ops = &dsi_host_ext_ops;
@@ -8519,6 +8557,11 @@ int dsi_display_get_modes(struct dsi_display *display,
 
 	display_mode_count = display->panel->num_display_modes;
 
+	if (!display_mode_count) {
+		rc = 0;
+		goto exit;
+	}
+
 	display->modes = kcalloc(display_mode_count, sizeof(*display->modes),
 			GFP_KERNEL);
 	if (!display->modes) {
@@ -8579,6 +8622,10 @@ int dsi_display_get_panel_vfp(void *dsi_display,
 
 	if (!display->panel)
 		return -EINVAL;
+
+	/* no DT timing nodes: caller uses drm mode's vsync gap as fallback */
+	if (!display->panel->num_timing_nodes)
+		return -ENODATA;
 
 	if (!display->modes) {
 		DSI_ERR("display modes not available\n");
