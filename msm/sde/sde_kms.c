@@ -2419,6 +2419,9 @@ static int sde_kms_postinit(struct msm_kms *kms)
 		pm_runtime_put_sync(sde_kms->dev->dev);
 	}
 
+	/* Gates VBIF AXI halt in power event; skips init-time PRE_DISABLE. */
+	sde_kms->post_init_done = true;
+
 	rc = _sde_debugfs_init(sde_kms);
 	if (rc)
 		SDE_ERROR("sde_debugfs init failed: %d\n", rc);
@@ -4668,16 +4671,24 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 			return;
 
 		sde_vbif_init_memtypes(sde_kms);
+
+		/* Clear stale VBIF halt surviving GDSC retention into POST_ENABLE. */
+		sde_vbif_clear_axi_halt(sde_kms);
+
 		sde_kms_init_shared_hw(sde_kms);
 		_sde_kms_set_lutdma_vbif_remap(sde_kms);
 	} else if (event_type == SDE_POWER_EVENT_PRE_DISABLE) {
 		sde_irq_update(msm_kms, false);
 		sde_kms->first_kickoff = false;
+
 		if (sde_in_trusted_vm(sde_kms))
 			return;
 
 		_sde_kms_active_override(sde_kms, true);
-		if (!is_sde_rsc_available(SDE_RSC_INDEX))
+
+		/* Halt VBIF AXI before power collapse; skip init-time PRE_DISABLE. */
+		if (!is_sde_rsc_available(SDE_RSC_INDEX) &&
+				sde_kms->post_init_done)
 			sde_vbif_axi_halt_request(sde_kms);
 	}
 }
