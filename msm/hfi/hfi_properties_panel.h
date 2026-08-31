@@ -1060,6 +1060,21 @@
 #define HFI_PROPERTY_PANEL_LANE_TUNING_PARAMS                        0x00040049
 
 /*
+ * HFI_PROPERTY_PANEL_PLL_CONFIG - Provides DSI PLL SSC (Spread Spectrum Clocking)
+ *                                  configuration parsed from the DSI PHY device-tree
+ *                                  node (qcom,dsi-pll-ssc-en / qcom,dsi-pll-ssc-mode).
+ *                                  This property is sent to DCP as part of
+ *                                  HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet
+ *                                  payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_PLL_CONFIG
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_PLL_CONFIG |
+ *                               (version=0 << 20) | (dsize=5 << 24 )
+ *   (u32_value) payload[1..5] : struct hfi_panel_pll_config
+ */
+#define HFI_PROPERTY_PANEL_PLL_CONFIG                                0x0004004A
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF
