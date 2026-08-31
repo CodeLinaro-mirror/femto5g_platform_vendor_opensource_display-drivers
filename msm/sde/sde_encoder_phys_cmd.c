@@ -37,6 +37,10 @@
 #define AUTOREFRESH_SEQ2_POLL_TIME	25000
 #define AUTOREFRESH_SEQ2_POLL_TIMEOUT	1000000
 
+#define SDE_CMD_ESD_FORCE_CHECK_TIMEOUT_CNT	3
+
+#define SDE_CMD_WR_PTR_WD_MAX_RETRY	3
+
 static inline int _sde_encoder_phys_cmd_get_idle_timeout(
 		struct sde_encoder_phys *phys_enc)
 {
@@ -578,6 +582,11 @@ static int _sde_encoder_phys_cmd_handle_framedone_timeout(
 
 	/* check if panel is still sending TE signal or not */
 	if (sde_connector_esd_status(phys_enc->connector))
+		goto exit;
+
+	if (cmd_enc->frame_tx_timeout_report_cnt >=
+		SDE_CMD_ESD_FORCE_CHECK_TIMEOUT_CNT &&
+		sde_connector_esd_status_no_te_fallback(phys_enc->connector))
 		goto exit;
 
 	/* to avoid flooding, only log first time, and "dead" time */
@@ -1483,6 +1492,7 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 					SDE_RECOVERY_SUCCESS);
 
 		cmd_enc->frame_tx_timeout_report_cnt = 0;
+		cmd_enc->wr_ptr_wd_timeout_cnt = 0;
 		phys_enc->recovered = false;
 	}
 
@@ -1688,6 +1698,23 @@ static int _sde_encoder_phys_cmd_handle_wr_ptr_timeout(
 
 		/* switch back to default TE */
 		sde_encoder_helper_switch_vsync(phys_enc->parent, false);
+
+		if (ret == -ETIMEDOUT) {
+			SDE_ERROR_CMDENC(cmd_enc,
+				"wr_ptr WD TE timeout cnt=%d/%d\n",
+				cmd_enc->wr_ptr_wd_timeout_cnt + 1,
+				SDE_CMD_WR_PTR_WD_MAX_RETRY);
+			if (++cmd_enc->wr_ptr_wd_timeout_cnt >=
+					SDE_CMD_WR_PTR_WD_MAX_RETRY) {
+				cmd_enc->wr_ptr_wd_timeout_cnt = 0;
+				SDE_ERROR_CMDENC(cmd_enc,
+				"wr_ptr WD TE reached max retry, force panel_dead\n");
+				sde_connector_report_panel_dead_force(
+						phys_enc->connector);
+			}
+		} else {
+			cmd_enc->wr_ptr_wd_timeout_cnt = 0;
+		}
 	}
 
 	/*

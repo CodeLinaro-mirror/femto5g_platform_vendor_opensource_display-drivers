@@ -1332,6 +1332,19 @@ int sde_connector_get_panel_vfp(struct drm_connector *connector,
  */
 int sde_connector_esd_status(struct drm_connector *connector);
 
+/**
+ * sde_connector_esd_status_no_te_fallback - REG_READ-only ESD check
+ * @connector: Pointer to drm connector
+ * Returns: 0 on success, -ETIMEDOUT if panel is dead
+ */
+int sde_connector_esd_status_no_te_fallback(struct drm_connector *connector);
+
+/**
+ * sde_connector_report_panel_dead_force - force report panel dead
+ * @connector: Pointer to drm connector
+ */
+void sde_connector_report_panel_dead_force(struct drm_connector *connector);
+
 const char *sde_conn_get_topology_name(struct drm_connector *conn,
 		struct msm_display_topology topology);
 
