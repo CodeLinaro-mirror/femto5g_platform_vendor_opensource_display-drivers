@@ -344,6 +344,12 @@ void hfi_setup_dspp_pa_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 		return;
 	}
 
+	if (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers > DSPP_MAX) {
+		SDE_ERROR("Invalid dspp_start_idx %d or num_of_mixers %d\n",
+			hw_cfg->dspp_start_idx, hw_cfg->num_of_mixers);
+		return;
+	}
+
 	hfi_cfg = &hfi_pa_dither_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
 
 	if (!hw_cfg->payload) {
@@ -370,9 +376,10 @@ void hfi_setup_dspp_pa_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 				prop_id, ret);
 		else
 			SDE_DEBUG("non-broadcast feature: submitted to prop_helper\n");
-		/* reset the cached struct for current dpu_idx after submitting to FW */
-		memset(&hfi_pa_dither_cached[ctx->dpu_idx], 0,
-			   sizeof(hfi_pa_dither_cached[ctx->dpu_idx]));
+		/* reset only the current display's DSPP entries */
+		memset(&hfi_pa_dither_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx], 0,
+			   sizeof(hfi_pa_dither_cached[ctx->dpu_idx][0]) *
+			   hw_cfg->num_of_mixers);
 	}
 }
 
@@ -492,6 +499,12 @@ void hfi_setup_ltm_initv1_4(struct sde_hw_dspp *ctx, void *cfg)
 		return;
 	}
 
+	if (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers > DSPP_MAX) {
+		SDE_ERROR("Invalid dspp_start_idx %d or num_of_mixers %d\n",
+			hw_cfg->dspp_start_idx, hw_cfg->num_of_mixers);
+		return;
+	}
+
 	hfi_cfg = &hfi_ltm_init_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 4, hw_cfg->prop_id);
 
@@ -522,9 +535,10 @@ void hfi_setup_ltm_initv1_4(struct sde_hw_dspp *ctx, void *cfg)
 		else
 			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
 				hw_cfg->prop_id);
-		/* reset the cached struct for current dpu_idx after submitting to FW */
-		memset(&hfi_ltm_init_cached[ctx->dpu_idx], 0,
-			   sizeof(hfi_ltm_init_cached[ctx->dpu_idx]));
+		/* reset only the current display's DSPP entries */
+		memset(&hfi_ltm_init_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx], 0,
+			   sizeof(hfi_ltm_init_cached[ctx->dpu_idx][0]) *
+			   hw_cfg->num_of_mixers);
 	}
 }
 
@@ -547,6 +561,12 @@ void hfi_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg)
 
 	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
 		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	if (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers > DSPP_MAX) {
+		SDE_ERROR("Invalid dspp_start_idx %d or num_of_mixers %d\n",
+			hw_cfg->dspp_start_idx, hw_cfg->num_of_mixers);
 		return;
 	}
 
@@ -582,9 +602,9 @@ void hfi_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg)
 			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
 				hw_cfg->prop_id);
 
-		/* reset the cached struct for current dpu_idx after submitting to FW */
-		memset(&hfi_ltm_roi_cached[ctx->dpu_idx], 0,
-			   sizeof(hfi_ltm_roi_cached[ctx->dpu_idx]));
+		/* reset only the current display's DSPP entries */
+		memset(&hfi_ltm_roi_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx], 0,
+			   sizeof(hfi_ltm_roi_cached[ctx->dpu_idx][0]) * hw_cfg->num_of_mixers);
 	}
 }
 
@@ -607,6 +627,12 @@ void hfi_setup_dspp_ltm_hist_ctrlv1_2(struct sde_hw_dspp *ctx, void *cfg,
 	}
 
 
+	if (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers > DSPP_MAX) {
+		SDE_ERROR("Invalid dspp_start_idx %d or num_of_mixers %d\n",
+			hw_cfg->dspp_start_idx, hw_cfg->num_of_mixers);
+		return;
+	}
+
 	hfi_cfg = &hfi_ltm_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 2, hw_cfg->prop_id);
 
@@ -624,9 +650,10 @@ void hfi_setup_dspp_ltm_hist_ctrlv1_2(struct sde_hw_dspp *ctx, void *cfg,
 			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
 				hw_cfg->prop_id);
 
-		/* reset the cached struct for current dpu_idx after submitting to FW */
-		memset(&hfi_ltm_hist_ctrl_cached[ctx->dpu_idx], 0,
-			   sizeof(hfi_ltm_hist_ctrl_cached[ctx->dpu_idx]));
+		/* reset only the current display's DSPP entries */
+		memset(&hfi_ltm_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx], 0,
+			   sizeof(hfi_ltm_hist_ctrl_cached[ctx->dpu_idx][0]) *
+			   hw_cfg->num_of_mixers);
 	}
 }
 
@@ -644,6 +671,12 @@ void hfi_setup_dspp_ltm_threshv1(struct sde_hw_dspp *ctx, void *cfg)
 
 	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
 		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	if (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers > DSPP_MAX) {
+		SDE_ERROR("Invalid dspp_start_idx %d or num_of_mixers %d\n",
+			hw_cfg->dspp_start_idx, hw_cfg->num_of_mixers);
 		return;
 	}
 
@@ -670,9 +703,10 @@ void hfi_setup_dspp_ltm_threshv1(struct sde_hw_dspp *ctx, void *cfg)
 			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
 				hw_cfg->prop_id);
 
-		/* reset the cached struct for current dpu_idx after submitting to FW */
-		memset(&hfi_ltm_thresh_cached[ctx->dpu_idx], 0,
-			   sizeof(hfi_ltm_thresh_cached[ctx->dpu_idx]));
+		/* reset only the current display's DSPP entries */
+		memset(&hfi_ltm_thresh_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx], 0,
+			   sizeof(hfi_ltm_thresh_cached[ctx->dpu_idx][0]) *
+			   hw_cfg->num_of_mixers);
 	}
 
 }
@@ -1441,6 +1475,12 @@ void hfi_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *data, bool enable)
 		return;
 	}
 
+	if (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers > DSPP_MAX) {
+		SDE_ERROR("Invalid dspp_start_idx %d or num_of_mixers %d\n",
+			hw_cfg->dspp_start_idx, hw_cfg->num_of_mixers);
+		return;
+	}
+
 	hfi_cfg = &hfi_pa_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 7, hw_cfg->prop_id);
 	*hfi_cfg = enable;
@@ -1457,8 +1497,9 @@ void hfi_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *data, bool enable)
 			return;
 		}
 
-		/* reset the cached struct for current dpu_idx after submitting to FW */
-		memset(&hfi_pa_hist_ctrl_cached[ctx->dpu_idx], 0,
-			   sizeof(hfi_pa_hist_ctrl_cached[ctx->dpu_idx]));
+		/* reset only the current display's DSPP entries */
+		memset(&hfi_pa_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx], 0,
+			   sizeof(hfi_pa_hist_ctrl_cached[ctx->dpu_idx][0]) *
+			   hw_cfg->num_of_mixers);
 	}
 }
