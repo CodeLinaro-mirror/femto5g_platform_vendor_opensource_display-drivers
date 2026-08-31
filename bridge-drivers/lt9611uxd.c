@@ -566,7 +566,7 @@ end:
 }
 
 
-void lt9611uxd_helper_read_edid(struct lt9611uxd *pdata)
+static void lt9611uxd_helper_read_edid(struct lt9611uxd *pdata)
 {
 	int ret;
 
@@ -616,7 +616,7 @@ void lt9611uxd_helper_read_edid(struct lt9611uxd *pdata)
 	}
 }
 
-int lt9611uxd_read_hpd_status(struct lt9611uxd *pdata)
+static int lt9611uxd_read_hpd_status(struct lt9611uxd *pdata)
 {
 	u8 conn_status = connector_status_disconnected;
 	u8 get_hpd_status_cmd[5] = {0x52, 0x48, 0x31, 0x3A, 0x00};
@@ -629,7 +629,7 @@ int lt9611uxd_read_hpd_status(struct lt9611uxd *pdata)
 	return conn_status;
 }
 
-void lt9611uxd_edid_work(struct work_struct *work)
+static void lt9611uxd_edid_work(struct work_struct *work)
 {
 	struct lt9611uxd *pdata = container_of(work, struct lt9611uxd, edid_work);
 
@@ -639,7 +639,7 @@ void lt9611uxd_edid_work(struct work_struct *work)
 	lt9611uxd_helper_read_edid(pdata);
 }
 
-void lt9611uxd_hpd_work(struct work_struct *work)
+static void lt9611uxd_hpd_work(struct work_struct *work)
 {
 	char name[32], status[32];
 	char *envp[5];
@@ -1152,7 +1152,7 @@ static int lt9611uxd_select_port(struct lt9611uxd *pdata, int port_select)
 	return 0;
 }
 
-unsigned int BitsReverse(u32 inVal, u8 bits)
+static unsigned int BitsReverse(u32 inVal, u8 bits)
 {
 	u32 outVal = 0;
 	u8 i;
@@ -1165,7 +1165,7 @@ unsigned int BitsReverse(u32 inVal, u8 bits)
 	return outVal;
 }
 
-unsigned int GetCRC(struct CrcInfoTypeS type, const  u8 *buf, u64 bufLen)
+static unsigned int GetCRC(struct CrcInfoTypeS type, const  u8 *buf, u64 bufLen)
 {
 	u8 width  = type.Width;
 	u32  poly   = type.Poly;
@@ -1202,7 +1202,7 @@ unsigned int GetCRC(struct CrcInfoTypeS type, const  u8 *buf, u64 bufLen)
 	return (crc & ((2<<(width-1)) - 1));
 }
 
-u8 calculate_crc(const u8 *upgradeData, u64 len)
+static u8 calculate_crc(const u8 *upgradeData, u64 len)
 {
 	struct CrcInfoTypeS type = {
 		.Width = 8,
@@ -1224,7 +1224,7 @@ u8 calculate_crc(const u8 *upgradeData, u64 len)
 	return type.CrcInit;
 }
 
-void lt9611uxd_config(struct lt9611uxd *pdata)
+static void lt9611uxd_config(struct lt9611uxd *pdata)
 {
 	struct lt9611uxd_reg_cfg reg_cfg[] = {
 		{0xFF, 0xE0},
@@ -1240,7 +1240,7 @@ void lt9611uxd_config(struct lt9611uxd *pdata)
 	lt9611uxd_write_array(pdata, reg_cfg, ARRAY_SIZE(reg_cfg));
 }
 
-u16 lt9611uxd_get_version(struct lt9611uxd *pdata)
+static u16 lt9611uxd_get_version(struct lt9611uxd *pdata)
 {
 	u8 revison = 0;
 	u8 subversion = 0;
@@ -1261,7 +1261,7 @@ u16 lt9611uxd_get_version(struct lt9611uxd *pdata)
 	return result;
 }
 
-void lt9611uxd_flash_write_en(struct lt9611uxd *pdata)
+static void lt9611uxd_flash_write_en(struct lt9611uxd *pdata)
 {
 	struct lt9611uxd_reg_cfg reg_cfg[] = {
 		{0xFF, 0xE0},
@@ -1272,7 +1272,7 @@ void lt9611uxd_flash_write_en(struct lt9611uxd *pdata)
 	lt9611uxd_write_array(pdata, reg_cfg, ARRAY_SIZE(reg_cfg));
 }
 
-void lt9611uxd_flash_write_di(struct lt9611uxd *pdata)
+static void lt9611uxd_flash_write_di(struct lt9611uxd *pdata)
 {
 	struct lt9611uxd_reg_cfg reg_cfg[] = {
 		{0xFF, 0xE0},
@@ -1283,7 +1283,7 @@ void lt9611uxd_flash_write_di(struct lt9611uxd *pdata)
 	lt9611uxd_write_array(pdata, reg_cfg, ARRAY_SIZE(reg_cfg));
 }
 
-u8 lt9611uxd_read_flash_status(struct lt9611uxd *pdata)
+static u8 lt9611uxd_read_flash_status(struct lt9611uxd *pdata)
 {
 	u8 ucFlashStatusReg = 0;
 	struct lt9611uxd_reg_cfg reg_cfg[] = {
@@ -1308,7 +1308,7 @@ u8 lt9611uxd_read_flash_status(struct lt9611uxd *pdata)
 	return ucFlashStatusReg;
 }
 
-u8 lt9611uxd_read_fw_crc(struct lt9611uxd *pdata)
+static u8 lt9611uxd_read_fw_crc(struct lt9611uxd *pdata)
 {
 	u8 ucFwCrcReg = 0;
 
@@ -1320,7 +1320,7 @@ u8 lt9611uxd_read_fw_crc(struct lt9611uxd *pdata)
 	return ucFwCrcReg;
 }
 
-void lt9611uxd_block_erase(struct lt9611uxd *pdata)
+static void lt9611uxd_block_erase(struct lt9611uxd *pdata)
 {
 	u8 ucFlashStatus = 0;
 	u8 ucBlockNum = 0x00;
@@ -1361,7 +1361,7 @@ void lt9611uxd_block_erase(struct lt9611uxd *pdata)
 	dev_info(pdata->dev, "LT9611 block erase done\n");
 }
 
-void lt9611uxd_crc_to_sram(struct lt9611uxd *pdata)
+static void lt9611uxd_crc_to_sram(struct lt9611uxd *pdata)
 {
 	struct lt9611uxd_reg_cfg reg_cfg[] = {
 		{0xFF, 0xE0},
@@ -1375,7 +1375,7 @@ void lt9611uxd_crc_to_sram(struct lt9611uxd *pdata)
 	lt9611uxd_write_array(pdata, reg_cfg, ARRAY_SIZE(reg_cfg));
 }
 
-void lt9611uxd_data_to_sram(struct lt9611uxd *pdata)
+static void lt9611uxd_data_to_sram(struct lt9611uxd *pdata)
 {
 	struct lt9611uxd_reg_cfg reg_cfg[] = {
 		{0xFF, 0xE0},
@@ -1388,7 +1388,7 @@ void lt9611uxd_data_to_sram(struct lt9611uxd *pdata)
 	lt9611uxd_write_array(pdata, reg_cfg, ARRAY_SIZE(reg_cfg));
 }
 
-void lt9611uxd_sram_to_flash(struct lt9611uxd *pdata, u32 addr)
+static void lt9611uxd_sram_to_flash(struct lt9611uxd *pdata, u32 addr)
 {
 	struct lt9611uxd_reg_cfg reg_cfg[] = {
 		{0xFF, 0xE0},
@@ -1402,7 +1402,7 @@ void lt9611uxd_sram_to_flash(struct lt9611uxd *pdata, u32 addr)
 	lt9611uxd_write_array(pdata, reg_cfg, ARRAY_SIZE(reg_cfg));
 }
 
-void lt9611uxd_firmware_write(struct lt9611uxd *pdata, const u8 *f_data,
+static void lt9611uxd_firmware_write(struct lt9611uxd *pdata, const u8 *f_data,
 		int size)
 {
 	u8 last_buf[LT9611UXD_SRAM_PAGE_SIZE];
@@ -1439,7 +1439,7 @@ void lt9611uxd_firmware_write(struct lt9611uxd *pdata, const u8 *f_data,
 		size, total_page, rest_data);
 }
 
-void lt9611uxd_firmware_write_crc(struct lt9611uxd *pdata, const u8 *f_data,
+static void lt9611uxd_firmware_write_crc(struct lt9611uxd *pdata, const u8 *f_data,
 		int size)
 {
 	lt9611uxd_flash_write_en(pdata);
@@ -1451,7 +1451,7 @@ void lt9611uxd_firmware_write_crc(struct lt9611uxd *pdata, const u8 *f_data,
 	dev_info(pdata->dev, "LT9611 FW crc write over, total size: %d\n", size);
 }
 
-void lt9611uxd_firmware_upgrade(struct lt9611uxd *pdata,
+static void lt9611uxd_firmware_upgrade(struct lt9611uxd *pdata,
 			const struct firmware *cfg)
 {
 	int data_len = (int)cfg->size;
@@ -1925,7 +1925,7 @@ lt9611uxd_connector_detect(struct drm_connector *connector, bool force)
 	return pdata->status;
 }
 
-void dump_dtd(const u8 *desc)
+static void dump_dtd(const u8 *desc)
 {
 	u16 pixel_clock;
 	u16 h_active, h_blanking, h_total;
@@ -1951,7 +1951,7 @@ void dump_dtd(const u8 *desc)
 		h_active, v_active, refresh_rate, pixel_clock * 10);
 }
 
-void dump_edid(u8 *edid_buf, int size)
+static void dump_edid(u8 *edid_buf, int size)
 {
 	u8 *edid = edid_buf;
 	int i = 0;
