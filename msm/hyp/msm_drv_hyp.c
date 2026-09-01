@@ -245,6 +245,14 @@ int msm_hyp_set_dpu_probed(int dpu_id)
 	return 0;
 }
 
+bool msm_hyp_has_displays(int dpu_id)
+{
+	if (!g_hyp_kms || !g_hyp_kms->funcs || !g_hyp_kms->funcs->has_displays)
+		return false;
+
+	return g_hyp_kms->funcs->has_displays(g_hyp_kms, dpu_id);
+}
+
 int hyp_drm_bridge_init(struct drm_device *ddev, struct drm_encoder *encoder,
 		struct msm_hyp_display *display)
 {
