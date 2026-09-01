@@ -100,6 +100,7 @@ struct device_info_type {
 struct virtio_kms {
 	struct msm_hyp_kms base;
 	struct channel_map channel[VIRTIO_MAX_CLIENTS];
+	uint32_t client_hab_id;
 	uint32_t mmid_cmd;
 	uint32_t mmid_buffer;
 	uint32_t mmid_event;

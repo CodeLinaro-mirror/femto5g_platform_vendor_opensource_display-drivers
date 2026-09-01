@@ -710,6 +710,9 @@ void msm_hyp_irq_uninstall(struct msm_kms *kms)
 		return;
 	}
 
+	if (!sde_kms->hw_intr)
+		return;
+
 	sde_core_irq_uninstall(sde_kms);
 }
 

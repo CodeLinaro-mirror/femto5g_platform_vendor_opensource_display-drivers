@@ -3003,6 +3003,19 @@ int virtio_kms_set_power_level(struct sde_kms *sde_kms, uint32_t power_level)
 	return virtio_gpu_cmd_set_power(kms, dpu_id, power_level);
 }
 
+static bool virtio_kms_has_displays(struct msm_hyp_kms *hyp_kms, int dpu_id)
+{
+	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
+	int i;
+
+	for (i = 0; i < kms->num_scanouts; i++) {
+		if (kms->outputs[i].hw_assign.dpu_id == dpu_id)
+			return true;
+	}
+
+	return false;
+}
+
 static const struct msm_hyp_kms_funcs virtio_kms_funcs = {
 	.get_displays = virtio_kms_get_displays,
 	.get_connector_infos = virtio_kms_get_connector_infos,
@@ -3013,6 +3026,7 @@ static const struct msm_hyp_kms_funcs virtio_kms_funcs = {
 	.update_hw_reservation = virtio_kms_update_hw_reservation,
 	.register_event = virtio_kms_register_event,
 	.set_power_level = virtio_kms_set_power_level,
+	.has_displays = virtio_kms_has_displays,
 };
 
 /*
@@ -3356,7 +3370,7 @@ bool is_dbl_handle_valid(int32_t hab_dbl_handle)
 		hab_dbl_handle < HAB_DBL_HANDLE_MAX)
 	{
 		return true;
-	 } else {
+	} else {
 		return false;
 	}
 }
@@ -3374,19 +3388,20 @@ int hab_virq_cb(int irq, void *irq_data, uint32_t flags)
 {
 	struct virq_info_t *virq_info = (struct virq_info_t *) irq_data;
 	uint32_t dpu_id;
-	uint32_t dbl_idx;
 	struct msm_kms *msm_kms = NULL;
+
+	if (irq_data == NULL)
+		return 0;
 
 	VIRTIO_KMS_DBG("Doorbell received for hab_dbl_handle %d\n", virq_info->hab_dbl_handle);
 
-	if (is_dbl_handle_valid(virq_info->hab_dbl_handle) && irq_data != NULL)
+	if (is_dbl_handle_valid(virq_info->hab_dbl_handle))
 	{
-		/* dbl handle is either 1 or 2 in Android GVM, 3 or 4 in Linux GVM
-		Both GVMs are mutually exclusive and share the same virq_info[2] array
-		The module maps handle 1->0, 2->1, 3->0, 4->1 intentionally. */
-		dbl_idx = (virq_info->hab_dbl_handle - 1) % VIRTIO_GPU_MAX_VIRQ;
-
-		dpu_id = virq_info->kms->virq_info[dbl_idx]->dpu_id;
+		/*
+		 * dpu_id is stored directly in virq_info at registration time,
+		 * so the callback reads it without any dependency on dbl_handle values.
+		 */
+		dpu_id = virq_info->dpu_id;
 		msm_kms = &virq_info->kms->base.sde_kms[dpu_id]->base;
 		msm_hyp_irq(msm_kms);
 	}
@@ -3405,7 +3420,8 @@ int virtio_hab_register_virq(struct virtio_kms *kms)
 {
 	int32_t dbl_handle = -1;
 	const uint32_t pvm_hab_vmid = 0x0;
-	uint32_t virq_dpu_id[VIRTIO_GPU_MAX_VIRQ] = {3001,3002}; /* dpu id as defined by HAB */
+	/* dpu id as defined by HAB */
+	uint32_t virq_dpu_id[VIRTIO_GPU_MAX_VIRQ] = {VIRQ_DISP1, VIRQ_DISP2};
 	int ret = -1;
 
 	for (uint32_t virq_idx = 0; virq_idx < VIRTIO_GPU_MAX_VIRQ; virq_idx++)
@@ -3421,9 +3437,10 @@ int virtio_hab_register_virq(struct virtio_kms *kms)
 			return ret;
 		}
 		virq_info->hab_dbl_handle = dbl_handle;
-		kms->virq_info[(dbl_handle -1) % VIRTIO_GPU_MAX_VIRQ] = virq_info;
-		kms->virq_info[(dbl_handle -1) % VIRTIO_GPU_MAX_VIRQ]->dpu_id = virq_idx;
-		VIRTIO_KMS_INFO("hab virq registered successfully, db_handle: %d\n", dbl_handle);
+		kms->virq_info[virq_idx] = virq_info;
+		kms->virq_info[virq_idx]->dpu_id = virq_idx;
+		VIRTIO_KMS_INFO("hab virq registered successfully, db_handle: %d, dpu_id: %d\n",
+				dbl_handle, virq_idx);
 	}
 
 	return 0;

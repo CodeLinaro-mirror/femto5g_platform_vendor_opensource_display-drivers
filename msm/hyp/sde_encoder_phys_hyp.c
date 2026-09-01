@@ -510,8 +510,9 @@ static int _sde_encoder_phys_hyp_wait_for_vblank(
 			&& phys_enc->parent_ops.handle_frame_done) {
 		phys_enc->parent_ops.handle_frame_done(phys_enc->parent, phys_enc, event);
 
-		/* notify only on actual timeout cases */
-		if ((ret == -ETIMEDOUT) && sde_encoder_recovery_events_enabled(phys_enc->parent))
+		/* Notify on actual timeouts only, not on HPD plug-out. */
+		if ((ret == -ETIMEDOUT) && sde_encoder_recovery_events_enabled(phys_enc->parent) &&
+				conn->status != connector_status_disconnected)
 			sde_connector_event_notify(conn, DRM_EVENT_SDE_HW_RECOVERY,
 				sizeof(uint8_t), SDE_RECOVERY_HARD_RESET);
 	}
