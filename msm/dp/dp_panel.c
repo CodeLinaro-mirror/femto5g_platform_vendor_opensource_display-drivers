@@ -1257,14 +1257,8 @@ static int dp_panel_get_modes(struct dp_panel *dp_panel,
 		dp_panel_set_test_mode(panel, mode);
 		return 1;
 	} else if (dp_panel->edid_ctrl->edid) {
-<<<<<<< HEAD   (a462be Merge 5aa778400a0e3a45b6c6ce961890b9f5e99bd9c7 on remote bra)
 		rc = _sde_edid_update_modes(connector, dp_panel->edid_ctrl);
 
-=======
-		count = _sde_edid_update_modes(connector, dp_panel->edid_ctrl);
-		if (panel->parser->dp_cec_feature && count)
-			drm_dp_cec_set_edid(panel->aux->drm_aux, dp_panel->edid_ctrl->edid);
->>>>>>> CHANGE (4d2d8d msm/dp: conditional support for CEC over DP)
 		if (panel->parser->max_fps_mode_en)
 			rc = dp_panel_select_max_fps_mode(connector);
 	}
@@ -1596,11 +1590,6 @@ static int dp_panel_init_panel_info(struct dp_panel *dp_panel, bool skip_op)
 	* Control Field" (register 0x600).
 	*/
 	usleep_range(1000, 2000);
-<<<<<<< HEAD   (a462be Merge 5aa778400a0e3a45b6c6ce961890b9f5e99bd9c7 on remote bra)
-=======
-	if (panel->parser->dp_cec_feature && dp_panel->edid_ctrl->edid)
-		drm_dp_cec_set_edid(panel->aux->drm_aux, dp_panel->edid_ctrl->edid);
->>>>>>> CHANGE (4d2d8d msm/dp: conditional support for CEC over DP)
 end:
 	return rc;
 }
@@ -1631,12 +1620,6 @@ static int dp_panel_deinit_panel_info(struct dp_panel *dp_panel, u32 flags)
 	/*clearing LINK INFO capabilities during disconnect*/
 	dp_panel->link_info.capabilities = 0;
 
-<<<<<<< HEAD   (a462be Merge 5aa778400a0e3a45b6c6ce961890b9f5e99bd9c7 on remote bra)
-=======
-	if (panel->parser->dp_cec_feature && panel->aux->drm_aux)
-		drm_dp_cec_unset_edid(panel->aux->drm_aux);
-
->>>>>>> CHANGE (4d2d8d msm/dp: conditional support for CEC over DP)
 	if (dp_panel->edid_ctrl->edid)
 		sde_free_edid((void **)&dp_panel->edid_ctrl);
 
