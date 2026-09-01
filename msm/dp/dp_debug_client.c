@@ -1343,36 +1343,6 @@ static int dp_debug_client_write_sim(struct dp_debug_client *client, const char 
 	return dp_debug_client_write_sim_mode(client, !!sim_mode);
 }
 
-static int dp_debug_client_write_attention(struct dp_debug_client *client,
-		const char *buf, size_t count)
-{
-	int vdo = 0;
-
-	if (!client || !buf)
-		return -ENODEV;
-
-	if (kstrtoint(buf, 10, &vdo) != 0)
-		return -EINVAL;
-
-	DP_DEBUG("Attention simulation: vdo=%d\n", vdo);
-
-	/* Call simulate_attention through client */
-	if (client->simulate_attention)
-		return client->simulate_attention(client, vdo);
-
-	return 0;
-}
-
-static int dp_debug_client_simulate_attention(struct dp_debug_client *client, int vdo)
-{
-	if (!client || !client->hpd)
-		return -ENODEV;
-
-	DP_DEBUG("Simulating attention: vdo=0x%x\n", vdo);
-
-	return client->hpd->simulate_attention(client->hpd, vdo);
-}
-
 /* MMRM Function */
 static int dp_debug_client_write_mmrm_clk_cb(struct dp_debug_client *client,
 		const char *buf, size_t count)
@@ -1459,8 +1429,6 @@ int dp_debug_client_get(struct dp_debug_client *client)
 
 	/* Simulation Functions */
 	client->write_sim = dp_debug_client_write_sim;
-	client->write_attention = dp_debug_client_write_attention;
-	client->simulate_attention = dp_debug_client_simulate_attention;
 
 	/* MMRM Function */
 	client->write_mmrm_clk_cb = dp_debug_client_write_mmrm_clk_cb;
