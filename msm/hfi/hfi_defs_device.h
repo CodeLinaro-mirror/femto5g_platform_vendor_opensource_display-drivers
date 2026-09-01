@@ -56,7 +56,8 @@
  *     - Signals interrupt or attention events from the connected device
  *     - For DP: Indicates HPD IRQ pulse (short pulse vs. long pulse)
  *     - Used to trigger EDID re-read, capability negotiation, or link training
- *     - Values: 0 = no IRQ, 1 = IRQ/attention signal present
+ *     - Values: BIT(0): 0 = no IRQ, 1 = IRQ/attention signal present
+ *               BIT(1): 0 = no psm, 1 = psm enabled
  */
 struct hfi_device_hotplug_config {
 	u32 orientation;
