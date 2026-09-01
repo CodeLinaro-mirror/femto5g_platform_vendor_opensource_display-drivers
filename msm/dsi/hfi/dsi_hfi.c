@@ -1032,6 +1032,18 @@ static void dsi_hfi_populate_esync_caps(struct dsi_panel *panel,
 	hfi_esync_caps->hsync_milli_pulse_width = eparams->hsync_milli_pulse_width;
 }
 
+static void dsi_hfi_populate_qsync_caps(struct dsi_panel *panel,
+					struct hfi_qsync_params *hfi_qsync_params)
+{
+	if (!panel || !hfi_qsync_params) {
+		DSI_ERR("null pointer");
+		return;
+	}
+
+	hfi_qsync_params->qsync_min_fps = panel->qsync_caps.qsync_min_fps;
+	hfi_qsync_params->avr_step_fps = panel->avr_caps.avr_step_fps;
+}
+
 static void dsi_hfi_populate_dfps_caps(struct dsi_panel *panel,
 					struct hfi_panel_dfps_caps *hfi_dfps_caps)
 {
@@ -2262,6 +2274,9 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 		dsi_hfi_populate_esync_caps(panel, &panel_generic_caps->esync_caps);
 	}
 
+	if (panel->qsync_caps.qsync_support)
+		dsi_hfi_populate_qsync_caps(panel, &panel_generic_caps->qsync_config);
+
 	if (panel->dfps_caps.dfps_support) {
 		dsi_hfi_populate_dfps_caps(panel, &panel_generic_caps->dfps_caps);
 	}
@@ -2567,16 +2582,11 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	}
 
 	if (display->panel->qsync_caps.qsync_support) {
-		struct hfi_qsync_params qsync_params;
-
-		qsync_params.qsync_min_fps = display->panel->qsync_caps.qsync_min_fps;
-		qsync_params.avr_step_fps = display->panel->avr_caps.avr_step_fps;
-
 		hfi_util_kv_helper_add(display_hfi->kv_props,
 					HFI_PACKKEY(HFI_PROPERTY_PANEL_QSYNC_PARAMS, 0,
-					(sizeof(qsync_params) / sizeof(u32))),
-					(void *)&qsync_params);
-		kv_size += sizeof(qsync_params);
+					(sizeof(panel_generic_caps.qsync_config) / sizeof(u32))),
+					(void *)&panel_generic_caps.qsync_config);
+		kv_size += sizeof(panel_generic_caps.qsync_config);
 	}
 
 	if (panel_generic_caps.poms_caps.panel_mode_switch_enabled) {
