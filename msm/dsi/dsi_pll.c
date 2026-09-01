@@ -322,26 +322,42 @@ int dsi_pll_init(struct platform_device *pdev, struct dsi_pll_resource **pll)
 		pll_res->index = 0;
 	}
 
-	pll_res->ssc_en = of_property_read_bool(pdev->dev.of_node,
-						"qcom,dsi-pll-ssc-en");
+	pll_res->ssc_valid_flags = 0;
 
+	pll_res->ssc_en = of_property_read_bool(pdev->dev.of_node,
+		"qcom,dsi-pll-ssc-en");
 	if (pll_res->ssc_en) {
+		pll_res->ssc_valid_flags |= DSI_PLL_SSC_EN_VALID;
 		DSI_PLL_INFO(pll_res, "PLL SSC enabled\n");
 
 		rc = of_property_read_u32(pdev->dev.of_node,
 			"qcom,ssc-frequency-hz", &pll_res->ssc_freq);
+		if (!rc)
+			pll_res->ssc_valid_flags |= DSI_PLL_SSC_FREQ_VALID;
 
 		rc = of_property_read_u32(pdev->dev.of_node,
 			"qcom,ssc-ppm", &pll_res->ssc_ppm);
+		if (!rc)
+			pll_res->ssc_valid_flags |= DSI_PLL_SSC_PPM_VALID;
 
 		pll_res->ssc_center = false;
 
 		label = of_get_property(pdev->dev.of_node,
 			"qcom,dsi-pll-ssc-mode", NULL);
 
-		if (label && !strcmp(label, "center-spread"))
-			pll_res->ssc_center = true;
+		if (label) {
+			pll_res->ssc_valid_flags |= DSI_PLL_SSC_CENTER_VALID;
+			if (!strcmp(label, "center-spread"))
+				pll_res->ssc_center = true;
+		}
+
+	} else if (of_property_read_bool(pdev->dev.of_node,
+			"qcom,dsi-pll-ssc-disable")) {
+		pll_res->ssc_valid_flags |= DSI_PLL_SSC_EN_VALID;
+		DSI_PLL_INFO(pll_res, "PLL SSC explicitly disabled\n");
 	}
+
+
 
 	pll_res->phy_pll_bypass = of_property_read_bool(pdev->dev.of_node,
 			"qcom,dsi-phy-pll-bypass");

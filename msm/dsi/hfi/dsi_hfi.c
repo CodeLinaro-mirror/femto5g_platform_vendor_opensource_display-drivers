@@ -897,6 +897,49 @@ static bool dsi_get_panel_phy_tuning_config_helper(struct dsi_display *display,
 	return true;
 }
 
+static bool dsi_get_panel_pll_config_helper(struct dsi_display *display,
+	struct hfi_panel_pll_config *pc)
+{
+	struct msm_dsi_phy *phy;
+	struct dsi_pll_resource *pll;
+
+	if (!display || !pc)
+		return false;
+
+	phy = display->ctrl[display->cmd_master_idx].phy;
+	if (!phy || !phy->pll)
+		return false;
+
+	pll = phy->pll;
+	if (!pll->ssc_valid_flags)
+		return false;
+
+	pc->flags = 0;
+
+	if (pll->ssc_valid_flags & DSI_PLL_SSC_EN_VALID) {
+		pc->ssc_en = pll->ssc_en;
+		pc->flags |= HFI_PLL_SSC_EN_VALID;
+	}
+
+	if (pll->ssc_valid_flags & DSI_PLL_SSC_CENTER_VALID) {
+		pc->ssc_spread_mode = (pll->ssc_center == HFI_PLL_SSC_CENTER_SPREAD) ?
+			HFI_PLL_SSC_CENTER_SPREAD : HFI_PLL_SSC_DOWN_SPREAD;
+		pc->flags |= HFI_PLL_SSC_CENTER_VALID;
+	}
+
+	if (pll->ssc_valid_flags & DSI_PLL_SSC_FREQ_VALID) {
+		pc->ssc_freq = pll->ssc_freq;
+		pc->flags |= HFI_PLL_SSC_FREQ_VALID;
+	}
+
+	if (pll->ssc_valid_flags & DSI_PLL_SSC_PPM_VALID) {
+		pc->ssc_ppm = pll->ssc_ppm;
+		pc->flags |= HFI_PLL_SSC_PPM_VALID;
+	}
+
+	return true;
+}
+
 static enum hfi_panel_fps_traffic_mode dsi_get_panel_traffic_mode_helper(struct dsi_panel *panel)
 {
 	switch (panel->video_config.traffic_mode) {
@@ -2300,6 +2343,8 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	if (dsi_get_panel_phy_tuning_config_helper(display,
 			&panel_generic_caps->phy_tuning_config))
 		panel_generic_caps->phy_tuning_config_valid = true;
+
+	dsi_get_panel_pll_config_helper(display, &panel_generic_caps->pll_config);
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -2620,6 +2665,14 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 					sizeof(u32) - 1) / sizeof(u32))),
 				(void *)&panel_generic_caps.phy_tuning_config);
 		kv_size += sizeof(panel_generic_caps.phy_tuning_config);
+	}
+
+	if (panel_generic_caps.pll_config.flags) {
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_PLL_CONFIG, 0,
+				(sizeof(panel_generic_caps.pll_config) / sizeof(u32))),
+				(void *)&panel_generic_caps.pll_config);
+		kv_size += sizeof(panel_generic_caps.pll_config);
 	}
 
 	if (display->modes && display->modes[0].priv_info &&

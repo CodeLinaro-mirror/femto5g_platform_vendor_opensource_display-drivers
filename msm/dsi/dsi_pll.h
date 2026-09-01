@@ -115,6 +115,26 @@ struct dfps_info {
 	struct dfps_codes_info codes_dfps[DFPS_MAX_NUM_OF_FRAME_RATES];
 };
 
+/**
+ * enum dsi_pll_ssc_valid_flags - Bitmask values to indicate which SSC parameters were
+ *                                explicitly parsed from the HLOS device-tree node for
+ *                                this DSI PLL.
+ * @DSI_PLL_SSC_EN_VALID:     Indicates ssc_en parameter is explicitly provided (either
+ *                            "qcom,dsi-pll-ssc-en" or "qcom,ssc-disable" is present).
+ * @DSI_PLL_SSC_CENTER_VALID: Indicates ssc_center parameter is explicitly provided via
+ *                            "qcom,dsi-pll-ssc-mode".
+ * @DSI_PLL_SSC_FREQ_VALID:   Indicates ssc_freq parameter is explicitly provided via
+ *                            "qcom,ssc-frequency-hz".
+ * @DSI_PLL_SSC_PPM_VALID:    Indicates ssc_ppm parameter is explicitly provided via
+ *                            "qcom,ssc-ppm".
+ */
+enum dsi_pll_ssc_valid_flags {
+	DSI_PLL_SSC_EN_VALID     = 0x1,
+	DSI_PLL_SSC_CENTER_VALID = 0x2,
+	DSI_PLL_SSC_FREQ_VALID   = 0x4,
+	DSI_PLL_SSC_PPM_VALID    = 0x8,
+};
+
 struct dsi_pll_resource {
 
 	/*
@@ -156,6 +176,10 @@ struct dsi_pll_resource {
 	bool ssc_center;	/* default is down spread */
 	u32 ssc_freq;
 	u32 ssc_ppm;
+	/*
+	 * whether SSC params were explicitly parsed from devicetree.
+	 */
+	u32 ssc_valid_flags;
 
 	struct dsi_pll_resource *slave[MAX_DSI_PLL_SLAVE_NUM];
 
