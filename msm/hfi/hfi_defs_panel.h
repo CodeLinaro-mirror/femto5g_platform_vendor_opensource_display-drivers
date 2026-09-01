@@ -373,12 +373,14 @@ enum hfi_panel_esd_status_mode {
  *                                and glbl_rescode_mid_ctrl parameters are valid
  * @HFI_PHY_CMN_CTRL2_VALID:      Indicates cmn_ctrl2 parameter is valid
  * @HFI_PHY_VREG_CTRL_VALID:      Indicates vreg_ctrl0 and vreg_ctrl1 parameters are valid
+ * @HFI_PHY_GLBL_PEMPH_CTRL_VALID: Indicates pemph_ctrl0 and pemph_ctrl1 parameters are valid
  */
 enum hfi_panel_phy_tuning_flags {
 	HFI_PHY_GLBL_STR_CTRL_VALID  = 0x1,
 	HFI_PHY_GLBL_RESCODE_VALID   = 0x2,
 	HFI_PHY_CMN_CTRL2_VALID      = 0x4,
 	HFI_PHY_VREG_CTRL_VALID      = 0x8,
+	HFI_PHY_GLBL_PEMPH_CTRL_VALID = 0x10,
 };
 
 /**
@@ -624,7 +626,7 @@ struct hfi_panel_operating_mode_caps {
  * @vreg_ctrl0:            PHY regulator control 0
  * @vreg_ctrl1:            PHY regulator control 1
  * @flags:                 Flags indicating valid PHY tuning parameter
- * @reserved1:             Reserved for future use
+ * @reserved1:             Global pre-emphasis control 0/1
  * @reserved2:             Reserved for future use
  */
 

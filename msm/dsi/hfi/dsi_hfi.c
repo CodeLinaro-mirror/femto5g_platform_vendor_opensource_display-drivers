@@ -889,6 +889,11 @@ static bool dsi_get_panel_phy_tuning_config_helper(struct dsi_display *display,
 		tc->flags |= HFI_PHY_VREG_CTRL_VALID;
 	}
 
+	if (dt->flags & DSI_PHY_GLBL_PEMPH_CTRL_VALID) {
+		tc->reserved1 = (dt->pemph_ctrl0 & 0xFF) | ((dt->pemph_ctrl1 & 0xFF) << 8);
+		tc->flags |= HFI_PHY_GLBL_PEMPH_CTRL_VALID;
+	}
+
 	return true;
 }
 
