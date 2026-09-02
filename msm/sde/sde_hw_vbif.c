@@ -240,6 +240,15 @@ static int sde_hw_get_axi_halt_status(struct sde_hw_vbif *vbif)
 		VBIF_AXI_HALT_CTRL1, ctrl, ctrl & BIT(0), 100, 4000);
 }
 
+/* Write 0 to VBIF_AXI_HALT_CTRL0 to release any outstanding AXI halt. */
+static void sde_hw_clear_axi_halt(struct sde_hw_vbif *vbif)
+{
+	struct sde_hw_blk_reg_map *c = &vbif->hw;
+
+	SDE_REG_WRITE(c, VBIF_AXI_HALT_CTRL0, 0);
+	wmb(); /* ensure AXI halt is released before MDP starts fetching */
+}
+
 static void sde_hw_set_qos_remap(struct sde_hw_vbif *vbif,
 		u32 xin_id, u32 level, u32 rp_remap, u32 lvl_remap)
 {
@@ -291,6 +300,7 @@ static void _setup_vbif_ops(const struct sde_mdss_cfg *m,
 	ops->get_limit_conf = sde_hw_get_limit_conf;
 	ops->set_axi_halt = sde_hw_set_axi_halt;
 	ops->get_axi_halt_status = sde_hw_get_axi_halt_status;
+	ops->clear_axi_halt = sde_hw_clear_axi_halt;
 	ops->set_xin_halt = sde_hw_set_xin_halt;
 	ops->get_xin_halt_status = sde_hw_get_xin_halt_status;
 	if (test_bit(SDE_VBIF_QOS_REMAP, &cap))

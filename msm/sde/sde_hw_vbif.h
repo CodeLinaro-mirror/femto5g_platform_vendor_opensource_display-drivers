@@ -69,6 +69,14 @@ struct sde_hw_vbif_ops {
 	int (*get_axi_halt_status)(struct sde_hw_vbif *vbif);
 
 	/**
+	 * clear_axi_halt - clear axi port halt control
+	 * Releases any previously set AXI halt so that MDP can
+	 * resume DDR access after a power-enable cycle.
+	 * @vbif: vbif context driver
+	 */
+	void (*clear_axi_halt)(struct sde_hw_vbif *vbif);
+
+	/**
 	 * set_qos_remap - set QoS priority remap
 	 * @vbif: vbif context driver
 	 * @xin_id: client interface identifier

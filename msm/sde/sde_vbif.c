@@ -723,9 +723,36 @@ void sde_vbif_axi_halt_request(struct sde_kms *sde_kms)
 		if (vbif && vbif->cap && vbif->ops.set_axi_halt) {
 			mutex_lock(&vbif->mutex);
 			vbif->ops.set_axi_halt(vbif);
-			_sde_vbif_wait_for_axi_halt(vbif);
+			if (_sde_vbif_wait_for_axi_halt(vbif))
+				SDE_EVT32(vbif->idx, SDE_EVTLOG_ERROR);
 			mutex_unlock(&vbif->mutex);
 		}
+	}
+}
+
+/* Clear VBIF AXI halt on all instances; releases stale halt after GDSC retention. */
+void sde_vbif_clear_axi_halt(struct sde_kms *sde_kms)
+{
+	struct sde_hw_vbif *vbif;
+	int i;
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid argument\n");
+		return;
+	}
+
+	if (!sde_kms_is_vbif_operation_allowed(sde_kms)) {
+		SDE_DEBUG("vbif operations not permitted\n");
+		return;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(sde_kms->hw_vbif); i++) {
+		vbif = sde_kms->hw_vbif[i];
+		if (!vbif || !vbif->cap || !vbif->ops.clear_axi_halt)
+			continue;
+		mutex_lock(&vbif->mutex);
+		vbif->ops.clear_axi_halt(vbif);
+		mutex_unlock(&vbif->mutex);
 	}
 }
 
