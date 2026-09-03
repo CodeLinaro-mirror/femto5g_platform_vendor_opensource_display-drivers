@@ -31,6 +31,7 @@
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_probe_helper.h>
 #include <linux/version.h>
+#include <linux/suspend.h>
 #include <linux/sde_io_util.h>
 
 #include "msm_drv.h"
@@ -140,6 +141,11 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms);
 static int _sde_kms_register_events(struct msm_kms *kms,
 		struct drm_mode_object *obj, u32 event, bool en);
 static void sde_kms_handle_power_event(u32 event_type, void *usr);
+
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
+static int sde_kms_pm_freeze(struct device *dev);
+static int sde_kms_pm_restore(struct device *dev);
+#endif
 
 inline enum msm_disp_op sde_kms_get_disp_op(struct sde_kms *sde_kms)
 {
@@ -5727,7 +5733,11 @@ static int sde_kms_pm_suspend(struct device *dev)
 	struct drm_device *ddev;
 	struct sde_kms *sde_kms;
 	int ret = 0;
-
+#if IS_ENABLED(CONFIG_DEEPSLEEP)
+	if (pm_suspend_target_state == PM_SUSPEND_MEM) {
+		return sde_kms_pm_freeze(dev);
+	}
+#endif
 	if (!dev)
 		return -EINVAL;
 
@@ -5745,7 +5755,7 @@ static int sde_kms_pm_suspend(struct device *dev)
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_HIBERNATION)
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
 static int sde_kms_freeze_helper(struct sde_kms *sde_kms)
 {
 	struct drm_device *ddev;
@@ -6075,7 +6085,7 @@ static int sde_kms_pm_restore(struct device *dev)
 
 	return ret;
 }
-#endif /* CONFIG_HIBERNATION */
+#endif /* CONFIG_HIBERNATION || CONFIG_DEEPSLEEP */
 
 int sde_kms_resume_helper(struct sde_kms *sde_kms)
 {
@@ -6169,6 +6179,11 @@ static int sde_kms_pm_resume(struct device *dev)
 	struct sde_kms *sde_kms;
 	int ret;
 
+#if IS_ENABLED(CONFIG_DEEPSLEEP)
+	if (pm_suspend_target_state == PM_SUSPEND_MEM) {
+		return sde_kms_pm_restore(dev);
+	}
+#endif
 	if (!dev)
 		return -EINVAL;
 
@@ -6210,10 +6225,10 @@ static const struct msm_kms_funcs kms_funcs = {
 	.display_early_ept_hint = sde_kms_display_early_ept_hint,
 	.pm_suspend      = sde_kms_pm_suspend,
 	.pm_resume       = sde_kms_pm_resume,
-#if IS_ENABLED(CONFIG_HIBERNATION)
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
 	.pm_freeze      = sde_kms_pm_freeze,
 	.pm_restore       = sde_kms_pm_restore,
-#endif
+#endif /* CONFIG_HIBERNATION || CONFIG_DEEPSLEEP */
 	.destroy         = sde_kms_destroy,
 	.debugfs_destroy = sde_kms_debugfs_destroy,
 	.cont_splash_config = sde_kms_cont_splash_config,

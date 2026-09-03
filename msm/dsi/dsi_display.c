@@ -10,6 +10,7 @@
 #include <linux/err.h>
 #include <linux/version.h>
 #include <linux/ktime.h>
+#include <linux/suspend.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
 
 #include "msm_drv.h"
@@ -6786,7 +6787,7 @@ static void dsi_display_unbind(struct device *dev,
 	mutex_unlock(&display->display_lock);
 }
 
-#if IS_ENABLED(CONFIG_HIBERNATION)
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
 static int dsi_display_pm_freeze(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -6879,11 +6880,34 @@ static int dsi_display_pm_restore(struct device *dev)
 
 	return rc;
 }
+
+#if IS_ENABLED(CONFIG_DEEPSLEEP)
+static int dsi_display_pm_suspend(struct device *dev)
+{
+	if (pm_suspend_target_state == PM_SUSPEND_MEM)
+		return dsi_display_pm_freeze(dev);
+
+	return 0;
+}
+
+static int dsi_display_pm_resume(struct device *dev)
+{
+	if (pm_suspend_target_state == PM_SUSPEND_MEM)
+		return dsi_display_pm_restore(dev);
+
+	return 0;
+}
+#endif
+
 static const struct dev_pm_ops dsi_display_pm_ops = {
 	.freeze = dsi_display_pm_freeze,
 	.restore = dsi_display_pm_restore,
+#if IS_ENABLED(CONFIG_DEEPSLEEP)
+	.suspend = dsi_display_pm_suspend,
+	.resume = dsi_display_pm_resume,
+#endif
 };
-#endif /* CONFIG_HIBERNATION */
+#endif /* CONFIG_HIBERNATION || CONFIG_DEEPSLEEP */
 
 static const struct component_ops dsi_display_comp_ops = {
 	.bind = dsi_display_bind,
@@ -6896,9 +6920,9 @@ static struct platform_driver dsi_display_driver = {
 	.driver = {
 		.name = "msm-dsi-display",
 		.of_match_table = dsi_display_dt_match,
-#if IS_ENABLED(CONFIG_HIBERNATION)
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
 		.pm = &dsi_display_pm_ops,
-#endif /* CONFIG_HIBERNATION */
+#endif /* CONFIG_HIBERNATION || CONFIG_DEEPSLEEP */
 		.suppress_bind_attrs = true,
 	},
 };
