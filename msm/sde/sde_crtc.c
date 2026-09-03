@@ -6832,6 +6832,36 @@ static void sde_crtc_power_event_cb(void *data, u32 event)
 	sde_crtc_handle_power_event(event, crtc);
 }
 
+void sde_crtc_register_power_event_cb(struct drm_crtc *crtc, bool enable)
+{
+	struct msm_drm_private *priv;
+	struct drm_encoder *encoder;
+	struct sde_crtc *sde_crtc;
+
+	if (!crtc || !crtc->dev || !crtc->dev->dev_private) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	sde_crtc = to_sde_crtc(crtc);
+
+	priv = crtc->dev->dev_private;
+	if (!IS_DISP_OP_HFI(priv->disp_op))
+		return;
+
+	drm_for_each_encoder_mask(encoder, crtc->dev, sde_crtc->cached_encoder_mask) {
+		if (sde_encoder_in_clone_mode(encoder))
+			continue;
+
+		if (enable)
+			sde_encoder_register_display_power_event_callback(encoder,
+					sde_crtc_power_event_cb, crtc);
+		else
+			sde_encoder_register_display_power_event_callback(encoder,
+					NULL, NULL);
+	}
+}
+
 static void _sde_crtc_reset(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
