@@ -2665,13 +2665,75 @@ static void _sde_clear_ltm_merge_mode(struct sde_crtc *sde_crtc)
 	spin_unlock_irqrestore(&sde_crtc->ltm_lock, irq_flags);
 }
 
+static bool _sde_cp_is_demura_feature(struct sde_cp_node *prop_node)
+{
+	if (!prop_node)
+		return false;
+
+	return (prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_INIT ||
+		prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT ||
+		prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2);
+}
+
+static void _sde_cp_crtc_apply_dirty_features(struct sde_crtc *sde_crtc,
+		u32 demura_sw_fuse, bool *set_dspp_flush, bool *set_lm_flush)
+{
+	struct sde_cp_node *prop_node = NULL, *n = NULL;
+
+	if (!sde_crtc || !set_dspp_flush || !set_lm_flush)
+		return;
+
+	list_for_each_entry_safe(prop_node, n, &sde_crtc->cp_dirty_list,
+			cp_dirty_list) {
+		if (_sde_cp_is_demura_feature(prop_node) &&
+				demura_sw_fuse != SW_FUSE_ENABLE) {
+			DRM_DEBUG_DRIVER("demura_sw_fuse is not enabled: 0x%x\n",
+					demura_sw_fuse);
+			continue;
+		}
+
+		_sde_cp_crtc_commit_feature(prop_node, sde_crtc);
+		_sde_cp_dspp_flush_helper(sde_crtc, prop_node->feature);
+		if (prop_node->is_dspp_feature && !prop_node->lm_flush_override)
+			*set_dspp_flush = true;
+		else
+			*set_lm_flush = true;
+	}
+}
+
+static void _sde_cp_crtc_update_mixer_flush_bits(struct sde_crtc *sde_crtc,
+		enum msm_disp_op disp_op, u32 num_mixers,
+		bool set_dspp_flush, bool set_lm_flush)
+{
+	struct sde_hw_ctl *ctl;
+	u32 i;
+
+	if (!sde_crtc)
+		return;
+
+	for (i = 0; i < num_mixers; i++) {
+		ctl = sde_crtc->mixers[i].hw_ctl;
+		if (!ctl)
+			continue;
+		if (set_dspp_flush && ctl->ops.update_bitmask_dspp[disp_op]
+				&& sde_crtc->mixers[i].hw_dspp) {
+			ctl->ops.update_bitmask_dspp[disp_op](ctl,
+					sde_crtc->mixers[i].hw_dspp->idx, 1);
+		}
+		if (set_lm_flush && ctl->ops.update_bitmask_mixer[disp_op]
+				&& sde_crtc->mixers[i].hw_lm) {
+			ctl->ops.update_bitmask_mixer[disp_op](ctl,
+					sde_crtc->mixers[i].hw_lm->idx, 1);
+		}
+	}
+}
+
 void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = NULL;
 	bool set_dspp_flush = false, set_lm_flush = false;
 	struct sde_cp_node *prop_node = NULL, *n = NULL;
-	struct sde_hw_ctl *ctl;
-	u32 num_mixers = 0, i = 0;
+	u32 num_mixers = 0;
 	int rc = 0;
 	bool need_flush = false;
 	struct sde_crtc_state *cstate;
@@ -2732,23 +2794,8 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 		goto exit;
 	}
 
-	list_for_each_entry_safe(prop_node, n, &sde_crtc->cp_dirty_list,
-			cp_dirty_list) {
-		if ((prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_INIT ||
-			prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT ||
-			prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2) &&
-			demura_sw_fuse != SW_FUSE_ENABLE) {
-			DRM_DEBUG_DRIVER("demura_sw_fuse is not enabled: 0x%x\n", demura_sw_fuse);
-		} else {
-			_sde_cp_crtc_commit_feature(prop_node, sde_crtc);
-			_sde_cp_dspp_flush_helper(sde_crtc, prop_node->feature);
-			if (prop_node->is_dspp_feature &&
-					!prop_node->lm_flush_override)
-				set_dspp_flush = true;
-			else
-				set_lm_flush = true;
-		}
-	}
+	_sde_cp_crtc_apply_dirty_features(sde_crtc, demura_sw_fuse,
+			&set_dspp_flush, &set_lm_flush);
 
 	rc = _sde_cp_crtc_update_pu_features(crtc, &need_flush);
 	if (rc) {
@@ -2772,21 +2819,9 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 		set_dspp_flush = true;
 	}
 
-	for (i = 0; i < num_mixers; i++) {
-		ctl = sde_crtc->mixers[i].hw_ctl;
-		if (!ctl)
-			continue;
-		if (set_dspp_flush && ctl->ops.update_bitmask_dspp[disp_op]
-				&& sde_crtc->mixers[i].hw_dspp) {
-			ctl->ops.update_bitmask_dspp[disp_op](ctl,
-					sde_crtc->mixers[i].hw_dspp->idx, 1);
-		}
-		if (set_lm_flush && ctl->ops.update_bitmask_mixer[disp_op]
-				&& sde_crtc->mixers[i].hw_lm) {
-			ctl->ops.update_bitmask_mixer[disp_op](ctl,
-					sde_crtc->mixers[i].hw_lm->idx, 1);
-		}
-	}
+	_sde_cp_crtc_update_mixer_flush_bits(sde_crtc, disp_op, num_mixers,
+			set_dspp_flush, set_lm_flush);
+
 exit:
 	mutex_unlock(&sde_crtc->crtc_cp_lock);
 	if (disable_pending_cp)
