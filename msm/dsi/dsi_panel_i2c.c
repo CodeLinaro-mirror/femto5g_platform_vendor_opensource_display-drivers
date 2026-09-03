@@ -6,6 +6,7 @@
 #include <linux/delay.h>
 #include <linux/of.h>
 #include <linux/slab.h>
+#include <linux/spi/spi.h>
 #if IS_ENABLED(CONFIG_MTD)
 #include <linux/mtd/mtd.h>
 #endif
@@ -35,6 +36,9 @@
 #define JBD4040_BL_REG_B1      0x0A
 #define JBD4040_BL_REG_B2      0x14
 #define JBD4040_BL_CMD_LEN     5
+
+#define SPI_NOR_READ_OPCODE 0x03 // SPI NOR standard READ opcode
+#define SPI_NOR_CMD_LEN     4    //opcode + 3-byte address
 
 /**
  * dsi_panel_i2c_tx_cmd - send a single I2C message to one adapter
@@ -896,27 +900,151 @@ static int dsi_panel_read_mtd_field(struct mtd_info *mtd,
 	*data_out = buf;
 	return 0;
 }
+#else
+static inline int dsi_panel_read_mtd_field(struct mtd_info *mtd, loff_t offset, size_t size,
+				    u8 **data_out)
+{
+	DSI_WARN("MTD read requested but MTD support not compiled.\n");
+	return -ENODEV;
+}
+#endif /* CONFIG_MTD */
+
+/*
+ * dsi_panel_read_spi_flash_field - Read a single calibration field directly
+ * from a SPI NOR flash device at the given absolute byte offset and size into
+ * a newly allocated buffer.
+ *
+ * Large reads are split into chunks no larger than the maximum transfer size
+ * reported by the SPI controller.  Each chunk issues a fresh READ command so
+ * that the CS line can be de-asserted between chunks if required.
+ *
+ * The caller is responsible for kvfree()ing *data_out on success.
+ * put_device() on the spi_device is NOT called here; the caller owns the
+ * reference.
+ *
+ * Return: 0 on success, negative error code on failure.
+ */
+static int dsi_panel_read_spi_flash_field(struct spi_device *spi,
+					  loff_t offset, size_t size,
+					  u8 **data_out)
+{
+	u8 *buf;
+	u8 *cmd_buf;
+	size_t remaining, pos, chunk, max_chunk;
+	int rc;
+
+	if (!spi || !size || !data_out)
+		return -EINVAL;
+
+	/* Allocate a DMA-safe TX command buffer (4 bytes: opcode + 3-byte addr) */
+	cmd_buf = kmalloc(SPI_NOR_CMD_LEN, GFP_KERNEL | GFP_DMA);
+	if (!cmd_buf)
+		return -ENOMEM;
+
+	/* Allocate a DMA-safe RX data buffer */
+	buf = kzalloc(size, GFP_KERNEL | GFP_DMA);
+	if (!buf) {
+		kfree(cmd_buf);
+		return -ENOMEM;
+	}
+
+	/*
+	 * Honour the SPI controller's maximum single-transfer size.
+	 * Fall back to 4 KiB if the controller reports zero (unlimited).
+	 */
+	max_chunk = spi_max_transfer_size(spi);
+	if (!max_chunk || max_chunk > SZ_4K)
+		max_chunk = SZ_4K;
+
+	remaining = size;
+	pos = 0;
+
+	while (remaining > 0) {
+		struct spi_transfer xfers[2] = {};
+		struct spi_message msg;
+		u32 addr = (u32)(offset + pos);
+
+		chunk = min(remaining, max_chunk);
+
+		/* Build READ command in DMA-safe buffer: opcode + 24-bit address */
+		cmd_buf[0] = SPI_NOR_READ_OPCODE;
+		cmd_buf[1] = (addr >> 16) & 0xFF;
+		cmd_buf[2] = (addr >>  8) & 0xFF;
+		cmd_buf[3] =  addr & 0xFF;
+
+		spi_message_init(&msg);
+
+		xfers[0].tx_buf = cmd_buf;
+		xfers[0].len = SPI_NOR_CMD_LEN;
+		spi_message_add_tail(&xfers[0], &msg);
+
+		xfers[1].rx_buf = buf + pos;
+		xfers[1].len = chunk;
+		spi_message_add_tail(&xfers[1], &msg);
+
+		rc = spi_sync(spi, &msg);
+		if (rc) {
+			DSI_ERR("SPI flash read failed at offset 0x%x size %zu, rc=%d\n",
+				addr, chunk, rc);
+			kfree(cmd_buf);
+			kfree(buf);
+			return rc;
+		}
+
+		pos += chunk;
+		remaining -= chunk;
+	}
+
+	kfree(cmd_buf);
+
+	*data_out = buf;
+	return 0;
+}
+
+/*
+ * dsi_panel_read_flash_field - read a calibration field using the driver
+ * selected by panel->calibration_storage.
+ */
+static int dsi_panel_read_flash_field(struct dsi_panel *panel,
+				      void *storage_device,
+				      loff_t offset, size_t size,
+				      u8 **data_out)
+{
+	struct spi_device *spi;
+	struct mtd_info *mtd;
+
+	switch (panel->calibration_storage) {
+	case DSI_PANEL_CALIBRATION_STORAGE_SPI:
+		spi = (struct spi_device *)storage_device;
+
+		return dsi_panel_read_spi_flash_field(spi, offset, size, data_out);
+	case DSI_PANEL_CALIBRATION_STORAGE_MTD:
+		mtd = (struct mtd_info *)storage_device;
+
+		return dsi_panel_read_mtd_field(mtd, offset, size, data_out);
+	case DSI_PANEL_CALIBRATION_STORAGE_NONE:
+	default:
+		return -ENODEV;
+	}
+}
 
 /*
  * Build the JBD4040 calibration I2C command set for one eye.
+ * The flash read path (SPI or MTD) is selected by panel->calibration_storage.
+ * The specific left/right device pointers are derived from @panel and
+ * @cmd_type so the caller only needs to pass the panel handle.
  */
 static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
-		struct dsi_panel_i2c_config *cfg,
-		struct mtd_info *mtd,
+		struct dsi_panel *panel,
 		enum dsi_panel_i2c_cmd_set_type cmd_type)
 {
+	struct dsi_panel_i2c_config *cfg = &panel->i2c_config;
+	void *storage_device;
 	struct dsi_panel_i2c_cmd_set *cset;
 	u32 total_cmds = 0;
 	u32 cmd_idx = 0;
 	u8 *field_buf = NULL;
 	int rc = 0;
-
-	/* Sanity: flash must be large enough to hold all calibration fields */
-	if (mtd->size < JBD4040_FLASH_MIN_PARTITION_SIZE) {
-		DSI_ERR("Flash %s too small: %llu < %u bytes\n",
-			mtd->name, mtd->size, JBD4040_FLASH_MIN_PARTITION_SIZE);
-		return -EINVAL;
-	}
 
 	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_GAMMA_SIZE);
 	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_DEMURA_SIZE);
@@ -937,9 +1065,22 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 		return -ENOMEM;
 	cset->count = total_cmds;
 
+	if (cmd_type == DSI_PANEL_I2C_CMD_SET_CALIBRATION_LEFT) {
+		if (panel->calibration_storage == DSI_PANEL_CALIBRATION_STORAGE_SPI)
+			storage_device = (void *)panel->calibration_spi_left;
+		else
+			storage_device = (void *)panel->calibration_mtd_left;
+	} else {
+		if (panel->calibration_storage == DSI_PANEL_CALIBRATION_STORAGE_SPI)
+			storage_device = (void *)panel->calibration_spi_right;
+		else
+			storage_device = (void *)panel->calibration_mtd_right;
+	}
+
 	/* Red channel (slave 0x59) */
-	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_RED_GAMMA_OFFSET,
-				      JBD4040_FLASH_GAMMA_SIZE, &field_buf);
+	rc = dsi_panel_read_flash_field(panel, storage_device,
+					JBD4040_FLASH_RED_GAMMA_OFFSET,
+					JBD4040_FLASH_GAMMA_SIZE, &field_buf);
 	if (rc)
 		goto error;
 	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx, field_buf,
@@ -948,8 +1089,9 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_RED_DEMURA_OFFSET,
-				      JBD4040_FLASH_DEMURA_SIZE, &field_buf);
+	rc = dsi_panel_read_flash_field(panel, storage_device,
+					JBD4040_FLASH_RED_DEMURA_OFFSET,
+					JBD4040_FLASH_DEMURA_SIZE, &field_buf);
 	if (rc)
 		goto error;
 
@@ -959,8 +1101,9 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_RED_OFFSET_OFFSET,
-				      JBD4040_FLASH_OFFSET_SIZE, &field_buf);
+	rc = dsi_panel_read_flash_field(panel, storage_device,
+					JBD4040_FLASH_RED_OFFSET_OFFSET,
+					JBD4040_FLASH_OFFSET_SIZE, &field_buf);
 	if (rc)
 		goto error;
 
@@ -970,8 +1113,9 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_RED_FLIP_OFFSET,
-				      JBD4040_FLASH_FLIP_SIZE, &field_buf);
+	rc = dsi_panel_read_flash_field(panel, storage_device,
+					JBD4040_FLASH_RED_FLIP_OFFSET,
+					JBD4040_FLASH_FLIP_SIZE, &field_buf);
 	if (rc)
 		goto error;
 
@@ -982,8 +1126,9 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 		goto error;
 
 	/* Green channel (slave 0x5a) */
-	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_GREEN_GAMMA_OFFSET,
-				      JBD4040_FLASH_GAMMA_SIZE, &field_buf);
+	rc = dsi_panel_read_flash_field(panel, storage_device,
+					JBD4040_FLASH_GREEN_GAMMA_OFFSET,
+					JBD4040_FLASH_GAMMA_SIZE, &field_buf);
 	if (rc)
 		goto error;
 
@@ -993,8 +1138,9 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_GREEN_DEMURA_OFFSET,
-				      JBD4040_FLASH_DEMURA_SIZE, &field_buf);
+	rc = dsi_panel_read_flash_field(panel, storage_device,
+					JBD4040_FLASH_GREEN_DEMURA_OFFSET,
+					JBD4040_FLASH_DEMURA_SIZE, &field_buf);
 	if (rc)
 		goto error;
 
@@ -1004,8 +1150,9 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_GREEN_OFFSET_OFFSET,
-				      JBD4040_FLASH_OFFSET_SIZE, &field_buf);
+	rc = dsi_panel_read_flash_field(panel, storage_device,
+					JBD4040_FLASH_GREEN_OFFSET_OFFSET,
+					JBD4040_FLASH_OFFSET_SIZE, &field_buf);
 	if (rc)
 		goto error;
 
@@ -1015,8 +1162,9 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_GREEN_FLIP_OFFSET,
-				      JBD4040_FLASH_FLIP_SIZE, &field_buf);
+	rc = dsi_panel_read_flash_field(panel, storage_device,
+					JBD4040_FLASH_GREEN_FLIP_OFFSET,
+					JBD4040_FLASH_FLIP_SIZE, &field_buf);
 	if (rc)
 		goto error;
 
@@ -1027,8 +1175,9 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 		goto error;
 
 	/* Blue channel (slave 0x5b) */
-	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_BLUE_GAMMA_OFFSET,
-				      JBD4040_FLASH_GAMMA_SIZE, &field_buf);
+	rc = dsi_panel_read_flash_field(panel, storage_device,
+					JBD4040_FLASH_BLUE_GAMMA_OFFSET,
+					JBD4040_FLASH_GAMMA_SIZE, &field_buf);
 	if (rc)
 		goto error;
 
@@ -1038,8 +1187,9 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_BLUE_DEMURA_OFFSET,
-				      JBD4040_FLASH_DEMURA_SIZE, &field_buf);
+	rc = dsi_panel_read_flash_field(panel, storage_device,
+					JBD4040_FLASH_BLUE_DEMURA_OFFSET,
+					JBD4040_FLASH_DEMURA_SIZE, &field_buf);
 	if (rc)
 		goto error;
 
@@ -1049,8 +1199,9 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_BLUE_OFFSET_OFFSET,
-				      JBD4040_FLASH_OFFSET_SIZE, &field_buf);
+	rc = dsi_panel_read_flash_field(panel, storage_device,
+					JBD4040_FLASH_BLUE_OFFSET_OFFSET,
+					JBD4040_FLASH_OFFSET_SIZE, &field_buf);
 	if (rc)
 		goto error;
 
@@ -1060,8 +1211,9 @@ static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
 	if (rc)
 		goto error;
 
-	rc = dsi_panel_read_mtd_field(mtd, JBD4040_FLASH_BLUE_FLIP_OFFSET,
-				      JBD4040_FLASH_FLIP_SIZE, &field_buf);
+	rc = dsi_panel_read_flash_field(panel, storage_device,
+					JBD4040_FLASH_BLUE_FLIP_OFFSET,
+					JBD4040_FLASH_FLIP_SIZE, &field_buf);
 	if (rc)
 		goto error;
 
@@ -1085,15 +1237,6 @@ error:
 	cset->count = 0;
 	return rc;
 }
-#else
-static inline int dsi_panel_i2c_jbd4040_init_calibration_cmd(
-		struct dsi_panel_i2c_config *cfg,
-		struct mtd_info *mtd,
-		enum dsi_panel_i2c_cmd_set_type cmd_type)
-{
-	return -ENODEV;
-}
-#endif /* CONFIG_MTD */
 
 static int dsi_panel_i2c_left_calibration_thread(void *data)
 {
@@ -1136,9 +1279,8 @@ static int dsi_panel_i2c_jbd4040_send_calibration_cmd(struct dsi_panel *panel)
 		return 0;
 
 	if (!cfg->cmd_sets[DSI_PANEL_I2C_CMD_SET_CALIBRATION_LEFT].count &&
-		panel->calibration_mtd_left) {
-		rc = dsi_panel_i2c_jbd4040_init_calibration_cmd(cfg,
-					panel->calibration_mtd_left,
+	    panel->calibration_enabled) {
+		rc = dsi_panel_i2c_jbd4040_init_calibration_cmd(panel,
 					DSI_PANEL_I2C_CMD_SET_CALIBRATION_LEFT);
 		if (rc) {
 			DSI_ERR("[%s] failed to init left calibration cmd, rc=%d\n",
@@ -1148,9 +1290,8 @@ static int dsi_panel_i2c_jbd4040_send_calibration_cmd(struct dsi_panel *panel)
 	}
 
 	if (!cfg->cmd_sets[DSI_PANEL_I2C_CMD_SET_CALIBRATION_RIGHT].count &&
-		panel->calibration_mtd_right) {
-		rc = dsi_panel_i2c_jbd4040_init_calibration_cmd(cfg,
-					panel->calibration_mtd_right,
+	    panel->calibration_enabled) {
+		rc = dsi_panel_i2c_jbd4040_init_calibration_cmd(panel,
 					DSI_PANEL_I2C_CMD_SET_CALIBRATION_RIGHT);
 		if (rc) {
 			DSI_ERR("[%s] failed to init right calibration cmd, rc=%d\n",
