@@ -68,6 +68,8 @@ struct kv_prop_lookup {
 
 struct kv_prop_lookup hfi_crtc_custom_kv_props_map[] = {};
 
+static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enable);
+
 static struct hfi_kms *sde_crtc_get_kms(struct sde_crtc *crtc)
 {
 	struct msm_drm_private *priv;
@@ -1101,6 +1103,14 @@ static bool _is_hfi_crtc_enable_hw_event_required(struct sde_crtc *crtc,
 {
 	struct hfi_crtc *hfi_crtc = to_hfi_crtc(crtc);
 
+	/*
+	 * During FW SSR recovery, host state can still be "enabled" while FW
+	 * registration was lost. pending=true means allow re-register.
+	 */
+	if (enable && hfi_crtc->hw_events_state[event].state &&
+	    hfi_crtc->hw_events_state[event].pending)
+		return true;
+
 	/* avoid redundant register/unregister events */
 	if ((enable && hfi_crtc->hw_events_state[event].state)
 			|| (!enable && !hfi_crtc->hw_events_state[event].state)) {
@@ -1113,6 +1123,129 @@ static bool _is_hfi_crtc_enable_hw_event_required(struct sde_crtc *crtc,
 	}
 
 	return true;
+}
+
+static u32 _hfi_crtc_event_id_from_state(enum hfi_crtc_event event)
+{
+	switch (event) {
+	case HFI_CRTC_EVENT_LTM:
+		return HFI_EVENT_LTM;
+	case HFI_CRTC_EVENT_RGB_HIST:
+		return HFI_EVENT_RGB_HIST;
+	case HFI_CRTC_EVENT_PA_HIST:
+		return HFI_EVENT_PA_HIST;
+	case HFI_CRTC_EVENT_SPR_OPR:
+		return HFI_EVENT_SPR_OPR;
+	case HFI_CRTC_EVENT_AIQE_COPR:
+		return HFI_EVENT_AIQE_COPR;
+	default:
+		return 0;
+	}
+}
+
+static bool _hfi_crtc_event_state_from_drm_user_event(u32 drm_event,
+		enum hfi_crtc_event *event_state)
+{
+	if (!event_state)
+		return false;
+
+	switch (drm_event) {
+	case DRM_EVENT_LTM_HIST:
+		*event_state = HFI_CRTC_EVENT_LTM;
+		return true;
+	case DRM_EVENT_RGB_HIST:
+		*event_state = HFI_CRTC_EVENT_RGB_HIST;
+		return true;
+	case DRM_EVENT_HISTOGRAM:
+		*event_state = HFI_CRTC_EVENT_PA_HIST;
+		return true;
+	case DRM_EVENT_OPR_VALUE:
+		*event_state = HFI_CRTC_EVENT_SPR_OPR;
+		return true;
+	case DRM_EVENT_COPR:
+		*event_state = HFI_CRTC_EVENT_AIQE_COPR;
+		return true;
+	default:
+		return false;
+	}
+}
+
+int hfi_crtc_mark_hw_events_pending_from_user_events(struct sde_crtc *sde_crtc)
+{
+	struct hfi_crtc *hfi_crtc;
+	struct sde_crtc_irq_info *node;
+	enum hfi_crtc_event event_state;
+	unsigned long flags;
+	int marked = 0;
+
+	if (!sde_crtc || !sde_crtc->hfi_crtc)
+		return 0;
+
+	hfi_crtc = to_hfi_crtc(sde_crtc);
+	spin_lock_irqsave(&sde_crtc->spin_lock, flags);
+	list_for_each_entry(node, &sde_crtc->user_event_list, list) {
+		if (!_hfi_crtc_event_state_from_drm_user_event(node->event, &event_state))
+			continue;
+
+		hfi_crtc->hw_events_state[event_state].state = true;
+		hfi_crtc->hw_events_state[event_state].pending = true;
+		marked++;
+	}
+	spin_unlock_irqrestore(&sde_crtc->spin_lock, flags);
+
+	return marked;
+}
+
+int hfi_crtc_try_resync_hw_events(struct sde_crtc *sde_crtc)
+{
+	struct hfi_crtc *hfi_crtc;
+	u32 event, hfi_event_id;
+	int ret = 0;
+	int synced = 0;
+
+	if (!sde_crtc || !sde_crtc->hfi_crtc)
+		return -EINVAL;
+
+	hfi_crtc = to_hfi_crtc(sde_crtc);
+	for (event = 0; event < HFI_CRTC_EVENT_MAX; event++) {
+		if (!hfi_crtc->hw_events_state[event].state ||
+		    !hfi_crtc->hw_events_state[event].pending)
+			continue;
+
+		hfi_event_id = _hfi_crtc_event_id_from_state(event);
+		if (!hfi_event_id)
+			continue;
+
+		ret = hfi_crtc_enable_hw_event(sde_crtc, hfi_event_id, true);
+		if (ret) {
+			SDE_DEBUG("crtc:%d failed to resync hw event:%u rc:%d\n",
+				  DRMID(&sde_crtc->base), event, ret);
+			continue;
+		}
+
+		hfi_crtc->hw_events_state[event].pending = false;
+		synced++;
+	}
+
+	return synced;
+}
+
+bool hfi_crtc_has_pending_hw_events(struct sde_crtc *sde_crtc)
+{
+	struct hfi_crtc *hfi_crtc;
+	u32 event;
+
+	if (!sde_crtc || !sde_crtc->hfi_crtc)
+		return false;
+
+	hfi_crtc = to_hfi_crtc(sde_crtc);
+	for (event = 0; event < HFI_CRTC_EVENT_MAX; event++) {
+		if (hfi_crtc->hw_events_state[event].state &&
+				hfi_crtc->hw_events_state[event].pending)
+			return true;
+	}
+
+	return false;
 }
 
 static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enable)

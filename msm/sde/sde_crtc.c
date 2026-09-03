@@ -6898,6 +6898,7 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	enum sde_intf_mode intf_mode;
 	struct sde_hw_ctl *hw_ctl = NULL;
 	u32 encoder_mask = 0;
+
 	if (!crtc || !crtc->dev || !crtc->dev->dev_private || !crtc->state) {
 		SDE_ERROR("invalid crtc\n");
 		return;
@@ -7296,6 +7297,22 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 	sde_cp_crtc_enable(crtc);
 	/* update color processing on resume */
 	sde_cp_crtc_resume(crtc);
+
+	if (IS_DISP_OP_HFI(priv->disp_op) && sde_crtc->hw_events_ssr_recovery_pending) {
+		int marked_events, resynced_events;
+
+		marked_events = hfi_crtc_mark_hw_events_pending_from_user_events(sde_crtc);
+		resynced_events = hfi_crtc_try_resync_hw_events(sde_crtc);
+		if (resynced_events < 0) {
+			SDE_ERROR("crtc:%d failed to restore pending hw events marked:%d rc:%d\n",
+					DRMID(crtc), marked_events, resynced_events);
+		} else {
+			SDE_DEBUG("crtc:%d restored hw events on enable marked:%d resynced:%d\n",
+					DRMID(crtc), marked_events, resynced_events);
+		}
+
+		sde_crtc->hw_events_ssr_recovery_pending = hfi_crtc_has_pending_hw_events(sde_crtc);
+	}
 
 	mutex_unlock(&sde_crtc->crtc_lock);
 

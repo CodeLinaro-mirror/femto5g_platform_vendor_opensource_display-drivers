@@ -142,6 +142,22 @@ int hfi_cp_crtc_queue_ltm_buffer(struct sde_ltm_buffer *ltm_buff, void *cfg);
 void hfi_cp_crtc_free_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg);
 
 /**
+ * hfi_cp_crtc_handle_ssr_start - handle cp feature cleanup during SSR start
+ * @sde_crtc: Pointer to sde_crtc context
+ *
+ * Return: 0 on success, error code otherwise
+ */
+int hfi_cp_crtc_handle_ssr_start(struct sde_crtc *sde_crtc);
+
+/**
+ * hfi_cp_crtc_handle_ssr_end - handle cp feature restore during SSR end
+ * @sde_crtc: Pointer to sde_crtc context
+ *
+ * Return: 0 on success, error code otherwise
+ */
+int hfi_cp_crtc_handle_ssr_end(struct sde_crtc *sde_crtc);
+
+/**
  * hfi_cp_crtc_reset_color_props - reset color props
  * @color_props: Pointer to hfi color prop helper
  */
@@ -326,6 +342,16 @@ static inline int hfi_cp_crtc_queue_ltm_buffer(struct sde_ltm_buffer *ltm_buff,
 static inline void hfi_cp_crtc_free_ltm_buffer(struct sde_crtc *sde_crtc,
 	void *cfg)
 {
+}
+
+static inline int hfi_cp_crtc_handle_ssr_start(struct sde_crtc *sde_crtc)
+{
+	return 0;
+}
+
+static inline int hfi_cp_crtc_handle_ssr_end(struct sde_crtc *sde_crtc)
+{
+	return 0;
 }
 
 static inline void hfi_cp_crtc_reset_color_props(

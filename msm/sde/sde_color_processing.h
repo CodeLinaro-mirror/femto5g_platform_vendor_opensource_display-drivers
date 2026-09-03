@@ -315,6 +315,15 @@ int sde_cp_crtc_get_property(struct drm_crtc *crtc,
 void sde_cp_crtc_mark_features_dirty(struct drm_crtc *crtc);
 
 /**
+ * sde_cp_crtc_mark_feature_dirty: Move one cp feature from feature/active list
+ *                                 to dirty list when needed for recovery.
+ * @crtc: Pointer to crtc.
+ * @feature: CP feature to mark dirty.
+ */
+void sde_cp_crtc_mark_feature_dirty(struct drm_crtc *crtc,
+		enum sde_cp_crtc_features feature);
+
+/**
  * sde_cp_crtc_suspend: Suspend the crtc features
  * @crtc: Pointer to crtc.
  */
