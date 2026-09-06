@@ -35,6 +35,8 @@ def define_canoe():
                     "CONFIG_DRM_SDE_CESTA",
                     "CONFIG_QTI_HW_FENCE",
                     "CONFIG_SMMU_PROXY",
-                    "CONFIG_DSI_EXTENDED_MODES"
+                    "CONFIG_DSI_EXTENDED_MODES",
+                    "CONFIG_MSM_SDE_ROTATOR",
+                    "CONFIG_MSM_SDE_ROTATOR_EVTLOG_DEBUG"
                 ],
             )

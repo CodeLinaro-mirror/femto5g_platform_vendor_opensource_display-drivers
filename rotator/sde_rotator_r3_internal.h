@@ -439,6 +439,11 @@ static inline void sde_hw_rotator_clr_ctx(struct sde_hw_rotator_context *ctx)
 	u32 idx = sde_hw_rotator_get_regdma_ctxidx(ctx);
 	unsigned long flags;
 
+	if (ctx->q_id >= ROT_QUEUE_MAX) {
+		SDEROT_ERR("context q_id out of range: %d\n", ctx->q_id);
+		return;
+	}
+
 	spin_lock_irqsave(&rot->rotisr_lock, flags);
 	rot->rotCtx[ctx->q_id][idx] = NULL;
 	if (ctx->sbuf_mode)

@@ -1012,6 +1012,7 @@ static int _sde_enc_phys_wb_validate_dnsc_blur_ds(struct drm_crtc_state *crtc_st
 
 	if (!msm_atomic_needs_modeset(crtc_state, conn_state) && !phys_enc->hw_dnsc_blur) {
 		SDE_DEBUG("hw_dnsc_blur block reservation is needed, requesting mode_set\n");
+		cstate->dnsc_res_changed = true;
 		crtc_state->mode_changed = true;
 	}
 
@@ -2374,7 +2375,7 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 	}
 
 	sde_crtc = to_sde_crtc(sde_enc->crtc);
-	if (sde_crtc)
+	if (sde_crtc && sde_enc->crtc->state->active)
 		sde_crtc->cached_encoder_mask &= ~drm_encoder_mask(phys_enc->parent);
 
 	wb_enc->crtc = NULL;
