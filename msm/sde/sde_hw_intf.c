@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -803,10 +803,14 @@ static int sde_hw_intf_setup_autorefresh_config(struct sde_hw_intf *intf,
 	c = &intf->hw;
 
 	refresh_cfg = SDE_REG_READ(c, INTF_TEAR_AUTOREFRESH_CONFIG);
-	if (cfg->enable)
-		refresh_cfg = BIT(31) | cfg->frame_count;
-	else
+	if (cfg->enable) {
+		/* Update FRAME_COUNT before BIT(31) enabling autorefresh. */
+		refresh_cfg = cfg->frame_count;
+		SDE_REG_WRITE(c, INTF_TEAR_AUTOREFRESH_CONFIG, refresh_cfg);
+		refresh_cfg |= BIT(31);
+	} else {
 		refresh_cfg &= ~BIT(31);
+	}
 
 	SDE_REG_WRITE(c, INTF_TEAR_AUTOREFRESH_CONFIG, refresh_cfg);
 
@@ -927,6 +931,20 @@ static int sde_hw_intf_connect_external_te(struct sde_hw_intf *intf,
 	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_VSYNC, cfg);
 
 	return orig;
+}
+
+static u32 sde_hw_intf_get_vsync_count(struct sde_hw_intf *intf)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 val;
+
+	if (!intf)
+		return 0;
+
+	c = &intf->hw;
+	val = SDE_REG_READ(c, INTF_TEAR_SYNC_CONFIG_VSYNC);
+
+	return (val & 0x7ffff);
 }
 
 static int sde_hw_intf_get_vsync_info(struct sde_hw_intf *intf,
@@ -1107,6 +1125,7 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		ops->update_tearcheck = sde_hw_intf_update_te;
 		ops->connect_external_te = sde_hw_intf_connect_external_te;
 		ops->get_vsync_info = sde_hw_intf_get_vsync_info;
+		ops->get_vsync_count = sde_hw_intf_get_vsync_count;
 		ops->setup_autorefresh = sde_hw_intf_setup_autorefresh_config;
 		ops->get_autorefresh = sde_hw_intf_get_autorefresh_config;
 		ops->get_autorefresh_status =

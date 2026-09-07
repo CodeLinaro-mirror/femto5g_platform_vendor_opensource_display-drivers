@@ -28,7 +28,7 @@
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
 
 /* Autorefresh will occur after FRAME_CNT frames. Large values are unlikely */
-#define AUTOREFRESH_MAX_FRAME_CNT 6
+#define AUTOREFRESH_MAX_FRAME_CNT 8
 
 #define SDE_DEBUG_CONN(c, fmt, ...) SDE_DEBUG("conn%d " fmt,\
 		(c) ? (c)->base.base.id : -1, ##__VA_ARGS__)
