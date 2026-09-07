@@ -175,18 +175,22 @@ struct dsi_lane_map {
  * enum dsi_trigger_type - dsi trigger type
  * @DSI_TRIGGER_NONE:     No trigger.
  * @DSI_TRIGGER_TE:       TE trigger.
- * @DSI_TRIGGER_SEOF:     Start or End of frame.
+ * @DSI_TRIGGER_SOF:      Start of frame trigger.
+ * @DSI_TRIGGER_EOF:      End of frame trigger.
  * @DSI_TRIGGER_SW:       Software trigger.
- * @DSI_TRIGGER_SW_SEOF:  Software trigger and start/end of frame.
+ * @DSI_TRIGGER_SW_SOF:   Software trigger and start of frame trigger.
+ * @DSI_TRIGGER_SW_EOF:   Software trigger and end of frame trigger.
  * @DSI_TRIGGER_SW_TE:    Software and TE triggers.
  * @DSI_TRIGGER_MAX:      Max trigger values.
  */
 enum dsi_trigger_type {
 	DSI_TRIGGER_NONE = 0,
 	DSI_TRIGGER_TE,
-	DSI_TRIGGER_SEOF,
+	DSI_TRIGGER_SOF,
+	DSI_TRIGGER_EOF,
 	DSI_TRIGGER_SW,
-	DSI_TRIGGER_SW_SEOF,
+	DSI_TRIGGER_SW_SOF,
+	DSI_TRIGGER_SW_EOF,
 	DSI_TRIGGER_SW_TE,
 	DSI_TRIGGER_MAX
 };
@@ -370,6 +374,7 @@ enum dsi_video_traffic_mode {
  * @post_wait_ms:        post wait duration
  * @ctrl:                index of DSI controller
  * @ctrl_flags:          controller flags
+ * @trigger_type:        trigger type for command mode DMA
  * @ts:                  dsi command time stamp in nano-seconds.
  */
 struct dsi_cmd_desc {
@@ -378,6 +383,7 @@ struct dsi_cmd_desc {
 	u32  post_wait_ms;
 	u32 ctrl;
 	u32 ctrl_flags;
+	enum dsi_trigger_type trigger_type;
 	ktime_t ts;
 };
 

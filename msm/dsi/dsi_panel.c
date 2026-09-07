@@ -1095,6 +1095,34 @@ static int dsi_panel_parse_color_swap(struct dsi_host_common_cfg *host,
 	return rc;
 }
 
+static int dsi_panel_parse_trigger_type(const char *name, const char *trig,
+					enum dsi_trigger_type *trigger)
+{
+	if (!strcmp(trig, "none"))
+		*trigger = DSI_TRIGGER_NONE;
+	else if (!strcmp(trig, "trigger_te"))
+		*trigger = DSI_TRIGGER_TE;
+	else if (!strcmp(trig, "trigger_sof"))
+		*trigger = DSI_TRIGGER_SOF;
+	else if (!strcmp(trig, "trigger_eof"))
+		*trigger = DSI_TRIGGER_EOF;
+	else if (!strcmp(trig, "trigger_sw"))
+		*trigger = DSI_TRIGGER_SW;
+	else if (!strcmp(trig, "trigger_sw_sof"))
+		*trigger = DSI_TRIGGER_SW_SOF;
+	else if (!strcmp(trig, "trigger_sw_eof"))
+		*trigger = DSI_TRIGGER_SW_EOF;
+	else if (!strcmp(trig, "trigger_sw_te"))
+		*trigger = DSI_TRIGGER_SW_TE;
+	else {
+		DSI_ERR("[%s] Unrecognized trigger type (%s)\n",
+				name, trig);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int dsi_panel_parse_triggers(struct dsi_host_common_cfg *host,
 				    struct dsi_parser_utils *utils,
 				    const char *name)
@@ -1128,24 +1156,12 @@ static int dsi_panel_parse_triggers(struct dsi_host_common_cfg *host,
 	trig = utils->get_property(utils->data,
 			"qcom,mdss-dsi-dma-trigger", NULL);
 	if (trig) {
-		if (!strcmp(trig, "none")) {
-			host->dma_cmd_trigger = DSI_TRIGGER_NONE;
-		} else if (!strcmp(trig, "trigger_te")) {
-			host->dma_cmd_trigger = DSI_TRIGGER_TE;
-		} else if (!strcmp(trig, "trigger_sw")) {
-			host->dma_cmd_trigger = DSI_TRIGGER_SW;
-		} else if (!strcmp(trig, "trigger_sw_seof")) {
-			host->dma_cmd_trigger = DSI_TRIGGER_SW_SEOF;
-		} else if (!strcmp(trig, "trigger_sw_te")) {
-			host->dma_cmd_trigger = DSI_TRIGGER_SW_TE;
-		} else {
-			DSI_ERR("[%s] Unrecognized mdp trigger type (%s)\n",
-			       name, trig);
+		rc = dsi_panel_parse_trigger_type(name, trig,
+						&host->dma_cmd_trigger);
+		if (rc)
 			rc = -EINVAL;
-		}
-
 	} else {
-		DSI_DEBUG("[%s] Falling back to default MDP trigger\n", name);
+		DSI_DEBUG("[%s] Falling back to default DMA trigger\n", name);
 		host->dma_cmd_trigger = DSI_TRIGGER_SW;
 	}
 
@@ -2043,6 +2059,40 @@ int dsi_panel_alloc_cmd_packets(struct dsi_panel_cmd_set *cmd,
 	return 0;
 }
 
+static int dsi_panel_parse_cmd_set_trigger_types(struct dsi_panel *panel,
+					struct dsi_panel_cmd_set *cmd,
+					enum dsi_cmd_set_type type,
+					struct dsi_parser_utils *utils)
+{
+	int rc = 0, i = 0;
+	const char *trigger;
+	char trigger_prop[128];
+	enum dsi_trigger_type trigger_type = DSI_TRIGGER_NONE;
+
+	if (!cmd || !cmd->cmds || !cmd->count)
+		return 0;
+
+	snprintf(trigger_prop, sizeof(trigger_prop), "%s-trigger-type",
+		 cmd_set_prop_map[type]);
+
+	rc = utils->read_string(utils->data, trigger_prop, &trigger);
+	if (rc) {
+		/* No trigger-type defined, use default DMA trigger later */
+		trigger_type = DSI_TRIGGER_NONE;
+		rc = 0;
+	} else {
+		rc = dsi_panel_parse_trigger_type(trigger_prop, trigger,
+						&trigger_type);
+		if (rc)
+			return rc;
+	}
+
+	for (i = 0; i < cmd->count; i++)
+		cmd->cmds[i].trigger_type = trigger_type;
+
+	return 0;
+}
+
 static int dsi_panel_parse_cmd_sets_sub(struct dsi_panel *panel,
 					struct dsi_panel_cmd_set *cmd,
 					enum dsi_cmd_set_type type,
@@ -2105,6 +2155,10 @@ static int dsi_panel_parse_cmd_sets_sub(struct dsi_panel *panel,
 		       cmd_set_state_map[type], state);
 		goto error_free_mem;
 	}
+
+	rc = dsi_panel_parse_cmd_set_trigger_types(panel, cmd, type, utils);
+	if (rc)
+		goto error_free_mem;
 
 	return rc;
 error_free_mem:
