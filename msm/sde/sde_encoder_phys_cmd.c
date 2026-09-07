@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2403,6 +2403,7 @@ static void _sde_encoder_phys_disable_autorefresh(struct sde_encoder_phys *phys_
 {
 	struct sde_encoder_phys_cmd *cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
 	struct sde_kms *sde_kms;
+	u32 incoming_frame_count;
 
 	if (!phys_enc || !sde_encoder_phys_cmd_is_master(phys_enc))
 		return;
@@ -2410,8 +2411,12 @@ static void _sde_encoder_phys_disable_autorefresh(struct sde_encoder_phys *phys_
 	if (!sde_encoder_phys_cmd_is_autorefresh_enabled(phys_enc))
 		return;
 
+	incoming_frame_count = _sde_encoder_phys_cmd_get_autorefresh_property(phys_enc);
 	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->intf_idx - INTF_0,
-			cmd_enc->autorefresh.cfg.enable);
+		cmd_enc->autorefresh.cfg.enable, incoming_frame_count);
+
+	if (incoming_frame_count)
+		return;
 
 	sde_kms = phys_enc->sde_kms;
 
