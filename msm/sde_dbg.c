@@ -2426,7 +2426,11 @@ static ssize_t sde_dbg_reg_base_reg_read(struct file *file,
 		}
 
 		for (cnt = dbg->cnt; cnt > 0; cnt -= ROW_BYTES) {
-			hex_dump_to_buffer(ptr, min(cnt, ROW_BYTES),
+			u8 row_data[ROW_BYTES];
+			int row_bytes = min(cnt, ROW_BYTES);
+
+			memcpy_fromio(row_data, ptr, row_bytes);
+			hex_dump_to_buffer(row_data, row_bytes,
 					   ROW_BYTES, GROUP_BYTES, dump_buf,
 					   sizeof(dump_buf), false);
 			len = scnprintf(dbg->buf + tot, dbg->buf_len - tot,
