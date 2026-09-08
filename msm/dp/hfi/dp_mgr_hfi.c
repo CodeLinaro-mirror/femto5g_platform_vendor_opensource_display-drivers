@@ -36,6 +36,7 @@
 #include "dp_hdcp.h"
 #include "dp_drm.h"
 #include "dp_altmode.h"
+#include "dp_aux_hfi.h"
 #include "linux/msm_hdcp.h"
 
 #define DRM_DP_IPC_NUM_PAGES 10
@@ -2775,6 +2776,17 @@ static int dp_mgr_hfi_post_init(struct dp_client *client)
 		DP_DEBUG("HFI audio initialized successfully\n");
 	}
 
+	/* Initialize HFI AUX channel */
+	hfi_priv->aux_hfi = dp_aux_hfi_get(&hfi_priv->pdev->dev,
+			hfi->hfi_client, client->dp_ipc_log);
+	if (IS_ERR(hfi_priv->aux_hfi)) {
+		rc = PTR_ERR(hfi_priv->aux_hfi);
+		DP_ERR("dp_aux_hfi_get failed: %d\n", rc);
+		hfi_priv->aux_hfi = NULL;
+	} else {
+		DP_DEBUG("HFI AUX channel initialized successfully\n");
+	}
+
 	if (!hfi->hdcp2x_req_map) {
 		hfi->hdcp2x_req_map = dp_mgr_hfi_init_shared_addr(hfi->hfi_client, SZ_1K);
 		if (!hfi->hdcp2x_req_map)
@@ -3335,6 +3347,19 @@ static int dp_mgr_hfi_bind(struct device *dev, struct device *master,
 
 	hfi_priv->client.drm_dev = drm;
 	hfi_priv->priv = drm->dev_private;
+
+	/* Register the HFI drm_dp_aux with the DRM core now that drm_dev is known.
+	 * This is the HFI equivalent of dp_drv_bind calling
+	 * dp->aux->drm_aux_register(dp->aux, drm_dev) in the HWIO path.
+	 */
+	if (hfi_priv->aux_hfi) {
+		rc = dp_aux_hfi_register(hfi_priv->aux_hfi, drm);
+		if (rc) {
+			DP_ERR("dp_aux_hfi_register failed: %d\n", rc);
+			goto end;
+		}
+	}
+
 	rc = msm_register_vm_event(master, dev, &vm_event_ops, (void *)&hfi_priv->client);
 
 	if (rc)
@@ -3371,6 +3396,15 @@ static void dp_mgr_hfi_unbind(struct device *dev, struct device *master,
 		flush_workqueue(hfi_priv->wq);
 		destroy_workqueue(hfi_priv->wq);
 		hfi_priv->wq = NULL;
+	}
+
+	/* Deregister the HFI drm_dp_aux – mirror of dp_drv_unbind calling
+	 * dp->aux->drm_aux_deregister(dp->aux) in the HWIO path.
+	 */
+	if (hfi_priv->aux_hfi) {
+		dp_aux_hfi_deregister(hfi_priv->aux_hfi);
+		dp_aux_hfi_put(hfi_priv->aux_hfi);
+		hfi_priv->aux_hfi = NULL;
 	}
 
 	/* Cleanup EDID control structure */
