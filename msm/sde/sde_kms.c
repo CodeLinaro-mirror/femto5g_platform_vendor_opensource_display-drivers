@@ -6901,8 +6901,13 @@ static int _sde_kms_hw_init_rm(struct sde_kms *sde_kms, struct msm_drm_private *
 
 		for (i = 0; i < display_count; i++) {
 			display = &sde_kms->splash_data.splash_display[i];
-			if (IS_DISP_OP_HFI(priv->disp_op))
-				display->cont_splash_enabled = true;
+			if (IS_DISP_OP_HFI(priv->disp_op) &&
+				sde_kms->hfi_kms && sde_kms->hfi_kms->catalog) {
+				struct hfi_catalog_base *catalog = sde_kms->hfi_kms->catalog;
+				unsigned int pipes_mask = catalog->active_pipes_mask[i];
+				display->cont_splash_enabled = pipes_mask ? true : false;
+			}
+
 			/*
 			 * free splash region on resource init failure and
 			 * cont-splash disabled case
