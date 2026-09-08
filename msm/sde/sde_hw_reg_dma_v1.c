@@ -778,9 +778,10 @@ static int hfi_write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_id
 				sizeof(struct hfi_qrtc_config) * cfg->num_of_mixers);
 			if (ret)
 				DRM_ERROR("Failed to add hfi prop %d ret %d\n", cfg->prop_id, ret);
-			/* reset the cached struct after submitting to FW */
-			memset(&hfi_qrtc_config_cached[dpu_idx][0], 0,
-				sizeof(hfi_qrtc_config_cached[dpu_idx]));
+			/* reset only the current display's DSPP entries */
+			memset(&hfi_qrtc_config_cached[dpu_idx][cfg->dspp_start_idx], 0,
+				sizeof(hfi_qrtc_config_cached[dpu_idx][0]) *
+				cfg->num_of_mixers);
 			return ret;
 		}
 	}
