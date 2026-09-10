@@ -81,7 +81,7 @@ struct dsi_panel_i2c_config {
 int dsi_panel_i2c_parse_config(struct dsi_panel *panel);
 int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
 			      enum dsi_panel_i2c_cmd_set_type type,
-			      struct i2c_adapter *adapter);
+			      struct i2c_adapter *adapter, u8 override_slave_addr);
 int dsi_panel_i2c_enable(struct dsi_panel *panel);
 int dsi_panel_i2c_disable(struct dsi_panel *panel);
 int dsi_panel_i2c_calibrate(struct dsi_panel *panel);
@@ -90,7 +90,8 @@ int dsi_panel_i2c_update_backlight(struct dsi_panel *panel, u32 bl_lvl);
 static inline int dsi_panel_i2c_parse_config(struct dsi_panel *panel) { return 0; }
 static inline int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
 					    enum dsi_panel_i2c_cmd_set_type type,
-					    struct i2c_adapter *adapter) { return 0; }
+					    struct i2c_adapter *adapter,
+					    u8 override_slave_addr) { return 0; }
 static inline int dsi_panel_i2c_enable(struct dsi_panel *panel) { return 0; }
 static inline int dsi_panel_i2c_disable(struct dsi_panel *panel) { return 0; }
 static inline int dsi_panel_i2c_calibrate(struct dsi_panel *panel) { return 0; }

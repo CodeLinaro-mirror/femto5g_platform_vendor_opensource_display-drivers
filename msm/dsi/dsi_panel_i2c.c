@@ -445,14 +445,14 @@ static int dsi_panel_i2c_isl97900_update_brightness(struct dsi_panel *panel, u32
 
 	if (cfg->left_adapter) {
 		rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_BRIGHTNESS,
-					      cfg->left_adapter);
+					      cfg->left_adapter, cfg->left_slave_addr);
 		if (rc)
 			return rc;
 	}
 
 	if (cfg->right_adapter) {
 		rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_BRIGHTNESS,
-					      cfg->right_adapter);
+					      cfg->right_adapter, cfg->right_slave_addr);
 	}
 
 	return rc;
@@ -531,14 +531,14 @@ static int dsi_panel_i2c_jbd4040_update_brightness(struct dsi_panel *panel, u32 
 
 	if (cfg->left_adapter) {
 		rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_BRIGHTNESS,
-					      cfg->left_adapter);
+					      cfg->left_adapter, 0);
 		if (rc)
 			return rc;
 	}
 
 	if (cfg->right_adapter) {
 		rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_BRIGHTNESS,
-					      cfg->right_adapter);
+					      cfg->right_adapter, 0);
 	}
 
 	return rc;
@@ -600,7 +600,7 @@ int dsi_panel_i2c_enable(struct dsi_panel *panel)
 	cfg = &panel->i2c_config;
 
 	rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_ON,
-				       cfg->left_adapter);
+				       cfg->left_adapter, 0);
 	if (rc) {
 		DSI_ERR("[%s] failed to send i2c on cmds on left, rc=%d\n",
 			panel->name, rc);
@@ -608,7 +608,7 @@ int dsi_panel_i2c_enable(struct dsi_panel *panel)
 	}
 
 	rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_ON,
-				       cfg->right_adapter);
+				       cfg->right_adapter, 0);
 	if (rc)
 		DSI_ERR("[%s] failed to send i2c on cmds on right, rc=%d\n",
 			panel->name, rc);
@@ -636,7 +636,7 @@ int dsi_panel_i2c_disable(struct dsi_panel *panel)
 	cfg = &panel->i2c_config;
 
 	rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_OFF,
-				       cfg->left_adapter);
+				       cfg->left_adapter, 0);
 	if (rc) {
 		DSI_ERR("[%s] failed to send i2c off cmds on left, rc=%d\n",
 			panel->name, rc);
@@ -644,7 +644,7 @@ int dsi_panel_i2c_disable(struct dsi_panel *panel)
 	}
 
 	rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_OFF,
-				       cfg->right_adapter);
+				       cfg->right_adapter, 0);
 	if (rc)
 		DSI_ERR("[%s] failed to send i2c off cmds on right, rc=%d\n",
 			panel->name, rc);
@@ -657,6 +657,8 @@ int dsi_panel_i2c_disable(struct dsi_panel *panel)
  * @panel:   DSI panel handle
  * @type:    command set type to send (on, off, brightness, calibration, ...)
  * @adapter: I2C adapter to send the commands on (left or right)
+ * @override_slave_addr: I2C slave address of the device on the adapter. A non-zero
+ *            value will override the slave_addr specified in the commands set type.
  *
  * Iterates over all commands in the specified set and sends each one over
  * the supplied I2C adapter.  Applies the per-command post-wait delay after
@@ -669,7 +671,7 @@ int dsi_panel_i2c_disable(struct dsi_panel *panel)
  */
 int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
 			      enum dsi_panel_i2c_cmd_set_type type,
-			      struct i2c_adapter *adapter)
+			      struct i2c_adapter *adapter, u8 override_slave_addr)
 {
 	struct dsi_panel_i2c_config *cfg;
 	struct dsi_panel_i2c_cmd_set *set;
@@ -714,7 +716,9 @@ int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
 		 * in the driver) fall back to the per-adapter address stored
 		 * in cfg->left_slave_addr / cfg->right_slave_addr.
 		 */
-		if (cmd->slave_addr) {
+		if (override_slave_addr) {
+			slave_addr = override_slave_addr;
+		} else if (cmd->slave_addr) {
 			slave_addr = cmd->slave_addr;
 		} else if (adapter == cfg->left_adapter) {
 			slave_addr = cfg->left_slave_addr;
@@ -1263,7 +1267,7 @@ static int dsi_panel_i2c_left_calibration_thread(void *data)
 	rc = dsi_panel_i2c_tx_cmd_set(
 			panel,
 			DSI_PANEL_I2C_CMD_SET_CALIBRATION_LEFT,
-			cfg->left_adapter);
+			cfg->left_adapter, 0);
 
 	if (rc)
 		DSI_ERR("[%s] failed to send left calibration cmds, rc=%d\n",
@@ -1327,7 +1331,7 @@ static int dsi_panel_i2c_jbd4040_send_calibration_cmd(struct dsi_panel *panel)
 	}
 
 	rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_CALIBRATION_RIGHT,
-				       cfg->right_adapter);
+				       cfg->right_adapter, 0);
 	if (rc)
 		DSI_ERR("[%s] failed to send right calibration cmds, rc=%d\n",
 			panel->name, rc);
