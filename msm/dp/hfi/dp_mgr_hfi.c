@@ -1574,6 +1574,7 @@ static int dp_mgr_hfi_parser(struct dp_mgr_hfi_priv *hfi_priv)
 	dp_parser_max_link_rate(parser);
 	dp_parser_max_lane_count(parser);
 	dp_parser_lane_tuning_params(parser);
+	dp_parse_vendor_info(parser);
 
 	return 0;
 }
@@ -1915,9 +1916,9 @@ static void dp_mgr_hfi_post_open(struct dp_client *client)
 	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
 	hfi = hfi_priv->hfi[0];
 
-	if (!hfi_priv->generic_caps_sent && hfi) {
+	if (!hfi_priv->panel_init && hfi) {
 		dp_hfi_panel_init(hfi);
-		hfi_priv->generic_caps_sent = true;
+		hfi_priv->panel_init = true;
 	}
 }
 

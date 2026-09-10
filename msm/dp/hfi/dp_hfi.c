@@ -19,6 +19,7 @@
 #include "hfi_props.h"
 #include "hfi_kms.h"
 #include "hfi_commands_device.h"
+#include "hfi_defs_panel.h"
 #include "dp_debug.h"
 #include "sde_hdcp.h"
 
@@ -611,6 +612,54 @@ static int _append_lane_tuning_params(struct dp_hfi *hfi, u32 *lane_tuning_paylo
 	return kv_size;
 }
 
+/*
+ * _append_sdp_infoframe - Pack generic CTA InfoFrame SDP payloads into kv_props.
+ *
+ * Builds a CTA Source Product Descriptor (SPD) InfoFrame payload from
+ * the vendor name and product description parsed from device tree.
+ * sdp_infoframe_payload must remain valid until hfi_adapter_add_prop_array().
+ */
+static int _append_sdp_infoframe(struct dp_hfi *hfi, u32 *sdp_infoframe_payload)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
+	struct dp_parser *parser;
+	struct dp_spd_info *spd_info;
+	u8 *cta_payload;
+	struct hfi_util_kv_helper *kv_props = hfi->kv_props;
+	u32 sdp_infoframe_size = 1 + DIV_ROUND_UP(HFI_MAX_CTA_PAYLOAD_SIZE, (u32)sizeof(u32));
+	u32 cta_size = DP_SPD_VENDOR_NAME_LEN + DP_SPD_PRODUCT_DESC_LEN;
+	u32 kv_size = 0;
+
+	if (!hfi_priv || !hfi_priv->parser)
+		return kv_size;
+
+	parser = hfi_priv->parser;
+	spd_info = parser->vendor_info;
+
+	if (!spd_info || !kv_props || !sdp_infoframe_payload)
+		return kv_size;
+
+	/*
+	 * payload[0]: (u8)infoframe_type | (u8)size << 8 | (u8)sdp_spd_id << 16 |
+	 *             (u8)reserved << 24
+	 */
+	sdp_infoframe_payload[0] = HFI_INFOFRAME_TYPE_SPD | (cta_size << 8) |
+			((u32)spd_info->sdp_spd_id << 16);
+
+	/* payload[1..]: raw CTA InfoFrame payload bytes (vendor_name + product_desc) */
+	cta_payload = (u8 *)&sdp_infoframe_payload[1];
+	memcpy(cta_payload, spd_info->vendor_name, DP_SPD_VENDOR_NAME_LEN);
+	memcpy(cta_payload + DP_SPD_VENDOR_NAME_LEN, spd_info->product_desc,
+			DP_SPD_PRODUCT_DESC_LEN);
+
+	hfi_util_kv_helper_add(kv_props,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_GENERIC_SDP_INFO, 0, sdp_infoframe_size),
+			sdp_infoframe_payload);
+	kv_size += sdp_infoframe_size * sizeof(u32);
+
+	return kv_size;
+}
+
 void dp_hfi_panel_init(struct dp_hfi *hfi)
 {
 	/*
@@ -624,6 +673,7 @@ void dp_hfi_panel_init(struct dp_hfi *hfi)
 		DP_HFI_KV_PROP_MAX_LINK_RATE,
 		DP_HFI_KV_PROP_MAX_LANE_COUNT,
 		DP_HFI_KV_PROP_LANE_TUNING_PARAMS,
+		DP_HFI_KV_PROP_GENERIC_SDP,
 		DP_HFI_KV_PROP_COUNT,
 	};
 
@@ -635,11 +685,12 @@ void dp_hfi_panel_init(struct dp_hfi *hfi)
 	int rc = 0;
 
 	/* Declared here so they remain valid when hfi_adapter_add_prop_array()
-	 * uses the kv_pairs packed by _append_aux_cfg() and _append_lt_params().
+	 * uses the kv_pairs packed by the preceeding append functions
 	 */
 	u32 aux_cfg_payload[PHY_AUX_CFG_MAX + 1];
 	u32 lt_params_payload[NUM_BW_CODE * (2 + NUM_VSWING_VAL)];
 	u32 lane_tuning_payload[1 + ((DP_MAX_LANE_TUNING_PARAMS + 1) / 2)];
+	u32 sdp_infoframe_payload[1 + DIV_ROUND_UP(HFI_MAX_CTA_PAYLOAD_SIZE, (u32)sizeof(u32))];
 	u32 kv_count, payload_size, kv_size = 0;
 
 	if (!hfi_client) {
@@ -673,6 +724,7 @@ void dp_hfi_panel_init(struct dp_hfi *hfi)
 	kv_size += _append_lt_params(hfi, lt_params_payload);
 	kv_size += _append_max_link_params(hfi);
 	kv_size += _append_lane_tuning_params(hfi, lane_tuning_payload);
+	kv_size += _append_sdp_infoframe(hfi, sdp_infoframe_payload);
 
 	if (!kv_size) {
 		DP_DEBUG("No dp panel init caps to send\n");
