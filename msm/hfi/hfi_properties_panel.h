@@ -1097,6 +1097,22 @@
 #define HFI_PROPERTY_PANEL_GENERIC_SDP_INFO                          0x0004004B
 
 /*
+ * HFI_PROPERTY_PANEL_SPLIT_LINK - Specifies whether split link is enabled
+ *                                 for this panel and, if so, how many lanes
+ *                                 belong to each sublink.
+ *                                 This property is sent to DCP as part
+ *                                 of HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
+ *                                 command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_SPLIT_LINK
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_SPLIT_LINK |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : bit0 - split link enabled
+ *                               bits[8:15] - lanes per sublink
+ */
+#define HFI_PROPERTY_PANEL_SPLIT_LINK                                0x0004004E
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF
