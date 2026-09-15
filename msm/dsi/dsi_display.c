@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -22,6 +22,7 @@
 #include "dsi_clk.h"
 #include "dsi_pwr.h"
 #include "sde_dbg.h"
+#include "sde_encoder_phys.h"
 #include "dsi_parser.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
@@ -3490,7 +3491,7 @@ error:
 static ssize_t dsi_host_transfer(struct mipi_dsi_host *host, const struct mipi_dsi_msg *msg)
 {
 	int rc = 0;
-	struct dsi_cmd_desc cmd;
+	struct dsi_cmd_desc cmd = {};
 
 	if (!msg) {
 		DSI_ERR("Invalid params\n");
@@ -7734,6 +7735,31 @@ static inline bool dsi_display_mode_switch_dfps(struct dsi_display_mode *cur,
 		return false;
 }
 
+static inline bool dsi_display_mode_switch_autorefresh(
+		struct dsi_display *display,
+		struct dsi_display_mode *cur, struct dsi_display_mode *adj)
+{
+	struct drm_encoder *drm_enc;
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys *phys_enc;
+
+	if (!display || !display->drm_conn || !cur || !adj)
+		return false;
+
+	if (cur->timing.refresh_rate == adj->timing.refresh_rate)
+		return false;
+
+	drm_enc = sde_connector_get_encoder(display->drm_conn);
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	phys_enc = sde_enc ? sde_enc->cur_master : NULL;
+
+	return phys_enc && phys_enc->ops.is_autorefresh_enabled &&
+			phys_enc->ops.is_autorefresh_enabled(phys_enc);
+}
+
 /**
  * dsi_display_validate_mode_change() - Validate mode change case.
  * @display:     DSI display handle.
@@ -7797,6 +7823,12 @@ int dsi_display_validate_mode_change(struct dsi_display *display,
 		SDE_EVT32(SDE_EVTLOG_FUNC_CASE4, cur_mode->pixel_format_caps,
 				adj_mode->pixel_format_caps);
 		DSI_DEBUG("BPP mode change detected\n");
+	} else if (dsi_display_mode_switch_autorefresh(display, cur_mode, adj_mode)) {
+		adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_AUTOREFRESH;
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE5,
+			cur_mode->timing.refresh_rate,
+			adj_mode->timing.refresh_rate);
+		DSI_DEBUG("Autorefresh refresh rate change detected\n");
 	} else {
 		dyn_clk_caps = &(display->panel->dyn_clk_caps);
 		/* dfps and dynamic clock with const fps use case */
