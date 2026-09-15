@@ -248,6 +248,43 @@ struct dp_lane_tuning_param {
 	u8 value;
 };
 
+/*!
+ * @def DP_SPD_VENDOR_NAME_LEN
+ * @brief DisplayPort SPD (Source Product Descriptor) InfoFrame vendor name
+ * field length, in bytes, within the CTA InfoFrame payload.
+ */
+#define DP_SPD_VENDOR_NAME_LEN   8
+
+/*!
+ * @def DP_SPD_PRODUCT_DESC_LEN
+ * @brief DisplayPort SPD (Source Product Descriptor) InfoFrame product
+ * description field length, in bytes, within the CTA InfoFrame payload.
+ */
+#define DP_SPD_PRODUCT_DESC_LEN  16
+
+/*!
+ * @def DP_SDP_SPD_DEFAULT_ID
+ * @brief Default GENERICx SDP register block id (GENERIC1) used to transmit
+ * the SPD InfoFrame when no override is specified in the device tree.
+ */
+#define DP_SDP_SPD_DEFAULT_ID 1
+
+/**
+ * struct dp_spd_info - Source Product Descriptor (SPD) vendor and product
+ * identification information
+ *
+ * @vendor_name: 8-byte vendor name as defined in DPCD
+ * @product_desc: 16-byte product description as defined in DPCD
+ * @sdp_spd_id: which GENERICx SDP register block to use to transmit the SPD
+ *   InfoFrame (defaults to DP_SDP_SPD_DEFAULT_ID if not specified in
+ *   device tree)
+ */
+struct dp_spd_info {
+	u8 vendor_name[DP_SPD_VENDOR_NAME_LEN];
+	u8 product_desc[DP_SPD_PRODUCT_DESC_LEN];
+	u8 sdp_spd_id;
+};
+
 /**
  * struct dp_parser - DP parser's data exposed to clients
  *
@@ -281,6 +318,7 @@ struct dp_lane_tuning_param {
  * @pre_emp_hbr2_3: Pre-emphasis for HBR2 and HBR3 rates
  * @swing_hbr_rbr: Voltage swing levels for HBR and RBR rates
  * @pre_emp_hbr_rbr: Pre-emphasis for HBR and RBR rates
+ * @vendor_info: pointer to parsed vendor and product identification info
  * @valid_lt_params: valid lt params
  * @lane_tuning_params: Array of lane tuning parameter <id, value> pairs.
  * @lane_tuning_count: number of entries in lane_tuning_params
@@ -342,6 +380,8 @@ struct dp_parser {
 	struct dp_lane_tuning_param *lane_tuning_params;
 	u32 lane_tuning_count;
 
+	struct dp_spd_info *vendor_info;
+
 	int (*parse)(struct dp_parser *parser);
 	struct dp_io_data *(*get_io)(struct dp_parser *parser, char *name);
 	void (*get_io_buf)(struct dp_parser *parser, char *name);
@@ -362,6 +402,23 @@ enum dp_mainlink_lane_num {
 	DP_ML2 = 2,
 	DP_ML3 = 3,
 };
+
+/**
+ * dp_parse_vendor_info() - parse vendor name and product description
+ *
+ * @parser: pointer to the parser's data.
+ * return: 0 on success, negative error code on failure.
+ *
+ * On success, parser->vendor_info is allocated and populated.
+ */
+int dp_parse_vendor_info(struct dp_parser *parser);
+
+/**
+ * dp_parser_clear_vendor_info() - free vendor info allocated by dp_parse_vendor_info
+ *
+ * @parser: pointer to the parser's data.
+ */
+void dp_parser_clear_vendor_info(struct dp_parser *parser);
 
 /**
  * dp_parser_get() - get the DP's device tree parser module

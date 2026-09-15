@@ -856,7 +856,11 @@ static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 	config->port_index = hfi_priv->hpd->port_id;
 	config->pin_config = hfi_priv->hpd->pin_config;
 	config->hpd_state = hfi_priv->hpd->hpd_high;
-	config->hpd_irq = hfi_priv->hpd->hpd_irq;
+
+	/*
+	 * hpd_irq: bit0(0x1) = IRQ_HPD. psm_enabled: bit1(0x2) = PSM intent.
+	 */
+	config->hpd_irq = hfi_priv->hpd->hpd_irq | (hfi_priv->hpd->psm_enabled ? BIT(1) : 0);
 	config->port_index = hfi_priv->hpd->port_id;
 	config->pin_config = hfi_priv->hpd->pin_config;
 	if (hfi_priv->debug->force_multi_func) {
@@ -866,9 +870,9 @@ static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 			config->pin_config = DPAM_HPD_F;
 	}
 
-	DP_DEBUG("orientation=%u, port=%u, pin=%u, hpd=%u, irq=%u\n",
+	DP_DEBUG("orientation=%u, port=%u, pin=%u, hpd=%u, irq=%u psm=%u\n",
 		config->orientation, config->port_index, config->pin_config,
-		config->hpd_state, config->hpd_irq);
+		config->hpd_state, config->hpd_irq, hfi_priv->hpd->psm_enabled);
 }
 
 static int _aux_switch_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
@@ -879,7 +883,28 @@ static int _aux_switch_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 	if (!hfi_priv->aux_switch)
 		return 0;
 
+	if ((hfi_priv->debug && hfi_priv->debug->sim_mode) ||
+			(hfi_priv->parser && hfi_priv->parser->gpio_aux_switch))
+		return 0;
+
 	orientation = enable ? hfi_priv->hpd->orientation : ORIENTATION_NONE;
+
+	/*
+	 * No-op a redundant call. init()/configure() are I2C writes to the
+	 * mux that physically re-route AUX/lanes; re-issuing them against an
+	 * already-configured (possibly already-trained) link momentarily
+	 * disturbs the AUX channel. The mux is shared with USB and is
+	 * re-routed away from DP by the PD/altmode stack on every physical
+	 * unplug, so it must still be reprogrammed on every plug/unplug
+	 * cycle - this only skips a truly redundant repeat call for the same
+	 * enable/orientation within one cycle.
+	 */
+	if (enable == hfi_priv->aux_switch_ready &&
+			orientation == hfi_priv->aux_switch_orientation) {
+		DP_DEBUG("aux switch already %sabled orientation:%d, skipping reprogram\n",
+				(enable ? "en" : "dis"), orientation);
+		return 0;
+	}
 
 	if (enable) {
 		rc = hfi_priv->aux_switch->init(hfi_priv->aux_switch);
@@ -889,7 +914,13 @@ static int _aux_switch_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 
 	DP_DEBUG("aux switch %sable with orientation:%d\n", (enable ? "en":"dis"),
 			hfi_priv->hpd->orientation);
-	return hfi_priv->aux_switch->configure(hfi_priv->aux_switch, enable, orientation);
+	rc = hfi_priv->aux_switch->configure(hfi_priv->aux_switch, enable, orientation);
+	if (!rc) {
+		hfi_priv->aux_switch_ready = enable;
+		hfi_priv->aux_switch_orientation = orientation;
+	}
+
+	return rc;
 }
 
 static void _deinit_addr_maps(struct dp_hfi *hfi)
@@ -1117,6 +1148,7 @@ int dp_mgr_hfi_hpd_attention_helper(struct dp_mgr_hfi_priv *hfi_priv)
 	hpd_irq = hfi_priv->hpd->hpd_irq;
 
 	DP_DEBUG("hpd status from %d to %d irq %d\n", hfi_priv->connected, hpd_state, hpd_irq);
+	SDE_EVT32_EXTERNAL(hpd_state, hfi_priv->connected);
 
 	mutex_lock(&hfi_priv->hpd_mutex);
 
@@ -1134,8 +1166,6 @@ int dp_mgr_hfi_hpd_attention_helper(struct dp_mgr_hfi_priv *hfi_priv)
 			mutex_unlock(&hfi_priv->hpd_mutex);
 			return rc;
 		}
-	} else if (!hfi_priv->connected && hpd_state) {
-		_aux_switch_enable(hfi_priv, true);
 	}
 
 	/* allow HPD LOW when TUI is active, ignore all other attention messages */
@@ -1148,8 +1178,6 @@ int dp_mgr_hfi_hpd_attention_helper(struct dp_mgr_hfi_priv *hfi_priv)
 	_hfi_update_config(hfi_priv, &config);
 	hfi_priv->connected = hpd_state;
 	rc = _hfi_send_hot_plug(hfi_priv, &config);
-	if (!rc && !hfi_priv->connected)
-		dp_mgr_hfi_hpd_cleanup(hfi_priv);
 
 	DP_INFO("attention %d\n", hpd_state);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hpd_state, config.hpd_irq);
@@ -1244,19 +1272,14 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 int dp_mgr_hfi_hpd_attention_cb(void *data)
 {
 	struct dp_mgr_hfi_priv *hfi_priv = data;
+	int rc = 0;
 
 	if (!hfi_priv) {
 		DP_ERR("Invalid hfi_priv data\n");
 		return -EINVAL;
 	}
 
-	if (!hfi_priv->hpd->hpd_high && hfi_priv->connected) {
-		cancel_work_sync(&hfi_priv->configure_work);
-		cancel_work_sync(&hfi_priv->attention_work);
-		cancel_work_sync(&hfi_priv->connect_work);
-		flush_workqueue(hfi_priv->wq);
-	}
-
+	SDE_EVT32_EXTERNAL(hfi_priv->hpd->hpd_high, hfi_priv->connected);
 	if (hfi_priv->hpd->hpd_high && hfi_priv->tui_active) {
 		DP_INFO("TUI is active\n");
 		return 0;
@@ -1269,11 +1292,26 @@ int dp_mgr_hfi_hpd_attention_cb(void *data)
 	/* if hpd plug is waiting on display enable cancel it here */
 	complete_all(&hfi_priv->hpd_comp);
 
-	if (!hfi_priv->wq)
-		return dp_mgr_hfi_hpd_attention_helper(hfi_priv);
+	if (!hfi_priv->hpd->hpd_high && hfi_priv->connected) {
+		cancel_work_sync(&hfi_priv->configure_work);
+		cancel_work_sync(&hfi_priv->attention_work);
+		cancel_work_sync(&hfi_priv->connect_work);
+		flush_workqueue(hfi_priv->wq);
 
-	queue_work(hfi_priv->wq, &hfi_priv->attention_work);
-	return 0;
+		/* handle hpd low asap in the same thread */
+		rc = dp_mgr_hfi_hpd_attention_helper(hfi_priv);
+		if (rc)
+			DP_ERR("attention work failed rc=%d\n", rc);
+
+		return rc;
+	} else {
+		if (!hfi_priv->wq)
+			return dp_mgr_hfi_hpd_attention_helper(hfi_priv);
+
+		queue_work(hfi_priv->wq, &hfi_priv->attention_work);
+	}
+
+	return rc;
 }
 
 static int dp_mgr_hfi_send_type_id_to_sink(struct dp_hfi *hfi, uint8_t stream_type)
@@ -1536,6 +1574,7 @@ static int dp_mgr_hfi_parser(struct dp_mgr_hfi_priv *hfi_priv)
 	dp_parser_max_link_rate(parser);
 	dp_parser_max_lane_count(parser);
 	dp_parser_lane_tuning_params(parser);
+	dp_parse_vendor_info(parser);
 
 	return 0;
 }
@@ -1566,9 +1605,11 @@ int dp_mgr_hfi_set_mode(struct dp_client *client, int panel_id, struct dp_displa
 		return rc;
 	}
 
-	rc = dp_mgr_hfi_send_transfer_unit(hfi_priv, hfi_client, mode);
-	if (rc)
-		DP_WARN("couldn't send TU data\n");
+	if (!hfi_priv->mst_st) {
+		rc = dp_mgr_hfi_send_transfer_unit(hfi_priv, hfi_client, mode);
+		if (rc)
+			DP_WARN("couldn't send TU data\n");
+	}
 
 	hfi_mode_info.size            = sizeof(struct hfi_display_mode_info);
 	hfi_mode_info.h_active        =	mode->timing.h_active;
@@ -1875,9 +1916,9 @@ static void dp_mgr_hfi_post_open(struct dp_client *client)
 	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
 	hfi = hfi_priv->hfi[0];
 
-	if (!hfi_priv->generic_caps_sent && hfi) {
+	if (!hfi_priv->panel_init && hfi) {
 		dp_hfi_panel_init(hfi);
-		hfi_priv->generic_caps_sent = true;
+		hfi_priv->panel_init = true;
 	}
 }
 
@@ -2752,6 +2793,13 @@ static int dp_mgr_hfi_post_init(struct dp_client *client)
 		DP_DEBUG("Registered HDCP min_enc_level callback\n");
 	}
 
+	/*
+	 * Without this, priv->client.hpd is NULL in the
+	 * HFI path and dp_debug_write_attention() would dereference NULL.
+	 */
+	if (hfi_priv->debug)
+		hfi_priv->debug->hpd = hfi_priv->hpd;
+
 	return 0;
 
 clear_aux_switch:
@@ -3346,6 +3394,8 @@ static void dp_mgr_hfi_unbind(struct device *dev, struct device *master,
 
 	/* Clean up HPD and HFI resources */
 	if (hfi_priv->hpd) {
+		if (hfi_priv->debug && hfi_priv->debug->hpd == hfi_priv->hpd)
+			hfi_priv->debug->hpd = NULL;
 		dp_hpd_put(hfi_priv->hpd);
 		hfi_priv->hpd = NULL;
 	}

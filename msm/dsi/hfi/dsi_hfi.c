@@ -889,6 +889,54 @@ static bool dsi_get_panel_phy_tuning_config_helper(struct dsi_display *display,
 		tc->flags |= HFI_PHY_VREG_CTRL_VALID;
 	}
 
+	if (dt->flags & DSI_PHY_GLBL_PEMPH_CTRL_VALID) {
+		tc->reserved1 = (dt->pemph_ctrl0 & 0xFF) | ((dt->pemph_ctrl1 & 0xFF) << 8);
+		tc->flags |= HFI_PHY_GLBL_PEMPH_CTRL_VALID;
+	}
+
+	return true;
+}
+
+static bool dsi_get_panel_pll_config_helper(struct dsi_display *display,
+	struct hfi_panel_pll_config *pc)
+{
+	struct msm_dsi_phy *phy;
+	struct dsi_pll_resource *pll;
+
+	if (!display || !pc)
+		return false;
+
+	phy = display->ctrl[display->cmd_master_idx].phy;
+	if (!phy || !phy->pll)
+		return false;
+
+	pll = phy->pll;
+	if (!pll->ssc_valid_flags)
+		return false;
+
+	pc->flags = 0;
+
+	if (pll->ssc_valid_flags & DSI_PLL_SSC_EN_VALID) {
+		pc->ssc_en = pll->ssc_en;
+		pc->flags |= HFI_PLL_SSC_EN_VALID;
+	}
+
+	if (pll->ssc_valid_flags & DSI_PLL_SSC_CENTER_VALID) {
+		pc->ssc_spread_mode = (pll->ssc_center == HFI_PLL_SSC_CENTER_SPREAD) ?
+			HFI_PLL_SSC_CENTER_SPREAD : HFI_PLL_SSC_DOWN_SPREAD;
+		pc->flags |= HFI_PLL_SSC_CENTER_VALID;
+	}
+
+	if (pll->ssc_valid_flags & DSI_PLL_SSC_FREQ_VALID) {
+		pc->ssc_freq = pll->ssc_freq;
+		pc->flags |= HFI_PLL_SSC_FREQ_VALID;
+	}
+
+	if (pll->ssc_valid_flags & DSI_PLL_SSC_PPM_VALID) {
+		pc->ssc_ppm = pll->ssc_ppm;
+		pc->flags |= HFI_PLL_SSC_PPM_VALID;
+	}
+
 	return true;
 }
 
@@ -1030,6 +1078,18 @@ static void dsi_hfi_populate_esync_caps(struct dsi_panel *panel,
 	hfi_esync_caps->emsync_milli_pulse_width = eparams->emsync_milli_pulse_width;
 	hfi_esync_caps->esync_milli_skew = eparams->milli_skew;
 	hfi_esync_caps->hsync_milli_pulse_width = eparams->hsync_milli_pulse_width;
+}
+
+static void dsi_hfi_populate_qsync_caps(struct dsi_panel *panel,
+					struct hfi_qsync_params *hfi_qsync_params)
+{
+	if (!panel || !hfi_qsync_params) {
+		DSI_ERR("null pointer");
+		return;
+	}
+
+	hfi_qsync_params->qsync_min_fps = panel->qsync_caps.qsync_min_fps;
+	hfi_qsync_params->avr_step_fps = panel->avr_caps.avr_step_fps;
 }
 
 static void dsi_hfi_populate_dfps_caps(struct dsi_panel *panel,
@@ -2262,6 +2322,9 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 		dsi_hfi_populate_esync_caps(panel, &panel_generic_caps->esync_caps);
 	}
 
+	if (panel->qsync_caps.qsync_support)
+		dsi_hfi_populate_qsync_caps(panel, &panel_generic_caps->qsync_config);
+
 	if (panel->dfps_caps.dfps_support) {
 		dsi_hfi_populate_dfps_caps(panel, &panel_generic_caps->dfps_caps);
 	}
@@ -2280,6 +2343,8 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	if (dsi_get_panel_phy_tuning_config_helper(display,
 			&panel_generic_caps->phy_tuning_config))
 		panel_generic_caps->phy_tuning_config_valid = true;
+
+	dsi_get_panel_pll_config_helper(display, &panel_generic_caps->pll_config);
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -2567,16 +2632,11 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	}
 
 	if (display->panel->qsync_caps.qsync_support) {
-		struct hfi_qsync_params qsync_params;
-
-		qsync_params.qsync_min_fps = display->panel->qsync_caps.qsync_min_fps;
-		qsync_params.avr_step_fps = display->panel->avr_caps.avr_step_fps;
-
 		hfi_util_kv_helper_add(display_hfi->kv_props,
 					HFI_PACKKEY(HFI_PROPERTY_PANEL_QSYNC_PARAMS, 0,
-					(sizeof(qsync_params) / sizeof(u32))),
-					(void *)&qsync_params);
-		kv_size += sizeof(qsync_params);
+					(sizeof(panel_generic_caps.qsync_config) / sizeof(u32))),
+					(void *)&panel_generic_caps.qsync_config);
+		kv_size += sizeof(panel_generic_caps.qsync_config);
 	}
 
 	if (panel_generic_caps.poms_caps.panel_mode_switch_enabled) {
@@ -2605,6 +2665,14 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 					sizeof(u32) - 1) / sizeof(u32))),
 				(void *)&panel_generic_caps.phy_tuning_config);
 		kv_size += sizeof(panel_generic_caps.phy_tuning_config);
+	}
+
+	if (panel_generic_caps.pll_config.flags) {
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_PLL_CONFIG, 0,
+				(sizeof(panel_generic_caps.pll_config) / sizeof(u32))),
+				(void *)&panel_generic_caps.pll_config);
+		kv_size += sizeof(panel_generic_caps.pll_config);
 	}
 
 	if (display->modes && display->modes[0].priv_info &&

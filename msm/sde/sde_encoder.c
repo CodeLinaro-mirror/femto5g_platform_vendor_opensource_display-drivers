@@ -1407,6 +1407,12 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 			return ret;
 		}
 
+		/* Skip RM allocation for Primary during CWB usecase */
+		if (!crtc_state->mode_changed && !crtc_state->active_changed &&
+			crtc_state->connectors_changed && (conn_state->crtc ==
+			conn_state->connector->state->crtc))
+			goto skip_reserve;
+
 		/* Reserve dynamic resources, indicating atomic_check phase */
 		ret = sde_rm_reserve(&sde_kms->rm, drm_enc, crtc_state,
 			conn_state, true);
@@ -1417,6 +1423,7 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 			return ret;
 		}
 
+skip_reserve:
 		/**
 		 * Update connector state with the topology selected for the
 		 * resource set validated. Reset the topology if we are
@@ -2477,6 +2484,7 @@ static void sde_encoder_vhm_wakelock(struct sde_encoder_virt *sde_enc, bool enab
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
 	u32 wakelock_state;
+	unsigned int lp = SDE_MODE_DPMS_ON;
 
 	if (!sde_enc->disp_info.vrr_caps.video_psr_support)
 		return;
@@ -2484,11 +2492,18 @@ static void sde_encoder_vhm_wakelock(struct sde_encoder_virt *sde_enc, bool enab
 	priv = sde_enc->base.dev->dev_private;
 	sde_kms = to_sde_kms(priv->kms);
 
+	if (sde_enc->cur_master && sde_enc->cur_master->connector)
+		lp = sde_connector_get_lp(sde_enc->cur_master->connector);
+
 	wakelock_state = atomic_read(&sde_enc->vrr_info.vhm_pm_wake_lock);
 
-	if (sde_kms->suspend_state) {
-		SDE_EVT32(wakelock_state, enable);
-		return;
+	if (sde_kms->suspend_state || lp == SDE_MODE_DPMS_LP1 ||
+			lp == SDE_MODE_DPMS_LP2) {
+		SDE_EVT32(wakelock_state, enable, lp, sde_kms->suspend_state);
+		if (wakelock_state == 1)
+			enable = false;
+		else
+			return;
 	}
 
 	if (enable && wakelock_state == 0) {

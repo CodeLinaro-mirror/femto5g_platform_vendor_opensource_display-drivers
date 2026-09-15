@@ -31,6 +31,7 @@
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_probe_helper.h>
 #include <linux/version.h>
+#include <linux/suspend.h>
 #include <linux/sde_io_util.h>
 
 #include "msm_drv.h"
@@ -140,6 +141,11 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms);
 static int _sde_kms_register_events(struct msm_kms *kms,
 		struct drm_mode_object *obj, u32 event, bool en);
 static void sde_kms_handle_power_event(u32 event_type, void *usr);
+
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
+static int sde_kms_pm_freeze(struct device *dev);
+static int sde_kms_pm_restore(struct device *dev);
+#endif
 
 inline enum msm_disp_op sde_kms_get_disp_op(struct sde_kms *sde_kms)
 {
@@ -1043,6 +1049,68 @@ static int _sde_kms_unmap_all_splash_regions(struct sde_kms *sde_kms)
 	return ret;
 }
 
+/* create a permanent 1:1 IOVA mapping for the LPAI display region */
+static int _sde_kms_map_lpai_region(struct sde_kms *sde_kms)
+{
+	struct msm_mmu *mmu;
+	int ret = 0;
+	unsigned long lpai_base = sde_kms->lpai_buf_base;
+	unsigned int lpai_size = sde_kms->lpai_buf_size;
+
+	if (!lpai_base || !lpai_size)
+		return 0;
+
+	if (!sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE] ||
+			!sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE]->mmu) {
+		SDE_ERROR("aspace not found for LPAI region map\n");
+		return -EINVAL;
+	}
+
+	mmu = sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE]->mmu;
+
+	ret = mmu->funcs->one_to_one_map(mmu, lpai_base, lpai_base, lpai_size,
+			IOMMU_READ | IOMMU_WRITE | IOMMU_NOEXEC);
+	if (ret)
+		SDE_ERROR("LPAI region SMMU map failed: %d\n", ret);
+	else
+		SDE_DEBUG("sde: LPAI display region mapped: base=0x%lx size=0x%x\n",
+				lpai_base, lpai_size);
+
+	return ret;
+}
+
+static void _sde_kms_parse_lpai_region(struct sde_kms *sde_kms)
+{
+	struct device_node *parent, *node;
+	struct resource r;
+
+	parent = of_find_node_by_path("/reserved-memory");
+	if (!parent) {
+		SDE_DEBUG("no /reserved-memory node found\n");
+		return;
+	}
+
+	node = of_find_node_by_name(parent, "lpai_display_region");
+	of_node_put(parent);
+	if (!node) {
+		SDE_DEBUG("no LPAI display region defined in DT\n");
+		return;
+	}
+
+	if (of_address_to_resource(node, 0, &r)) {
+		SDE_ERROR("invalid LPAI display region reg property in DT\n");
+		of_node_put(node);
+		return;
+	}
+	of_node_put(node);
+
+	sde_kms->lpai_buf_base = (unsigned long)r.start;
+	sde_kms->lpai_buf_size = (unsigned int)resource_size(&r);
+
+	SDE_DEBUG("LPAI display region: base=0x%lx size=0x%x\n",
+			sde_kms->lpai_buf_base, sde_kms->lpai_buf_size);
+}
+
 static int _sde_kms_get_blank(struct drm_crtc_state *crtc_state,
 		struct drm_connector_state *conn_state)
 {
@@ -1081,7 +1149,7 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 	struct drm_crtc *crtc;
 	struct sde_connector *c_conn;
 	struct sde_encoder_virt *sde_enc;
-	int i, old_mode, new_mode, old_fps, new_fps;
+	int i, old_mode, new_mode, old_fps, new_fps, old_lp_mode, new_lp_mode;
 	enum panel_event_notifier_tag panel_type;
 
 	for_each_old_connector_in_state(old_state, connector,
@@ -1093,6 +1161,8 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 
 		new_fps = drm_mode_vrefresh(&crtc->state->mode);
 		new_mode = _sde_kms_get_blank(crtc->state, connector->state);
+		new_lp_mode = sde_connector_get_property(connector->state,
+								CONNECTOR_PROP_LP);
 
 		if (old_conn_state->crtc) {
 #if (KERNEL_VERSION(6, 19, 0) <= LINUX_VERSION_CODE)
@@ -1106,14 +1176,17 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 			old_fps = drm_mode_vrefresh(&old_crtc_state->mode);
 			old_mode = _sde_kms_get_blank(old_crtc_state,
 							old_conn_state);
+			old_lp_mode = sde_connector_get_property(old_conn_state,
+								CONNECTOR_PROP_LP);
 		} else {
 			old_fps = 0;
 			old_mode = DRM_PANEL_EVENT_BLANK;
 		}
 
-		if ((old_mode != new_mode) || (old_fps != new_fps)) {
+		if ((old_mode != new_mode) || (old_fps != new_fps)
+				|| (old_lp_mode != new_lp_mode)) {
 			c_conn = to_sde_connector(connector);
-			SDE_EVT32(old_mode, new_mode, old_fps, new_fps,
+			SDE_EVT32(old_mode, new_mode, old_fps, new_fps, old_lp_mode, new_lp_mode,
 				c_conn->panel, crtc->state->active,
 				old_conn_state->crtc);
 			pr_debug("change detected for connector:%s (power mode %d->%d, fps %d->%d)\n",
@@ -4751,7 +4824,9 @@ static void _sde_kms_hfi_populate_splash_config(struct sde_kms *sde_kms,
 	struct sde_connector *sde_conn;
 	struct sde_sspp_index_info *pipe_info;
 	u32 lm_mask, active_pipes_mask;
-	int i, lm_idx = 0;
+	int i, lm_idx = 0, rc, count, cur_mode_idx = 0;
+	bool dsc_enabled = false;
+	struct dsi_display *display = NULL;
 
 	if (!sde_kms|| !splash_display || !conn)
 		return;
@@ -4762,9 +4837,32 @@ static void _sde_kms_hfi_populate_splash_config(struct sde_kms *sde_kms,
 	sde_conn = to_sde_connector(conn);
 	lm_mask = sde_conn->lm_mask;
 
+	display = _sde_connector_get_display(sde_conn);
+	if (!display) {
+		SDE_WARN("fail to get display");
+		return;
+	}
+
+	rc = dsi_display_get_mode_count(display, &count);
+	if (rc) {
+		SDE_WARN("fail to get mode count");
+		return;
+	}
+
+	for (i = 0 ; i < count; i++) {
+		if (display->modes[i].is_preferred) {
+			cur_mode_idx = i;
+			break;
+		}
+	}
+
+	if (display->modes[cur_mode_idx].priv_info)
+		dsc_enabled = display->modes[cur_mode_idx].priv_info->dsc_enabled;
+
 	// Count bits set in lm_mask
 	splash_display->lm_cnt = __builtin_popcount(lm_mask);
-	splash_display->dsc_cnt = splash_display->lm_cnt;
+	if (dsc_enabled)
+		splash_display->dsc_cnt = splash_display->lm_cnt;
 
 	// Extract LM IDs from the mask
 	for (int bit = 0; bit < 32; bit++) {
@@ -5462,6 +5560,7 @@ int sde_kms_suspend_helper(struct sde_kms *sde_kms)
 	struct drm_encoder *enc;
 	struct drm_connector_list_iter conn_iter;
 	struct drm_atomic_state *state = NULL;
+	struct sde_encoder_virt *sde_enc;
 	int ret = 0, num_crtcs = 0;
 
 	if (!sde_kms || !sde_kms->dev)
@@ -5494,6 +5593,11 @@ int sde_kms_suspend_helper(struct sde_kms *sde_kms)
 			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_CASE1, SDE_EVTLOG_FUNC_EXIT);
 			return -EINVAL;
 		}
+	}
+	drm_for_each_encoder(enc, ddev) {
+		sde_enc = to_sde_encoder_virt(enc);
+		if (sde_enc->crtc)
+			sde_crtc_register_power_event_cb(sde_enc->crtc, false);
 	}
 
 	/* acquire modeset lock(s) */
@@ -5629,7 +5733,11 @@ static int sde_kms_pm_suspend(struct device *dev)
 	struct drm_device *ddev;
 	struct sde_kms *sde_kms;
 	int ret = 0;
-
+#if IS_ENABLED(CONFIG_DEEPSLEEP)
+	if (pm_suspend_target_state == PM_SUSPEND_MEM) {
+		return sde_kms_pm_freeze(dev);
+	}
+#endif
 	if (!dev)
 		return -EINVAL;
 
@@ -5647,7 +5755,7 @@ static int sde_kms_pm_suspend(struct device *dev)
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_HIBERNATION)
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
 static int sde_kms_freeze_helper(struct sde_kms *sde_kms)
 {
 	struct drm_device *ddev;
@@ -5656,6 +5764,7 @@ static int sde_kms_freeze_helper(struct sde_kms *sde_kms)
 	struct drm_encoder *enc;
 	struct drm_connector_list_iter conn_iter;
 	struct drm_atomic_state *state = NULL;
+	struct sde_encoder_virt *sde_enc;
 	int ret = 0, num_crtcs = 0;
 
 	if (!sde_kms || !sde_kms->dev)
@@ -5686,6 +5795,11 @@ static int sde_kms_freeze_helper(struct sde_kms *sde_kms)
 		}
 	}
 
+	drm_for_each_encoder(enc, ddev) {
+		sde_enc = to_sde_encoder_virt(enc);
+		if (sde_enc->crtc)
+			sde_crtc_register_power_event_cb(sde_enc->crtc, false);
+	}
 	/* acquire modeset lock(s) */
 	drm_modeset_acquire_init(&ctx, 0);
 
@@ -5971,7 +6085,7 @@ static int sde_kms_pm_restore(struct device *dev)
 
 	return ret;
 }
-#endif /* CONFIG_HIBERNATION */
+#endif /* CONFIG_HIBERNATION || CONFIG_DEEPSLEEP */
 
 int sde_kms_resume_helper(struct sde_kms *sde_kms)
 {
@@ -5981,6 +6095,7 @@ int sde_kms_resume_helper(struct sde_kms *sde_kms)
 	struct sde_crtc *sde_crtc;
 	struct drm_modeset_acquire_ctx ctx;
 	int ret, i;
+	struct sde_encoder_virt *sde_enc;
 
 	if (!sde_kms || !sde_kms->dev)
 		return -EINVAL;
@@ -6040,6 +6155,12 @@ retry:
 
 		drm_atomic_state_put(sde_kms->suspend_state);
 		sde_kms->suspend_state = NULL;
+
+		drm_for_each_encoder(enc, ddev) {
+			sde_enc = to_sde_encoder_virt(enc);
+			if (sde_enc->crtc)
+				sde_crtc_register_power_event_cb(sde_enc->crtc, true);
+		}
 	}
 
 end:
@@ -6058,6 +6179,11 @@ static int sde_kms_pm_resume(struct device *dev)
 	struct sde_kms *sde_kms;
 	int ret;
 
+#if IS_ENABLED(CONFIG_DEEPSLEEP)
+	if (pm_suspend_target_state == PM_SUSPEND_MEM) {
+		return sde_kms_pm_restore(dev);
+	}
+#endif
 	if (!dev)
 		return -EINVAL;
 
@@ -6099,10 +6225,10 @@ static const struct msm_kms_funcs kms_funcs = {
 	.display_early_ept_hint = sde_kms_display_early_ept_hint,
 	.pm_suspend      = sde_kms_pm_suspend,
 	.pm_resume       = sde_kms_pm_resume,
-#if IS_ENABLED(CONFIG_HIBERNATION)
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
 	.pm_freeze      = sde_kms_pm_freeze,
 	.pm_restore       = sde_kms_pm_restore,
-#endif
+#endif /* CONFIG_HIBERNATION || CONFIG_DEEPSLEEP */
 	.destroy         = sde_kms_destroy,
 	.debugfs_destroy = sde_kms_debugfs_destroy,
 	.cont_splash_config = sde_kms_cont_splash_config,
@@ -6176,6 +6302,14 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 			ret = _sde_kms_map_all_splash_regions(sde_kms);
 			if (ret) {
 				SDE_ERROR("failed to map ret:%d\n", ret);
+				goto enable_trans_fail;
+			}
+		}
+
+		if (i == MSM_SMMU_DOMAIN_UNSECURE && sde_kms->lpai_buf_base) {
+			ret = _sde_kms_map_lpai_region(sde_kms);
+			if (ret) {
+				SDE_ERROR("failed to map LPAI region ret:%d\n", ret);
 				goto enable_trans_fail;
 			}
 		}
@@ -6767,8 +6901,13 @@ static int _sde_kms_hw_init_rm(struct sde_kms *sde_kms, struct msm_drm_private *
 
 		for (i = 0; i < display_count; i++) {
 			display = &sde_kms->splash_data.splash_display[i];
-			if (IS_DISP_OP_HFI(priv->disp_op))
-				display->cont_splash_enabled = true;
+			if (IS_DISP_OP_HFI(priv->disp_op) &&
+				sde_kms->hfi_kms && sde_kms->hfi_kms->catalog) {
+				struct hfi_catalog_base *catalog = sde_kms->hfi_kms->catalog;
+				unsigned int pipes_mask = catalog->active_pipes_mask[i];
+				display->cont_splash_enabled = pipes_mask ? true : false;
+			}
+
 			/*
 			 * free splash region on resource init failure and
 			 * cont-splash disabled case
@@ -7085,6 +7224,8 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	rc = _sde_kms_get_splash_data(dev, &sde_kms->splash_data);
 	if (rc)
 		SDE_DEBUG("sde splash data fetch failed: %d\n", rc);
+
+	_sde_kms_parse_lpai_region(sde_kms);
 
 	rc = _sde_kms_hw_init_blocks(sde_kms, dev, priv);
 	if (rc)

@@ -397,6 +397,8 @@ static u32 _hdmi_panel_hdr_colorspace(u32 eotf)
 	return cs;
 }
 
+static void _hdmi_panel_flush_hdr_iframe(struct hdmi_panel_private *panel);
+
 /*
  * hdmi_panel_set_colorspace - reprogram AVI infoframe colorimetry.
  *
@@ -429,6 +431,15 @@ static int hdmi_panel_set_colorspace(
 	}
 
 	_hdmi_panel_update_avi_colorimetry(panel, colorspace);
+
+	/*
+	 * If HDR is active, flush the already-programmed static HDR
+	 * infoframe now so it reaches the sink alongside this colorimetry
+	 * change, instead of being silently skipped when setup_hdr() later
+	 * decides not to flush because colorspace_updated was still set.
+	 */
+	if (panel->hdr_state == HDR_ENABLED)
+		_hdmi_panel_flush_hdr_iframe(panel);
 
 	return 0;
 }

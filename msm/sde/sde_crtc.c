@@ -6832,6 +6832,36 @@ static void sde_crtc_power_event_cb(void *data, u32 event)
 	sde_crtc_handle_power_event(event, crtc);
 }
 
+void sde_crtc_register_power_event_cb(struct drm_crtc *crtc, bool enable)
+{
+	struct msm_drm_private *priv;
+	struct drm_encoder *encoder;
+	struct sde_crtc *sde_crtc;
+
+	if (!crtc || !crtc->dev || !crtc->dev->dev_private) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	sde_crtc = to_sde_crtc(crtc);
+
+	priv = crtc->dev->dev_private;
+	if (!IS_DISP_OP_HFI(priv->disp_op))
+		return;
+
+	drm_for_each_encoder_mask(encoder, crtc->dev, sde_crtc->cached_encoder_mask) {
+		if (sde_encoder_in_clone_mode(encoder))
+			continue;
+
+		if (enable)
+			sde_encoder_register_display_power_event_callback(encoder,
+					sde_crtc_power_event_cb, crtc);
+		else
+			sde_encoder_register_display_power_event_callback(encoder,
+					NULL, NULL);
+	}
+}
+
 static void _sde_crtc_reset(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
@@ -6868,6 +6898,7 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	enum sde_intf_mode intf_mode;
 	struct sde_hw_ctl *hw_ctl = NULL;
 	u32 encoder_mask = 0;
+
 	if (!crtc || !crtc->dev || !crtc->dev->dev_private || !crtc->state) {
 		SDE_ERROR("invalid crtc\n");
 		return;
@@ -7266,6 +7297,22 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 	sde_cp_crtc_enable(crtc);
 	/* update color processing on resume */
 	sde_cp_crtc_resume(crtc);
+
+	if (IS_DISP_OP_HFI(priv->disp_op) && sde_crtc->hw_events_ssr_recovery_pending) {
+		int marked_events, resynced_events;
+
+		marked_events = hfi_crtc_mark_hw_events_pending_from_user_events(sde_crtc);
+		resynced_events = hfi_crtc_try_resync_hw_events(sde_crtc);
+		if (resynced_events < 0) {
+			SDE_ERROR("crtc:%d failed to restore pending hw events marked:%d rc:%d\n",
+					DRMID(crtc), marked_events, resynced_events);
+		} else {
+			SDE_DEBUG("crtc:%d restored hw events on enable marked:%d resynced:%d\n",
+					DRMID(crtc), marked_events, resynced_events);
+		}
+
+		sde_crtc->hw_events_ssr_recovery_pending = hfi_crtc_has_pending_hw_events(sde_crtc);
+	}
 
 	mutex_unlock(&sde_crtc->crtc_lock);
 
@@ -8588,6 +8635,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		{MSM_DISP_LSR_MODE_DISABLED, "lsr_mode_disabled"},
 		{MSM_DISP_LSR_MODE_ENABLED, "lsr_mode_enabled"},
 	};
+	static const struct drm_prop_enum_list e_gmu_reproj_mode[] = {
+		{MSM_DISP_GMU_REPROJ_MODE_DISABLED, "gmu_reproj_mode_disabled"},
+		{MSM_DISP_GMU_REPROJ_MODE_ENABLED, "gmu_reproj_mode_enabled"},
+	};
 
 	SDE_DEBUG("\n");
 
@@ -8667,6 +8718,13 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			"lsr_mode", 0, 0, e_lsr_mode, ARRAY_SIZE(e_lsr_mode),
 			MSM_DISP_LSR_MODE_DISABLED, CRTC_PROP_LSR_MODE);
 	}
+
+	if (test_bit(SDE_FEATURE_GMU_REPROJ, catalog->features))
+		msm_property_install_enum(&sde_crtc->property_info,
+			"gmu_reproj_mode", 0, 0, e_gmu_reproj_mode,
+			ARRAY_SIZE(e_gmu_reproj_mode),
+			MSM_DISP_GMU_REPROJ_MODE_DISABLED,
+			CRTC_PROP_GMU_REPROJ_MODE);
 
 	if (test_bit(SDE_SYS_CACHE_DISP, catalog->sde_sys_cache_type_map) ||
 			test_bit(SDE_FEATURE_LSR, catalog->features))

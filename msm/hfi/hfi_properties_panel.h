@@ -1060,6 +1060,59 @@
 #define HFI_PROPERTY_PANEL_LANE_TUNING_PARAMS                        0x00040049
 
 /*
+ * HFI_PROPERTY_PANEL_PLL_CONFIG - Provides DSI PLL SSC (Spread Spectrum Clocking)
+ *                                  configuration parsed from the DSI PHY device-tree
+ *                                  node (qcom,dsi-pll-ssc-en / qcom,dsi-pll-ssc-mode).
+ *                                  This property is sent to DCP as part of
+ *                                  HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet
+ *                                  payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_PLL_CONFIG
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_PLL_CONFIG |
+ *                               (version=0 << 20) | (dsize=5 << 24 )
+ *   (u32_value) payload[1..5] : struct hfi_panel_pll_config
+ */
+#define HFI_PROPERTY_PANEL_PLL_CONFIG                                0x0004004A
+
+/*!
+ * HFI_PROPERTY_PANEL_GENERIC_SDP_INFO - Provide an optional CTA InfoFrame to be sent by the
+ *                                       DisplayPort Controller as a Secondary Data Packet (SDP)
+ *                                       during panel init. The property carries generic metadata
+ *                                       (the InfoFrame type and payload size) followed by the raw
+ *                                       CTA InfoFrame payload bytes. Payload is identified by one
+ *                                       of enum hfi_infoframe_type. This property is sent to DCP
+ *                                       as part of HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command
+ *                                       packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_GENERIC_SDP_INFO
+ * (u32_key) payload[0]        : HFI_PROPERTY_PANEL_GENERIC_SDP_INFO \|
+ *                               (version=0 << 20) \| (dsize=8 << 24 )
+ * (u32_value) payload[1]      : (u8)reserved << 24 \| (u8)gen_sdp_id << 16 \|
+ *                               (u8)size << 8 \| (u8)infoframe_type \|
+ *                               infoframe_type: is one of enum hfi_infoframe_type. \|
+ *                               gen_sdp_id: selects GENERICx SDP register block.
+ * (u32_value) payload[2-8]    : (u8)cta_payload[HFI_MAX_CTA_PAYLOAD_SIZE] \|
+ *                               array of raw CTA InfoFrame payload bytes.
+ */
+#define HFI_PROPERTY_PANEL_GENERIC_SDP_INFO                          0x0004004B
+
+/*
+ * HFI_PROPERTY_PANEL_SPLIT_LINK - Specifies whether split link is enabled
+ *                                 for this panel and, if so, how many lanes
+ *                                 belong to each sublink.
+ *                                 This property is sent to DCP as part
+ *                                 of HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
+ *                                 command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_SPLIT_LINK
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_SPLIT_LINK |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : bit0 - split link enabled
+ *                               bits[8:15] - lanes per sublink
+ */
+#define HFI_PROPERTY_PANEL_SPLIT_LINK                                0x0004004E
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF

@@ -373,12 +373,38 @@ enum hfi_panel_esd_status_mode {
  *                                and glbl_rescode_mid_ctrl parameters are valid
  * @HFI_PHY_CMN_CTRL2_VALID:      Indicates cmn_ctrl2 parameter is valid
  * @HFI_PHY_VREG_CTRL_VALID:      Indicates vreg_ctrl0 and vreg_ctrl1 parameters are valid
+ * @HFI_PHY_GLBL_PEMPH_CTRL_VALID: Indicates pemph_ctrl0 and pemph_ctrl1 parameters are valid
  */
 enum hfi_panel_phy_tuning_flags {
 	HFI_PHY_GLBL_STR_CTRL_VALID  = 0x1,
 	HFI_PHY_GLBL_RESCODE_VALID   = 0x2,
 	HFI_PHY_CMN_CTRL2_VALID      = 0x4,
 	HFI_PHY_VREG_CTRL_VALID      = 0x8,
+	HFI_PHY_GLBL_PEMPH_CTRL_VALID = 0x10,
+};
+
+/**
+ * enum hfi_panel_pll_config_flags - DSI PLL SSC parameters
+ * @HFI_PLL_SSC_EN_VALID:     Indicates ssc_en parameter is valid and should override
+ * @HFI_PLL_SSC_CENTER_VALID: Indicates ssc_center parameter is valid and should override
+ * @HFI_PLL_SSC_FREQ_VALID:   Indicates ssc_freq parameter is valid and should override
+ * @HFI_PLL_SSC_PPM_VALID:    Indicates ssc_ppm parameter is valid and should override
+ */
+enum hfi_panel_pll_config_flags {
+	HFI_PLL_SSC_EN_VALID     = 0x1,
+	HFI_PLL_SSC_CENTER_VALID = 0x2,
+	HFI_PLL_SSC_FREQ_VALID   = 0x4,
+	HFI_PLL_SSC_PPM_VALID    = 0x8,
+};
+
+/**
+ * enum hfi_panel_pll_ssc_center - Spread spectrum clocking spread mode
+ * @HFI_PLL_SSC_DOWN_SPREAD:   Down-spread SSC modulation.
+ * @HFI_PLL_SSC_CENTER_SPREAD: Center-spread SSC modulation.
+ */
+enum hfi_panel_pll_ssc_center {
+	HFI_PLL_SSC_DOWN_SPREAD   = 0x0,
+	HFI_PLL_SSC_CENTER_SPREAD = 0x1,
 };
 
 /**
@@ -590,6 +616,23 @@ struct hfi_panel_operating_mode_caps {
 	u32 vsync_aligned_switch;
 };
 
+/*!
+ * @enum hfi_infoframe_type
+ * @brief CTA InfoFrame Type Codes carried within a generic CTA InfoFrame SDP payload.
+ *
+ * @var HFI_INFOFRAME_TYPE_SPD
+ *   Source Product Descriptor (SPD) InfoFrame Type Code.
+ */
+enum hfi_infoframe_type {
+	HFI_INFOFRAME_TYPE_SPD = 0x03,
+};
+
+/*!
+ * @def HFI_MAX_CTA_PAYLOAD_SIZE
+ * @brief Maximum size, in bytes, of a CTA InfoFrame payload.
+ */
+#define HFI_MAX_CTA_PAYLOAD_SIZE  28
+
 /**
  * struct hfi_panel_phy_tuning_config - HFI DSI PHY tuning configuration
  * @glbl_str_ctrl:         Global drive strength control value
@@ -600,7 +643,7 @@ struct hfi_panel_operating_mode_caps {
  * @vreg_ctrl0:            PHY regulator control 0
  * @vreg_ctrl1:            PHY regulator control 1
  * @flags:                 Flags indicating valid PHY tuning parameter
- * @reserved1:             Reserved for future use
+ * @reserved1:             Global pre-emphasis control 0/1
  * @reserved2:             Reserved for future use
  */
 
@@ -616,6 +659,25 @@ struct hfi_panel_phy_tuning_config {
 	enum hfi_panel_phy_tuning_flags flags;
 	u32 reserved1;
 	u32 reserved2;
+};
+
+/**
+ * @ssc_en: Enable/disable PLL SSC; valid when HFI_PLL_SSC_EN_VALID is set.
+ * @ssc_spread_mode: SSC spread mode; valid when HFI_PLL_SSC_CENTER_VALID is set.
+ * @ssc_freq: SSC frequency in Hz; valid when HFI_PLL_SSC_FREQ_VALID is set.
+ * @ssc_ppm: SSC magnitude in ppm; valid when HFI_PLL_SSC_PPM_VALID is set.
+ * @flags: Bitmask indicating which SSC parameters override DCP DT values.
+ * @reserve1: Reserved for future use.
+ * @reserve2: Reserved for future use.
+ */
+struct hfi_panel_pll_config {
+	u32 ssc_en;
+	enum hfi_panel_pll_ssc_center ssc_spread_mode;
+	u32 ssc_freq;
+	u32 ssc_ppm;
+	enum hfi_panel_pll_config_flags flags;
+	u32 reserve1;
+	u32 reserve2;
 };
 
 #endif // __H_HFI_DEFS_PANEL_H__

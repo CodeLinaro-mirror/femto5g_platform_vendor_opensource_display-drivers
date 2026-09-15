@@ -705,6 +705,8 @@ struct sde_crtc {
 	struct sde_rgb_hist_buffer *rgb_hist_buffers[RGB_HISTOGRAM_BUFFER_SIZE];
 	struct mutex rgb_hist_buffer_lock;
 	struct sde_pa_hist_buffer pa_hist_buffers[PA_HIST_BUFFER_NUM];
+	bool cp_ssr_recovery_pending;
+	bool hw_events_ssr_recovery_pending;
 
 	struct sde_qrtc_buffer qrtc_buffer;
 
@@ -1577,5 +1579,13 @@ void sde_crtc_cp_unmap_ltm_buffers(struct sde_crtc *sde_crtc, int num);
  */
 void sde_crtc_cp_unmap_rgb_hist_buffers(struct sde_crtc *sde_crtc);
 
+
+/**
+ * sde_crtc_register_power_event_cb - register or deregister the display
+ *	power event callback for all encoders attached to a CRTC.
+ * @crtc:   pointer to drm_crtc
+ * @enable: true to register, false to deregister
+ */
+void sde_crtc_register_power_event_cb(struct drm_crtc *crtc, bool enable);
 
 #endif /* _SDE_CRTC_H_ */

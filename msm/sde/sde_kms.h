@@ -532,6 +532,9 @@ struct sde_kms {
 	enum msm_disp_op debugfs_display_op;
 	enum msm_disp_op frame_trigger_state;
 	bool hfi_tvm_start;
+
+	u32 lpai_buf_size;
+	unsigned long lpai_buf_base;
 };
 
 struct vsync_info {

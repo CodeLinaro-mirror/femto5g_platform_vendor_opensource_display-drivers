@@ -117,12 +117,14 @@ enum dsi_phy_pll_source {
  * @DSI_PHY_GLBL_RESCODE_VALID:   Global rescode is valid
  * @DSI_PHY_CMN_CTRL2_VALID:      Common control 2 is valid
  * @DSI_PHY_VREG_CTRL_VALID:      Voltage regulator control is valid
+ * @DSI_PHY_GLBL_PEMPH_CTRL_VALID: Global pre-emphasis control is valid
  */
 enum dsi_phy_tuning_flags {
 	DSI_PHY_GLBL_STR_CTRL_VALID  = BIT(0),
 	DSI_PHY_GLBL_RESCODE_VALID   = BIT(1),
 	DSI_PHY_CMN_CTRL2_VALID      = BIT(2),
 	DSI_PHY_VREG_CTRL_VALID      = BIT(3),
+	DSI_PHY_GLBL_PEMPH_CTRL_VALID = BIT(4),
 };
 
 /**
@@ -156,6 +158,8 @@ struct dsi_phy_per_lane_cfgs {
  * @cmn_ctrl2:           Common control register 2 setting.
  * @vreg_ctrl0:          Voltage regulator control 0 setting.
  * @vreg_ctrl1:          Voltage regulator control 1 setting.
+ * @pemph_ctrl0:         Global pre-emphasis control 0 setting.
+ * @pemph_ctrl1:         Global pre-emphasis control 1 setting.
  * @flags:               Flags indicating valid PHY tuning parameter
  * @reserved1:           Reserved for future use.
  * @reserved2:           Reserved for future use.
@@ -171,6 +175,8 @@ struct dsi_phy_tuning_cfg {
 	u32 cmn_ctrl2;
 	u32 vreg_ctrl0;
 	u32 vreg_ctrl1;
+	u32 pemph_ctrl0;
+	u32 pemph_ctrl1;
 	enum dsi_phy_tuning_flags flags;
 	u32 reserved1;
 	u32 reserved2;

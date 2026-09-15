@@ -328,8 +328,15 @@ enum AreaModeValid {
 	R1_VALID,
 };
 
+enum dsi_panel_calibration_storage {
+	DSI_PANEL_CALIBRATION_STORAGE_NONE = 0,
+	DSI_PANEL_CALIBRATION_STORAGE_SPI,
+	DSI_PANEL_CALIBRATION_STORAGE_MTD,
+};
+
 struct dsi_panel;
 struct mtd_info;
+struct spi_device;
 
 struct dsi_panel_ops {
 	int (*pinctrl_init)(struct dsi_panel *panel);
@@ -390,8 +397,11 @@ struct dsi_panel {
 	bool privacy_feature_enabled;
 
 	bool calibration_enabled;
+	enum dsi_panel_calibration_storage calibration_storage;
 	struct mtd_info *calibration_mtd_left;
 	struct mtd_info *calibration_mtd_right;
+	struct spi_device *calibration_spi_left;
+	struct spi_device *calibration_spi_right;
 
 	atomic_t esd_recovery_pending;
 	atomic_t ssr_in_progress;

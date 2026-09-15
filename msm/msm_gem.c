@@ -596,8 +596,13 @@ fail:
 int msm_gem_get_iova(struct drm_gem_object *obj,
 		struct msm_gem_address_space *aspace, uint64_t *iova)
 {
-	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+	struct msm_gem_object *msm_obj;
 	int ret;
+
+	if (!obj)
+		return -EINVAL;
+
+	msm_obj = to_msm_bo(obj);
 
 	mutex_lock(&msm_obj->lock);
 	ret = msm_gem_get_iova_locked(obj, aspace, iova);

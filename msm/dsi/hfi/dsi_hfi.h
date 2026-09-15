@@ -237,6 +237,7 @@ struct dsi_panel_timing_caps {
  * @cphy_enabled:                   HFI_PROPERTY_PANEL_CPHY_MODE
  * @esd_config:                     HFI_PROPERTY_PANEL_ESD_CONFIG
  * @esync_caps:                     HFI_PROPERTY_PANEL_ESYNC_CAPS
+ * @qsync_config:                   HFI_PROPERTY_PANEL_QSYNC_PARAMS
  * @dfps_caps:                      HFI_PROPERTY_PANEL_DFPS_CAPS
  * @lp11_init:                      HFI_PROPERTY_PANEL_LP11_INIT
  * @poms_caps:                      HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY
@@ -244,6 +245,7 @@ struct dsi_panel_timing_caps {
  * @ulps_supported:                 HFI_PROPERTY_PANEL_ULPS_SUPPORTED
  * @phy_tuning_config:              HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG
  * @phy_tuning_config_valid:        true if phy_tuning_config has been populated
+ * @pll_config:                     HFI_PROPERTY_PANEL_PLL_CONFIG
  */
 struct dsi_panel_generic_caps {
 	u32 panel_name;
@@ -279,6 +281,7 @@ struct dsi_panel_generic_caps {
 	bool cphy_enabled;
 	struct hfi_panel_esd_config esd_config;
 	struct hfi_panel_esync_caps esync_caps;
+	struct hfi_qsync_params qsync_config;
 	struct hfi_panel_dfps_caps dfps_caps;
 	u32 lp11_init;
 	struct hfi_panel_operating_mode_caps poms_caps;
@@ -286,6 +289,7 @@ struct dsi_panel_generic_caps {
 	u32 ulps_supported;
 	struct hfi_panel_phy_tuning_config phy_tuning_config;
 	bool phy_tuning_config_valid;
+	struct hfi_panel_pll_config pll_config;
 };
 
 /**

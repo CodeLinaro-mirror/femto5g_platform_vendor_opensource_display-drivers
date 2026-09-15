@@ -17,6 +17,7 @@
 #include "hfi_utils.h"
 #include "hfi_defs_debug.h"
 #include "hfi_dbg.h"
+#include "hfi_color_proc.h"
 
 #define DWORDS_TO_BYTES(x) (x * 4)
 #define BYTES_TO_DWORDS(x) (x / 4)
@@ -471,12 +472,10 @@ static int hfi_kms_commit(struct sde_kms *kms,
 	int i, ret = 0;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *crtc_state;
-	struct hfi_kms *hfi_kms;
 
 	if (!kms || !state)
 		return -EINVAL;
 
-	hfi_kms = to_hfi_kms(kms);
 	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
 		if (crtc->state->active || crtc_state->active) {
 			SDE_DEBUG(" crtc:%d\n", DRMID(crtc));
@@ -524,6 +523,35 @@ static void _wake_up_all_kickoff_wq(struct sde_kms *sde_kms)
 			continue;
 
 		wake_up_all(&hfi_enc->pending_kickoff_wq);
+	}
+}
+
+static void _hfi_kms_process_cp_ssr(struct hfi_kms *hfi_kms, bool ssr_start)
+{
+	struct drm_crtc *drm_crtc;
+	struct sde_crtc *sde_crtc;
+	int rc;
+
+	if (!hfi_kms || !hfi_kms->base || !hfi_kms->base->dev)
+		return;
+
+	drm_for_each_crtc(drm_crtc, hfi_kms->base->dev) {
+		sde_crtc = to_sde_crtc(drm_crtc);
+		if (!sde_crtc)
+			continue;
+
+		if (ssr_start) {
+			rc = hfi_cp_crtc_handle_ssr_start(sde_crtc);
+			if (rc)
+				SDE_ERROR("crtc:%d CP SSR start cleanup failed rc:%d\n",
+					DRMID(drm_crtc), rc);
+			continue;
+		}
+
+		rc = hfi_cp_crtc_handle_ssr_end(sde_crtc);
+		if (rc)
+			SDE_ERROR("crtc:%d CP SSR end restore failed rc:%d\n",
+				DRMID(drm_crtc), rc);
 	}
 }
 
@@ -603,6 +631,7 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 
 	atomic_set(&hfi_kms->ssr_in_progress, 1);
 	_wake_up_all_kickoff_wq(sde_kms);
+	_hfi_kms_process_cp_ssr(hfi_kms, true);
 
 	SDE_DEBUG("process ssr start called\n");
 
@@ -705,6 +734,8 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 		SDE_ERROR("failed lut dma configuration rc=%d\n", rc);
 		return rc;
 	}
+
+	_hfi_kms_process_cp_ssr(hfi_kms, false);
 
 	/* Disable MMCX vote for HLOS driver */
 	rc = msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, false);

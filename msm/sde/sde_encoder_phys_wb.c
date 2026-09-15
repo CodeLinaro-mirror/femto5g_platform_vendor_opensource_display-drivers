@@ -116,8 +116,8 @@ static void _sde_wb_get_dnsc_tap_point_dims(struct sde_connector_state *cstate,
 				}
 			}
 		}
-		/* Fall back to LM ROI */
-		if (!*sw || !*sh) {
+		/* lm_roi can still contain the previous state's ROI when ROI is cleared. */
+		if ((!*sw || !*sh) && sde_cstate->user_roi_list.num_rects) {
 			*sw = 0;
 			*sh = 0;
 			for (j = 0; j < sde_crtc->num_mixers; j++) {

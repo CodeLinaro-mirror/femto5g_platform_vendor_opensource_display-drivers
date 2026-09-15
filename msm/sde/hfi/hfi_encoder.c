@@ -105,7 +105,7 @@ static ktime_t hfi_enc_unpack_vsync_event(void *payload, u32 *idx, struct sde_en
 	return ts;
 }
 
-static bool _hfi_encoder_check_frame_event_trigger(struct sde_encoder_virt *sde_enc)
+static bool _hfi_encoder_check_frame_event_trigger(struct sde_encoder_virt *sde_enc, u32 event)
 {
 	struct sde_kms *sde_kms = sde_encoder_get_kms(&sde_enc->base);
 	struct hfi_encoder *hfi_enc = to_hfi_encoder(sde_enc);
@@ -124,13 +124,23 @@ static bool _hfi_encoder_check_frame_event_trigger(struct sde_encoder_virt *sde_
 			!sde_encoder_is_wb_display(&sde_enc->base)) {
 		int cnt = atomic_read(&hfi_enc->hfi_frame_done_cnt);
 		int seqno = atomic_read(&hfi_enc->hfi_frame_done_seqno);
+		bool release_fence_signal;
 
-		if ((cnt > seqno) || (atomic_read(&sde_enc->pending_commit_cnt) > 0)) {
-			atomic_set(&hfi_enc->hfi_frame_done_seqno, cnt);
-			SDE_EVT32(cnt, seqno, atomic_read(&sde_enc->pending_commit_cnt));
-		} else {
+		release_fence_signal = sde_enc->cur_master &&
+			sde_encoder_check_curr_mode(&sde_enc->base,
+			MSM_DISPLAY_CMD_MODE) &&
+			(event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE) &&
+			!(event & SDE_ENCODER_FRAME_EVENT_ERROR) &&
+			atomic_read(&sde_enc->cur_master->pending_release_fence_cnt);
+
+		if ((cnt <= seqno) &&
+				(atomic_read(&sde_enc->pending_commit_cnt) <= 0) &&
+				!release_fence_signal) {
 			return false; /* true duplicate, suppress */
 		}
+
+		atomic_set(&hfi_enc->hfi_frame_done_seqno, cnt);
+		SDE_EVT32(cnt, seqno, atomic_read(&sde_enc->pending_commit_cnt));
 	}
 
 	return true;
@@ -174,7 +184,7 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 	ts = hfi_enc_unpack_frame_event(payload, NULL, sde_enc);
 
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
-	frame_event_trigger = _hfi_encoder_check_frame_event_trigger(sde_enc);
+	frame_event_trigger = _hfi_encoder_check_frame_event_trigger(sde_enc, event);
 	if (frame_event_trigger) {
 		if (event & SDE_ENCODER_FRAME_EVENT_DONE ||
 					sde_encoder_in_clone_mode(&sde_enc->base))
