@@ -67,7 +67,6 @@ struct msm_gem_address_space {
 	struct msm_mmu *mmu;
 	struct kref kref;
 	bool domain_attached;
-	bool mm_initialized;
 	const struct msm_gem_aspace_ops *ops;
 	struct drm_device *dev;
 	/* list of mapped objects */
