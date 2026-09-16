@@ -1108,6 +1108,7 @@ static int lt9611uxc_wait_for_edid(struct lt9611uxc *lt9611uxc)
 		if (ret == 0 && (reg_val & BIT(0))) {
 			return 1;
 		}
+		usleep_range(1000, 2000);
 	}
 
 	return 0;
@@ -1148,6 +1149,12 @@ const struct drm_edid *lt9611uxc_bridge_get_edid(struct drm_bridge *bridge,
 {
 	struct lt9611uxc *lt9611uxc = bridge_to_lt9611uxc(bridge);
 	int ret;
+
+	if (lt9611uxc->edid) {
+		dev_info(lt9611uxc->dev, "bridge_get_edid: reuse cached EDID\n");
+		return drm_edid_alloc(lt9611uxc->edid,
+				EDID_LENGTH * (1 + lt9611uxc->edid->extensions));
+	}
 
 	ret = lt9611uxc_wait_for_edid(lt9611uxc);
 	if (ret < 0) {
