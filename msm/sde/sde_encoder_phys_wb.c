@@ -1012,6 +1012,7 @@ static int _sde_enc_phys_wb_validate_dnsc_blur_ds(struct drm_crtc_state *crtc_st
 
 	if (!msm_atomic_needs_modeset(crtc_state, conn_state) && !phys_enc->hw_dnsc_blur) {
 		SDE_DEBUG("hw_dnsc_blur block reservation is needed, requesting mode_set\n");
+		cstate->dnsc_res_changed = true;
 		crtc_state->mode_changed = true;
 	}
 
