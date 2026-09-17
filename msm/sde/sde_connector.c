@@ -1386,6 +1386,7 @@ static int _sde_connector_update_dirty_properties(
 	bool is_vsync_offset_dirty = false;
 	bool is_privacy_v1_dirty = false;
 	bool is_privacy_v2_dirty = false;
+	bool is_gmu_dcp_intf_mem_dirty = false;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1435,6 +1436,9 @@ static int _sde_connector_update_dirty_properties(
 			break;
 		case CONNECTOR_PROP_QSYNC_MODE:
 			is_qsync_dirty = true;
+			break;
+		case CONN_PROP_GMU_DCP_INTF_MEM:
+			is_gmu_dcp_intf_mem_dirty = true;
 			break;
 		case CONNECTOR_PROP_VSYNC_OFFSET:
 			if ((sde_connector_get_property(connector->state,
@@ -1506,6 +1510,10 @@ static int _sde_connector_update_dirty_properties(
 	if ((disp_op == MSM_DISP_OP_HFI) && is_privacy_v2_dirty)
 		msm_property_set_dirty(&c_conn->property_info,
 			&c_state->property_state, CONNECTOR_PROP_PRIVACY_LAYER_V2);
+
+	if ((disp_op == MSM_DISP_OP_HFI) && is_gmu_dcp_intf_mem_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONN_PROP_GMU_DCP_INTF_MEM);
 
 	return 0;
 }
@@ -3026,6 +3034,8 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 		break;
 	case CONN_PROP_GMU_DCP_INTF_MEM:
 		_sde_connector_set_gmu_dcp_intf_mem(connector, val);
+		msm_property_set_dirty(&c_conn->property_info,
+				&c_state->property_state, idx);
 		break;
 	default:
 		break;

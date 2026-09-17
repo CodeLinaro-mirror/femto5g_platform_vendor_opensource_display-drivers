@@ -466,6 +466,17 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
 		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
 
+	if (test_bit(SDE_FEATURE_GMU_REPROJ, sde_kms->catalog->features) &&
+			sde_connector_property_is_dirty(old_cstate,
+			CONN_PROP_GMU_DCP_INTF_MEM) && conn->gmu_dcp_iova) {
+		ret = hfi_kms_send_hfi_subsystem_config(to_hfi_kms(sde_kms),
+				old_cstate->base.crtc, disp_id,
+				HFI_SUBSYSTEM_TYPE_GMU, conn->gmu_dcp_iova,
+				conn->gmu_dcp_size);
+		if (ret)
+			return ret;
+	}
+
 	mutex_lock(&hfi_conn->hfi_lock);
 	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
 
