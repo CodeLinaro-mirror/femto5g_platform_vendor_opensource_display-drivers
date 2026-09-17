@@ -26,6 +26,7 @@
 #define DNSC_BLUR_MAX_COUNT	1
 
 #define SDE_CONNECTOR_CUSTOM_WD_TE_FPS_MAX 360
+#define SDE_CONNECTOR_GMU_REPROJ_MAX_SLICES 4
 
 struct sde_connector;
 struct sde_connector_state;

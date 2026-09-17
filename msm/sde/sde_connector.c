@@ -1387,6 +1387,7 @@ static int _sde_connector_update_dirty_properties(
 	bool is_privacy_v1_dirty = false;
 	bool is_privacy_v2_dirty = false;
 	bool is_gmu_dcp_intf_mem_dirty = false;
+	bool is_gmu_reproj_num_slices_dirty = false;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1451,6 +1452,9 @@ static int _sde_connector_update_dirty_properties(
 		case CONNECTOR_PROP_PRIVACY_LAYER_V2:
 			is_privacy_v2_dirty = true;
 			break;
+		case CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES:
+			is_gmu_reproj_num_slices_dirty = true;
+			break;
 		default:
 			/* nothing to do for most properties */
 			break;
@@ -1514,6 +1518,10 @@ static int _sde_connector_update_dirty_properties(
 	if ((disp_op == MSM_DISP_OP_HFI) && is_gmu_dcp_intf_mem_dirty)
 		msm_property_set_dirty(&c_conn->property_info,
 			&c_state->property_state, CONN_PROP_GMU_DCP_INTF_MEM);
+
+	if ((disp_op == MSM_DISP_OP_HFI) && is_gmu_reproj_num_slices_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES);
 
 	return 0;
 }
@@ -2986,6 +2994,7 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 	case CONNECTOR_PROP_EPT_FPS:
 	case CONNECTOR_PROP_EPT:
 	case CONNECTOR_PROP_VSYNC_OFFSET:
+	case CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES:
 		msm_property_set_dirty(&c_conn->property_info,
 				&c_state->property_state, idx);
 		break;
@@ -4943,7 +4952,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			"gmu_dcp_intf_mem", 0x0, 0, U32_MAX, 0,
 			CONN_PROP_GMU_DCP_INTF_MEM);
 		msm_property_install_range(&c_conn->property_info,
-			"gmu_reproj_num_slices", 0x0, 0, U32_MAX, 0,
+			"gmu_reproj_num_slices", 0x0, 0, SDE_CONNECTOR_GMU_REPROJ_MAX_SLICES, 0,
 			CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES);
 	}
 

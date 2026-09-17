@@ -50,6 +50,7 @@ struct base_prop_lookup hfi_connector_base_props_map[] = {
 	{ CONNECTOR_PROP_USECASE_IDX, HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS },
 	{ CONNECTOR_PROP_EPT, HFI_PROPERTY_DISPLAY_EPT },
 	{ CONNECTOR_PROP_VSYNC_OFFSET, HFI_PROPERTY_DISPLAY_VSYNC_OFFSET },
+	{ CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES, HFI_PROPERTY_DISPLAY_SLICE_CFG },
 
 	// wb specific properties
 	{ CONNECTOR_PROP_PP_CWB_DITHER, HFI_PROPERTY_DISPLAY_WB_CWB_DITHER },
@@ -323,6 +324,41 @@ static int _hfi_connector_add_privacy_layer(struct sde_connector *conn,
 	return ret;
 }
 
+static int _hfi_connector_add_slice_cfg(struct sde_connector *conn,
+		struct sde_connector_state *old_cstate,
+		struct hfi_util_u32_prop_helper *prop_collector)
+{
+	struct hfi_slice_cfg_payload *payload = NULL;
+	u32 payload_size, num_slices;
+	int ret = 0;
+
+	num_slices = sde_connector_get_property(&old_cstate->base,
+			CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES);
+
+	payload_size = struct_size(payload, slices, num_slices);
+	payload = kzalloc(payload_size, GFP_KERNEL);
+	if (!payload)
+		return -ENOMEM;
+
+	payload->num_slices = num_slices;
+
+	/*
+	 * The slice cfg interface is extended for future use to carry the
+	 * per-slice height, input fence, output fence and fence flags. These
+	 * are not needed for now, so each struct hfi_slice_cfg entry in
+	 * slices[] is left as 0.
+	 */
+
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_SLICE_CFG,
+			HFI_VAL_U32_ARRAY, payload, payload_size);
+
+	SDE_EVT32(num_slices, payload_size, ret);
+
+	kfree(payload);
+	return ret;
+}
+
 static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn,
 		struct sde_connector_state *old_cstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
@@ -369,6 +405,9 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 		val = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_WB_ROT_TYPE);
 		ret = hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector,
 			hfi_prop, conn->base.base.id, HFI_VAL_U32, &val, sizeof(u32));
+		break;
+	case HFI_PROPERTY_DISPLAY_SLICE_CFG:
+		ret = _hfi_connector_add_slice_cfg(conn, old_cstate, prop_collector);
 		break;
 	case HFI_PROPERTY_DISPLAY_BRIGHTNESS:
 		if (conn->bl_dirty_change) {
