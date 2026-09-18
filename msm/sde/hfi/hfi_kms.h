@@ -25,9 +25,9 @@
  * Qtimer runs at 19.2 MHz timer, the accurate conversion to ns is
  * (qtimer * 10 * 1000) / 192
  */
-#define QTIMER_TO_NS(qtimer) (((qtimer) * 10 * 1000) / 192)
-#define QTIMER_TO_US(qtimer) (QTIMER_TO_NS(qtimer)  / 1000)
-#define NS_TO_QTIMER(ns) (((ns) * 192) / (10 * 1000))
+#define QTIMER_TO_NS(qtimer) (((uint64_t)(qtimer) * 10ULL * 1000ULL) / 192ULL)
+#define QTIMER_TO_US(qtimer) (QTIMER_TO_NS(qtimer)  / 1000ULL)
+#define NS_TO_QTIMER(ns) (((uint64_t)(ns) * 192ULL) / (10ULL * 1000ULL))
 
 /*
  * hfi_catalog_base - base struct for sde HW information
@@ -46,6 +46,9 @@
  * @max_display_count	Max display count
  * @wb_count		Number of writeback blocks
  * @wb_indices		Writeback block indices
+ * @wb_dnsc_indices	Writeback DNSC support indices
+ * @wb_dnsc_range	Valid range of scale ratio for WB DNSC
+ * @wb_dnsc_integer_only	Whether WB DNSC supports only integer scaling
  * @csc_wb_count	Number of CSC writeback blocks
  * @csc_wb_indices	CSC writeback block indices
  * @repro_wb_count	Number of Repro writeback blocks
@@ -62,6 +65,7 @@
  * @ds_count		count of destination scaler blocks
  * @ds_indices		DS block indices
  * @max_ds_resolution	Max resolution support of DS
+ * @active_pipes_mask	Array of active pipes mask
  */
 struct hfi_catalog_base {
 	u32 dcp_hw_rev;
@@ -82,6 +86,9 @@ struct hfi_catalog_base {
 	u32 max_display_count;
 	u32 wb_count;
 	u32 wb_indices[MAX_BLOCKS];
+	u32 wb_dnsc_indices[MAX_BLOCKS];
+	u32 wb_dnsc_range;
+	u32 wb_dnsc_integer_only;
 	u32 csc_wb_count;
 	u32 csc_wb_indices[MAX_BLOCKS];
 	u32 repro_wb_count;
@@ -97,6 +104,7 @@ struct hfi_catalog_base {
 	u32 ds_count;
 	u32 ds_indices[MAX_BLOCKS];
 	u32 max_ds_resolution;
+	u32 active_pipes_mask[MAX_SPLASH_DISPLAYS];
 };
 
 #if IS_ENABLED(CONFIG_QTI_HW_FENCE)
@@ -126,6 +134,20 @@ struct hfi_hwfence_data {
 #endif
 
 /**
+ * struct hfi_kms_batch_info - batch commit state for one CRTC iteration
+ * @index:      value of CRTC_PROP_BATCH_INDEX for this commit
+ * @size:       value of CRTC_PROP_BATCH_SIZE for this commit
+ * @usecase_id: HFI usecase mapped from CRTC_PROP_BATCH_TYPE
+ * @is_batch:   true when this commit belongs to a batch sequence
+ */
+struct hfi_kms_batch_info {
+	u32 index;
+	u32 size;
+	enum hfi_batch_usecase_id usecase_id;
+	bool is_batch;
+};
+
+/**
  * struct hfi_kms - virtualized hfi kms structure
  * @base: Pointer to base sde kms structure
  * @hfi_client: hfi client structure
@@ -145,6 +167,7 @@ struct hfi_kms {
 	struct hfi_prop_listener device_init_listener;
 	struct hfi_prop_listener resource_vote_listener;
 	struct hfi_prop_listener trace_cfg_listener;
+	struct hfi_prop_listener debug_set_prop_listener;
 	atomic_t cat_init_done;
 	struct hfi_catalog_base *catalog;
 	struct hfi_connector *primary_connector;
@@ -219,15 +242,12 @@ static inline int hfi_kms_destroy(struct sde_kms *sde_kms)
 
 /**
  * hfi_kms_resource_vote_hfi_prop_handler - listener function for resource voting
- * @UNIQUE_DISP_OR_OBJ_ID: Unique ID for display or object
- * @CMD_ID: HFI Command ID for which callback received
- * @payload: Pointer to the payload data
- * @size: Size of the payload
+ * @packet_info: Pointer to the hfi packet info for the response
  * @resource_vote_listener: Pointer to the resource vote listener structure
  * Returns: This function does not return a value.
  */
-void hfi_kms_resource_vote_hfi_prop_handler(u32 UNIQUE_DISP_OR_OBJ_ID, u32 CMD_ID, void *payload,
-		u32 size, struct hfi_prop_listener *resource_vote_listener);
+void hfi_kms_resource_vote_hfi_prop_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *resource_vote_listener);
 
 /**
  * to_hfi_kms - convert sde_kms pointer to hfi kms pointer
@@ -324,5 +344,21 @@ int hfi_kms_set_uidle_disable(struct hfi_kms *hfi_kms, bool disable);
  * Returns 0 on success, negative error code on failure.
  */
 int hfi_kms_set_uidle_perf_cnt(struct hfi_kms *hfi_kms, u32 val);
+
+/**
+ * hfi_kms_get_batch_info - populate batch commit state from CRTC state
+ * @hfi_kms: Pointer to hfi_kms structure
+ * @crtc_state: Pointer to DRM CRTC state
+ * @info: Output batch info populated from CRTC state batch properties
+ */
+void hfi_kms_get_batch_info(struct hfi_kms *hfi_kms, struct drm_crtc_state *crtc_state,
+		struct hfi_kms_batch_info *info);
+
+/**
+ * hfi_kms_is_gmu_lsr_batch - check if batch belongs to the GMU LSR usecase
+ * @batch: Pointer to batch commit info
+ * Returns: true if batch usecase is GMU LSR (reprojection), false otherwise
+ */
+bool hfi_kms_is_gmu_lsr_batch(const struct hfi_kms_batch_info *batch);
 
 #endif // _HFI_KMS_H_

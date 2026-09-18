@@ -53,6 +53,10 @@
 #define MSM_MODE_FLAG_SEAMLESS_EMSYNC_FPS_SWITCH	(1<<9)
 /* Request to switch the timing mode on video panel */
 #define MSM_MODE_FLAG_SEAMLESS_DMS_VID			(1<<10)
+/* Request to switch SPR chroma format mode */
+#define MSM_MODE_FLAG_SEAMLESS_SPR_MODE_SWITCH		(1<<11)
+/* Request to enable DNSC for writeback demura client */
+#define MSM_MODE_FLAG_SEAMLESS_DNSC_BLUR		(1<<12)
 
 /* As there are different display controller blocks depending on the
  * snapdragon version, the kms support is split out and the appropriate
@@ -121,10 +125,10 @@ struct msm_kms_funcs {
 	/* pm suspend/resume/freeze/restore hooks */
 	int (*pm_suspend)(struct device *dev);
 	int (*pm_resume)(struct device *dev);
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 	int (*pm_freeze)(struct device *dev);
 	int (*pm_restore)(struct device *dev);
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 	/* cleanup: */
 	void (*destroy)(struct msm_kms *kms);
 	/* get address space */
@@ -169,6 +173,9 @@ struct msm_kms {
 
 	/* DRM client used for lastclose cleanup */
 	struct drm_client_dev client;
+
+	/* indicates if lastclose cleanup is active */
+	atomic_t lastclose_active;
 };
 
 /**
@@ -236,6 +243,11 @@ static inline bool msm_is_mode_seamless(const struct msm_display_mode *mode)
 	return (mode->private_flags & DRM_MODE_FLAG_SEAMLESS);
 }
 
+static inline bool msm_is_mode_seamless_dnsc_blur(const struct msm_display_mode *mode)
+{
+	return (mode->private_flags & MSM_MODE_FLAG_SEAMLESS_DNSC_BLUR);
+}
+
 static inline bool msm_is_mode_seamless_dms(const struct msm_display_mode *mode)
 {
 	return mode ? (mode->private_flags & MSM_MODE_FLAG_SEAMLESS_DMS) : false;
@@ -288,6 +300,14 @@ static inline bool msm_is_mode_seamless_dms_vid(
 		: false;
 }
 
+static inline bool msm_is_mode_seamless_spr_mode_switch(
+					const struct msm_display_mode *mode)
+{
+	return mode ?
+		(mode->private_flags & MSM_MODE_FLAG_SEAMLESS_SPR_MODE_SWITCH) :
+		false;
+}
+
 static inline bool msm_is_mode_bpp_switch(const struct msm_display_mode *mode)
 {
 	return mode ? (mode->private_flags & MSM_MODE_FLAG_NONDSC_BPP_SWITCH) : false;
@@ -321,6 +341,9 @@ static inline bool msm_is_private_mode_changed(
 		return false;
 
 	if (msm_is_mode_seamless_emsync_fps_switch(msm_mode))
+		return true;
+
+	if (msm_is_mode_seamless_spr_mode_switch(msm_mode))
 		return true;
 
 	if (msm_is_mode_seamless_poms(msm_mode))

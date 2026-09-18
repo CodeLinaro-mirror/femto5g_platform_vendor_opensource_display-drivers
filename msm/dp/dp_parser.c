@@ -96,7 +96,7 @@ static void dp_parser_phy_aux_cfg_reset(struct dp_parser *parser)
 		parser->aux_cfg[i] = (const struct dp_aux_cfg){ 0 };
 }
 
-static int dp_parser_aux(struct dp_parser *parser)
+int dp_parser_aux(struct dp_parser *parser)
 {
 	struct device_node *of_node = parser->pdev->dev.of_node;
 	int len = 0, i = 0, j = 0, config_count = 0;
@@ -139,6 +139,95 @@ static int dp_parser_aux(struct dp_parser *parser)
 error:
 	dp_parser_phy_aux_cfg_reset(parser);
 	return -EINVAL;
+}
+
+void dp_parser_max_link_rate(struct dp_parser *parser)
+{
+	int rc = 0;
+	struct device_node *of_node = parser->pdev->dev.of_node;
+
+	rc = of_property_read_u32(of_node,
+		"qcom,max-lclk-frequency-khz", &parser->max_lclk_khz);
+	if (rc)
+		/* unable to parse device tree max-link-rate, HFI Prop will not be sent*/
+		parser->max_lclk_khz = 0;
+	return;
+}
+
+void dp_parser_max_lane_count(struct dp_parser *parser)
+{
+	int rc = 0;
+	struct device_node *of_node = parser->pdev->dev.of_node;
+
+	rc = of_property_read_u32(of_node,
+		"qcom,max-lane-count", &parser->max_lane_count);
+	if (rc)
+		/* unable to parse device tree max-link-rate, HFI Prop will not be sent*/
+		parser->max_lane_count = 0;
+	return;
+}
+
+static void dp_parser_clear_lane_tuning_params(struct dp_parser *parser)
+{
+	devm_kfree(&parser->pdev->dev, parser->lane_tuning_params);
+	parser->lane_tuning_params = NULL;
+	parser->lane_tuning_count = 0;
+}
+
+void dp_parser_lane_tuning_params(struct dp_parser *parser)
+{
+	struct device *dev = &parser->pdev->dev;
+	struct device_node *of_node = parser->pdev->dev.of_node;
+	const char *property = "qcom,lane-tuning-params";
+	u32 out_val;
+	int rc, num_elems, num_pairs, i;
+
+	parser->lane_tuning_count = 0;
+
+	num_elems = of_property_count_u32_elems(of_node, property);
+	if (num_elems <= 0 || (num_elems % 2)) {
+		DP_DEBUG("%s not found or malformed, skipping\n", property);
+		return;
+	}
+
+	num_pairs = num_elems / 2;
+	if (num_pairs > DP_MAX_LANE_TUNING_PARAMS) {
+		DP_WARN("%s has %d pairs, exceeds max %d, truncating\n",
+				property, num_pairs, DP_MAX_LANE_TUNING_PARAMS);
+		num_pairs = DP_MAX_LANE_TUNING_PARAMS;
+	}
+
+	parser->lane_tuning_params = devm_kzalloc(dev,
+			sizeof(struct dp_lane_tuning_param) * num_pairs, GFP_KERNEL);
+	if (!parser->lane_tuning_params) {
+		DP_ERR("failed to allocate lane tuning params\n");
+		return;
+	}
+
+	for (i = 0; i < num_pairs; i++) {
+		rc = of_property_read_u32_index(of_node, property, i * 2, &out_val);
+		if (rc)
+			goto error;
+		parser->lane_tuning_params[i].id = (u8)(out_val & 0xFF);
+
+		rc = of_property_read_u32_index(of_node, property, (i * 2) + 1, &out_val);
+		if (rc)
+			goto error;
+		parser->lane_tuning_params[i].value = (u8)(out_val & 0xFF);
+
+		DP_DEBUG("%s[%d]: id=0x%x value=0x%x\n", property, i,
+				parser->lane_tuning_params[i].id,
+				parser->lane_tuning_params[i].value);
+	}
+
+	/* all pairs parsed successfully */
+	parser->lane_tuning_count = num_pairs;
+	return;
+
+error:
+	/* partial/failed parse: discard everything, per function contract */
+	DP_WARN("%s parsing failed at pair %d, discarding all entries\n", property, i);
+	dp_parser_clear_lane_tuning_params(parser);
 }
 
 static int dp_parser_misc(struct dp_parser *parser)
@@ -195,6 +284,9 @@ static int dp_parser_misc(struct dp_parser *parser)
 
 	parser->max_fps_mode_en = of_property_read_bool(of_node,
 			"qcom,dp-max-fps-mode-en");
+
+	parser->dp_cec_feature = of_property_read_bool(of_node,
+			"qcom,dp-cec-feature");
 
 	return 0;
 }
@@ -903,7 +995,7 @@ static void dp_parser_clear_link_training_params(struct dp_parser *dp_parser)
 	dp_parser->valid_lt_params = false;
 }
 
-static void dp_parser_link_training_params(struct dp_parser *parser)
+void dp_parser_link_training_params(struct dp_parser *parser)
 {
 	struct device *dev = &parser->pdev->dev;
 	int ret = 0;
@@ -1104,6 +1196,7 @@ void dp_parser_put(struct dp_parser *parser)
 	}
 
 	dp_parser_clear_link_training_params(parser);
+	dp_parser_clear_lane_tuning_params(parser);
 	dp_parser_clear_io_buf(parser);
 	devm_kfree(&parser->pdev->dev, parser->io.data);
 	devm_kfree(&parser->pdev->dev, parser);

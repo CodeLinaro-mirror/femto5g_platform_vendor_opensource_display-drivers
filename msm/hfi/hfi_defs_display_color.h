@@ -117,6 +117,9 @@ struct hfi_display_pa_dither {
 #define HFI_CWB_BLOCK_6 0x6
 #define HFI_CWB_BLOCK_7 0x7
 
+/* bit 16 of hfi_qrtc_config.flags will be used to indicate if QRTC buffer is secure or not */
+#define HFI_QRTC_SECURE_BUFF (1 << 16)
+
 /*!
  * @struct hfi_qrtc_config
  * @brief QRTC configuration structure.

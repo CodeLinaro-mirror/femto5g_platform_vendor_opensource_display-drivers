@@ -524,6 +524,46 @@ static int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 	return 0;
 }
 
+int hfi_adapter_handle_hibernation_entry(struct hfi_client_t *hfi_client)
+{
+	int ret = 0;
+
+	if (!hfi_client) {
+		HFI_AD_ERROR("invalid hfi client handle\n");
+		return -EINVAL;
+	}
+
+	ret = hfi_core_hibernate_stop_fw_comm();
+	if (ret) {
+		HFI_AD_ERROR("failed to shutdown dcp %d\n", ret);
+		return ret;
+	}
+
+	hfi_core_close_session(hfi_client->host->session);
+	if (ret)
+		HFI_AD_ERROR("failed to close hfi session%d\n", ret);
+
+	return ret;
+}
+
+int hfi_adapter_handle_hibernation_exit(void)
+{
+	int ret = 0;
+
+	ret = hfi_smem_init();
+	if (ret) {
+		HFI_AD_ERROR("Failed sde_kms_resume_helper: %d\n", ret);
+		return ret;
+	}
+	ret = hfi_core_reinit_queues();
+	if (ret) {
+		HFI_AD_ERROR("Failed sde_kms_resume_helper: %d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
 struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance)
 {
 	struct hfi_adapter_t *hfi_host;
@@ -712,6 +752,11 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 		return NULL;
 	}
 	adapter = ctx->host;
+
+	if (!adapter) {
+		HFI_AD_ERROR("hfi adapter not initialized, skip cmd buf alloc\n");
+		return NULL;
+	}
 
 	/* Acquire lock to protect the entire critical section including pool->available */
 	mutex_lock(&adapter->hfi_adapter_cmd_buf_list_lock);
@@ -1058,7 +1103,7 @@ static void _hfi_adapter_remove_listeners_by_event(struct hfi_client_t *ctx,
 
 	list_for_each_safe(pos, temp, &ctx->packet_listeners.list_ptr) {
 		listener_entry = list_entry(pos, struct listener_list, list_ptr);
-		if (!listener_entry || !listener_entry->listener_obj)
+		if (!listener_entry->listener_obj)
 			continue;
 
 		/*
@@ -1224,12 +1269,14 @@ static void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 
 	mutex_lock(&ctx->lock);
 
-	buff_arr[i++] = &cmd_buf->buf;
+	if (!cmd_buf->is_released && cmd_buf->buf.pbuf_vaddr)
+		buff_arr[i++] = &cmd_buf->buf;
 
 	if (!list_empty(&cmd_buf->cmd_buf_chain)) {
 		list_for_each_prev_safe(pos, updated_pos, &cmd_buf->cmd_buf_chain) {
 			buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
-			buff_arr[i++] = &buf_entry->buf;
+			if (!buf_entry->is_released && buf_entry->buf.pbuf_vaddr)
+				buff_arr[i++] = &buf_entry->buf;
 			if (buf_entry->pool)
 				_hfi_clear_buffer(buf_entry);
 			list_del_init(pos);
@@ -1244,7 +1291,7 @@ static void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 	if (atomic_read(&host->ssr_in_progress))
 		cmd_buf->is_released = true;
 
-	if (!cmd_buf->is_released)
+	if (!cmd_buf->is_released && i)
 		hfi_core_release_tx_buffer(cmd_buf->ctx->host->session, buff_arr, i);
 
 	list_del_init(&cmd_buf->node);
@@ -1275,9 +1322,6 @@ int hfi_adapter_set_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_b
 	if (!host)
 		return -EINVAL;
 
-	if (atomic_read(&host->ssr_in_progress))
-		goto exit;
-
 	/* Append the number of chained buffers */
 	struct list_head *pos;
 	list_for_each(pos, &cmd_buf->cmd_buf_chain)
@@ -1292,27 +1336,41 @@ int hfi_adapter_set_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_b
 
 	HFI_AD_DEBUG("from %pS\n", __builtin_return_address(0));
 
+	u32 host_flags = HFI_CORE_SET_FLAGS_TRIGGER_IPC;
+
+	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
+
+	if (atomic_read(&host->ssr_in_progress) || cmd_buf->is_released ||
+			!cmd_buf->buf.pbuf_vaddr) {
+		HFI_AD_WARN("skip send, ssr:%d released:%d pbuf_vaddr:%pK\n",
+			atomic_read(&host->ssr_in_progress), cmd_buf->is_released,
+			cmd_buf->buf.pbuf_vaddr);
+		mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+		goto exit;
+	}
+
 	buff_arr[0] = &cmd_buf->buf;
 
 	list_for_each(pos, &cmd_buf->cmd_buf_chain) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
-		if (buf_entry)
+		if (buf_entry && buf_entry->buf.pbuf_vaddr)
 			buff_arr[i++] = &buf_entry->buf;
-	}
-
-	u32 host_flags = HFI_CORE_SET_FLAGS_TRIGGER_IPC;
-
-	if (!atomic_read(&host->ssr_in_progress)) {
-		rc = hfi_core_cmds_tx_buf_send(cmd_buf->ctx->host->session,
-				buff_arr, num_buffers, host_flags);
-		if (rc) {
-			HFI_AD_ERROR("failed to send tx buffer. error code = %d\n", rc);
-		} else {
-			mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
-			cmd_buf->is_released = true;
+		else {
+			SDE_EVT32(cmd_buf->obj_id, cmd_buf->unique_id,
+				SDE_EVTLOG_ERROR);
 			mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+			goto exit;
 		}
 	}
+
+	rc = hfi_core_cmds_tx_buf_send(cmd_buf->ctx->host->session,
+			buff_arr, num_buffers, host_flags);
+	if (rc) {
+		HFI_AD_ERROR("failed to send tx buffer. error code = %d\n", rc);
+		SDE_EVT32(cmd_buf->obj_id, rc, SDE_EVTLOG_ERROR);
+	} else
+		cmd_buf->is_released = true;
+	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 
 exit:
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
@@ -1348,11 +1406,6 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_client_t *ctx, struct hfi_cmdbuf
 	if (!host)
 		return -EINVAL;
 
-	if (atomic_read(&host->ssr_in_progress)) {
-		HFI_AD_DEBUG("SSR in progress\n");
-		goto exit;
-	}
-
 	/* Append the number of chained buffers */
 	list_for_each(pos, &cmd_buf->cmd_buf_chain)
 		num_buffers++;
@@ -1366,29 +1419,46 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_client_t *ctx, struct hfi_cmdbuf
 
 	HFI_AD_DEBUG("from %pS\n", __builtin_return_address(0));
 
+	u32 host_flags = HFI_CORE_SET_FLAGS_TRIGGER_IPC;
+
+	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
+
+	if (atomic_read(&host->ssr_in_progress) || cmd_buf->is_released ||
+			!cmd_buf->buf.pbuf_vaddr) {
+		HFI_AD_WARN("skip send, ssr:%d released:%d pbuf_vaddr:%pK\n",
+			atomic_read(&host->ssr_in_progress), cmd_buf->is_released,
+			cmd_buf->buf.pbuf_vaddr);
+		mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+		goto exit;
+	}
+
 	buff_arr[i++] = &cmd_buf->buf;
 	list_for_each(pos, &cmd_buf->cmd_buf_chain) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
-		if (buf_entry)
+		if (buf_entry && buf_entry->buf.pbuf_vaddr) {
 			buff_arr[i++] = &buf_entry->buf;
-	}
-
-	u32 host_flags = HFI_CORE_SET_FLAGS_TRIGGER_IPC;
-
-	if (!atomic_read(&host->ssr_in_progress)) {
-		rc = hfi_core_cmds_tx_buf_send(cmd_buf->ctx->host->session,
-				buff_arr, num_buffers, host_flags);
-		HFI_AD_DEBUG("from %pS: host_flags:0x%x\n",
-			__builtin_return_address(0), host_flags);
-		if (rc) {
-			HFI_AD_ERROR("failed to send tx buffer. error code = %d\n", rc);
-			return rc;
 		} else {
-			mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
-			cmd_buf->is_released = true;
+			SDE_EVT32(cmd_buf->obj_id, cmd_buf->unique_id,
+				SDE_EVTLOG_ERROR);
 			mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+			goto exit;
 		}
 	}
+
+	rc = hfi_core_cmds_tx_buf_send(cmd_buf->ctx->host->session,
+			buff_arr, num_buffers, host_flags);
+	HFI_AD_DEBUG("from %pS: host_flags:0x%x\n",
+		__builtin_return_address(0), host_flags);
+	if (rc) {
+		HFI_AD_ERROR("failed to send tx buffer. error code = %d\n", rc);
+		SDE_EVT32(cmd_buf->obj_id, rc, SDE_EVTLOG_ERROR);
+		mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+		goto exit;
+	} else {
+		cmd_buf->is_released = true;
+
+	}
+	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 
 	HFI_AD_DEBUG("[info] tx buffer sent\n");
 
@@ -1514,11 +1584,6 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 		mutex_lock(&ctx->listener_lock);
 		list_for_each(pos, &ctx->packet_listeners.list_ptr) {
 			listener_entry = list_entry(pos, struct listener_list, list_ptr);
-			if (!listener_entry) {
-				HFI_AD_DEBUG("listener_entry is NULL\n");
-				continue;
-			}
-
 			if (!listener_entry->listener_obj) {
 				HFI_AD_ERROR("[warning] no listener's attached\n");
 				ret = -HFI_ERROR;
@@ -1575,18 +1640,17 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 			 */
 			if (packet_info.flags != HFI_RX_FLAGS_NONE &&
 					packet_info.flags != HFI_RX_FLAGS_SUCCESS) {
-				HFI_AD_ERROR("response packet error. cmd:0x%x resp:0x%x\n",
-						packet_info.cmd, packet_info.flags);
-				ret = -HFI_ERROR;
+				HFI_AD_WARN("response packet error. num_packets:%d id:0x%x cmd:0x%x"
+							" resp:0x%x\n", num_packets, packet_info.id,
+							packet_info.cmd, packet_info.flags);
 				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd,
 						packet_info.flags);
-				listener->hfi_prop_handler(packet_info.id,
-						packet_info.cmd, NULL, 0, listener);
+				packet_info.payload_ptr = NULL;
+				packet_info.payload_size = 0;
+				listener->hfi_prop_handler(&packet_info, listener);
 			} else {
 				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd);
-				listener->hfi_prop_handler(packet_info.id,
-						packet_info.cmd, packet_info.payload_ptr,
-						packet_info.payload_size, listener);
+				listener->hfi_prop_handler(&packet_info, listener);
 			}
 
 			/* Remove and free the temporary entry */
@@ -1606,8 +1670,6 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 	mutex_lock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
 	list_for_each_safe(pos, updated_pos, &ctx->cmd_buf_list) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
-		if (!buf_entry)
-			continue;
 
 		if (buf_entry->unique_id == cmd_buf->unique_id) {
 			HFI_AD_DEBUG("matched response buf 0x%x to original 0x%x at ktime:%llu\n",
@@ -1651,6 +1713,11 @@ static int hfi_adapter_release_cmd_buf_no_lock(struct hfi_client_t *ctx,
 	if (!cmd_buf || !ctx) {
 		HFI_AD_ERROR("invalid param\n");
 		return -EINVAL;
+	}
+
+	if (cmd_buf->is_released && list_empty(&cmd_buf->cmd_buf_chain)) {
+		HFI_AD_DEBUG("buffer already released, skipping\n");
+	        return 0;
 	}
 
 	if (cmd_buf->virtq_type == HFI_VIRTQUEUE_TYPE_MAX) {
@@ -1716,11 +1783,6 @@ int hfi_adapter_release_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *c
 		return -EINVAL;
 	}
 
-	if (cmd_buf->virtq_type == HFI_VIRTQUEUE_TYPE_MAX) {
-		HFI_AD_ERROR("invalid virtqueue type %d\n", cmd_buf->virtq_type);
-		return -EINVAL;
-	}
-
 	mutex_lock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
 	rc = hfi_adapter_release_cmd_buf_no_lock(ctx, cmd_buf);
 	mutex_unlock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
@@ -1777,10 +1839,8 @@ void hfi_adapter_deinit(struct hfi_client_t *ctx)
 	if (!list_empty(&ctx->cmd_buf_list)) {
 		list_for_each_safe(pos, updated_pos, &ctx->cmd_buf_list) {
 			buf = list_entry(pos, struct hfi_cmdbuf_t, node);
-			if (buf) {
-				i++;
-				_release_tx_buffers(buf);
-			}
+			i++;
+			_release_tx_buffers(buf);
 		}
 	}
 	mutex_unlock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
@@ -1789,11 +1849,9 @@ void hfi_adapter_deinit(struct hfi_client_t *ctx)
 	mutex_lock(&ctx->listener_lock);
 	list_for_each_safe(pos, updated_pos, &ctx->packet_listeners.list_ptr) {
 		listener_entry = list_entry(pos, struct listener_list, list_ptr);
-		if (listener_entry) {
-			list_del(pos);
-			kfree(listener_entry);
-			i++;
-		}
+		list_del(pos);
+		kfree(listener_entry);
+		i++;
 	}
 	mutex_unlock(&ctx->listener_lock);
 
@@ -1989,9 +2047,6 @@ int hfi_adapter_release_all_cmd_bufs(struct hfi_client_t *client)
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
 	list_for_each_safe(pos, updated_pos, &client->cmd_buf_list) {
 		cmd_buf = list_entry(pos, struct hfi_cmdbuf_t, node);
-		if (!cmd_buf)
-			continue;
-
 		ret = hfi_adapter_release_cmd_buf_no_lock(client, cmd_buf);
 		if (ret)
 			HFI_AD_ERROR("failed to release cmd buf, ret: %d\n", ret);

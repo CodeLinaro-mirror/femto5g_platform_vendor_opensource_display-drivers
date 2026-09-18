@@ -90,6 +90,8 @@ enum dsi_op_mode {
  *         Seamless transition is dynamic mode switch on vid panel.
  * @DSI_MODE_FLAG_MODE_IDX_VALID:
  *         Panel timing mode index in reserved1[15:0] is valid.
+ * @DSI_MODE_FLAG_SPR_MODE_SWITCH:
+ *         Seamless transition is SPR chroma format switch
  */
 enum dsi_mode_flags {
 	DSI_MODE_FLAG_SEAMLESS			= BIT(0),
@@ -104,7 +106,8 @@ enum dsi_mode_flags {
 	DSI_MODE_FLAG_NONDSC_BPP_SWITCH		= BIT(9),
 	DSI_MODE_FLAG_EMSYNC_FPS_SWITCH		= BIT(10),
 	DSI_MODE_FLAG_DMS_VID			= BIT(11),
-	DSI_MODE_FLAG_MODE_IDX_VALID		= BIT(12)
+	DSI_MODE_FLAG_MODE_IDX_VALID		= BIT(12),
+	DSI_MODE_FLAG_SPR_MODE_SWITCH           = BIT(13)
 };
 
 /**
@@ -323,6 +326,8 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_PRIVACY_LAYER:		   Command to update panel on Privacy layer config
  * @DSI_CMD_SET_BRIGHTNESS:		   Command to update backlight
  * @DSI_CMD_SET_CUSTOM_ON:		   Custom DCS ON command
+ * @DSI_CMD_SET_ROI_PRE:                   Panel ROI pre command
+ * @DSI_CMD_SET_ROI_POST:                  Panel ROI post command
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -371,6 +376,8 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_PRIVACY_LAYER,
 	DSI_CMD_SET_BRIGHTNESS,
 	DSI_CMD_SET_CUSTOM_ON,
+	DSI_CMD_SET_ROI_PRE,
+	DSI_CMD_SET_ROI_POST,
 	DSI_CMD_SET_MAX
 };
 
@@ -630,6 +637,7 @@ struct dsi_split_link_config {
  *                       true.
  * @ext_bridge_mode:     External bridge is connected.
  * @ext_bridge_hpd_en:   Enable hpd for external bridge.
+ * @ext_bridge_dyn_topology: Apply dynamic topology for external bridge.
  * @force_hs_clk_lane:   Send continuous clock to the panel.
  * @phy_type:            DPHY/CPHY is enabled for this panel.
  * @dsi_split_link_config:  Split Link Configuration.
@@ -664,6 +672,7 @@ struct dsi_host_common_cfg {
 	bool append_tx_eot;
 	bool ext_bridge_mode;
 	bool ext_bridge_hpd_en;
+	bool ext_bridge_dyn_topology;
 	bool force_hs_clk_lane;
 	enum dsi_phy_type phy_type;
 	struct dsi_split_link_config split_link;

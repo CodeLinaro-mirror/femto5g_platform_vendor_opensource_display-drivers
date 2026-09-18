@@ -863,6 +863,7 @@ struct sde_connector {
 	struct drm_property_blob *blob_dither;
 	struct drm_property_blob *blob_mode_info;
 	struct drm_property_blob *blob_panel_id;
+	struct drm_property_blob *blob_wb_dnsc_config;
 
 	struct sde_connector_evt event_table[SDE_CONN_EVENT_COUNT];
 	spinlock_t event_lock;
@@ -947,6 +948,9 @@ struct sde_connector {
 	u32 custom_wd_te_enabled;
 	u32 custom_wd_te_fps;
 	bool custom_wd_updated;
+	struct drm_framebuffer *gmu_dcp_fb;
+	u32 gmu_dcp_iova;
+	u32 gmu_dcp_size;
 };
 
 /**
@@ -1016,6 +1020,7 @@ struct sde_connector {
  * @dnsc_blur_count: Number of downscale blur blocks used
  * @dnsc_blur_cfg: Configs for the downscale blur block
  * @dnsc_blur_lut: LUT idx used for the Gaussian filter LUTs in downscale blur block
+ * @wb_dnsc_cfg: Config for writeback downscale block
  * @usage_type: WB connector usage type
  * @repro_conn_cfg: Reprojection connector config
  * @fb_id_list: FB ID list
@@ -1067,6 +1072,7 @@ struct sde_connector_state {
 	u32 dnsc_blur_count;
 	struct sde_drm_dnsc_blur_cfg dnsc_blur_cfg[DNSC_BLUR_MAX_COUNT];
 	u32 dnsc_blur_lut;
+	struct sde_drm_wb_dnsc_cfg wb_dnsc_cfg;
 	enum sde_wb_usage_type usage_type;
 
 	struct sde_hw_repro_conn_cfg repro_conn_cfg;
@@ -1882,6 +1888,8 @@ sde_connector_state_get_sub_mode(struct drm_connector_state *conn_state,
 			CONNECTOR_PROP_BPP_MODE);
 	sub_mode->emsync_fps = sde_connector_get_property(conn_state,
 			CONNECTOR_PROP_EMSYNC_FPS);
+	sub_mode->spr_mode = sde_connector_get_property(conn_state,
+			CONNECTOR_PROP_SPR_MODE);
 	return 0;
 }
 

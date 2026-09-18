@@ -624,6 +624,72 @@
  */
 #define HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG                      0x0200001B
 
+/*
+ * HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE - From Host to DCP, this command instructs DCP to
+ *                                         immediately execute the DCS command set identified
+ *                                         by the given command type. This allows the host to
+ *                                         trigger a specific pre-configured DCS command type
+ *                                         (e.g., LP1, LP2, NOLP, QSYNC_ONS, QSYNC_OFFS, or an
+ *                                         OEM-defined custom type).
+ *
+ * The cmd_type payload field accepts either:
+ *   - A valid value from enum hfi_panel_dcs_command_type
+ *   - A custom command type index within the range established by
+ *     HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO (i.e., [start_index,
+ *     start_index + count))
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Validation requirements:
+ *      - cmd_type must be either a valid hfi_panel_dcs_command_type value, or a valid
+ *        custom command type index within the range defined by
+ *        HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO
+ *      - The DCS command set for the specified cmd_type must have been previously configured
+ *        via HFI_PROPERTY_PANEL_DCS_CMD_INFO during panel initialization
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in display_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE
+ *     hfi_packet.flags         : HFI_TX_FLAGS_INTR_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_RESPONSE_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload[0]    : u32 cmd_type - one of enum hfi_panel_dcs_command_type, or a
+ *     ^                        : custom command type index from
+ *     ^                        : HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO
+ *     hfi_packet.payload[1]    : u32 cmd_flags - Reserved for future use
+ *     hfi_packet.payload[2]    : u32 reserved - Reserved for future use
+ */
+#define HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE                         0x0200001C
+
+/*
+ * HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET - From Host to DCP, this command instructs DCP to send
+ *                                            a set of DCS commands to the panel in a single
+ *                                            HFI operation, avoiding the per-command HFI overhead.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in display_header_data_page)
+ *
+ *     hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET
+ *     hfi_packet.flags         : HFI_TX_FLAGS_INTR_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_RESPONSE_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload[0]    : struct hfi_dsi_cmd_desc_set
+ */
+#define HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET                      0x0200001D
+
 #define HFI_COMMAND_DISPLAY_END                                       0x02FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_H__

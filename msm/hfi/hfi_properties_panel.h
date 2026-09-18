@@ -963,6 +963,103 @@
 #define HFI_PROPERTY_PANEL_COLOR_FORMAT                              0x00040043
 
 /*
+ * HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG - Provides DSI PHY tuning configuration values
+ *                                        read from HLOS device-tree. These platform-specific
+ *                                        values allow the DCP to program the PHY lane
+ *                                        configuration and strength control.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG |
+ *                               (version=0 << 20) | (dsize=N << 24)
+ *                               where N = sizeof(struct hfi_panel_phy_tuning_config)/sizeof(u32)
+ *   (u32_value) payload[1..N] : struct hfi_panel_phy_tuning_config
+ */
+#define HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG                         0x00040044
+
+/*
+ * HFI_PROPERTY_PANEL_DP_AUX_CFG - Provides optional DP AUX channel configuration values
+ *                                  used to program the AUX PHY settings.
+ *                                  This property is sent to DCP as part of
+ *                                  HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DP_AUX_CFG
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DP_AUX_CFG |
+ *                               (version=0 << 20) | (dsize=(n+1) << 24)
+ *   (u32_value) payload[1]    : n = number of aux config values
+ * (u32_value) payload[2..n+1] : ((u8)aux_offset << 16 | (u8)dp_aux_cfg_data)
+ *                               where aux_offset is the normalized AUX config
+ *                               register index ranging from 0 to n-1 instead of
+ *                               the raw register offset.
+ */
+#define HFI_PROPERTY_PANEL_DP_AUX_CFG                                0x00040045
+
+/*
+ * HFI_PROPERTY_PANEL_DP_VOLTAGESWING_PREEMPHASIS - Provides optional DP PHY voltage swing and
+ *                                  pre-emphasis configuration values for RBR/HBR and
+ *                                  HBR2/HBR3 link rates.
+ *                                  This property is sent to DCP as part of
+ *                                  HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DP_VOLTAGESWING_PREEMPHASIS
+ *   (u32_key) payload[0]           : HFI_PROPERTY_PANEL_DP_VOLTAGESWING_PREEMPHASIS |
+ *                                    (version=0 << 20) | (dsize=18 << 24)
+ *   (u32_value) payload[1]         : bw_code
+ *   (u32_value) payload[2]         : Number of voltage_swing/preemphasis pairs (n)
+ *   (u32_value) payload[3..n+2]    : (voltage_swing[k] << 16 | preemphasis[k])
+ */
+#define HFI_PROPERTY_PANEL_DP_VOLTAGESWING_PREEMPHASIS               0x00040046
+
+/*
+ * HFI_PROPERTY_PANEL_MAX_LINK_RATE - Provides optional maximum link clock rate in KHz supported
+ *                                    by the display. This property is sent to DCP as part of
+ *                                    HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_MAX_LINK_RATE
+ *     (u32_key) payload[0]       : HFI_PROPERTY_PANEL_MAX_LINK_RATE |
+ *                                  (version=0 << 20) | (dsize=1 << 24)
+ *   (u32_value) payload[1]       : max_link_rate
+ */
+#define HFI_PROPERTY_PANEL_MAX_LINK_RATE                             0x00040047
+
+/*
+ * HFI_PROPERTY_PANEL_MAX_LANE_COUNT - Provides optional maximum number of lanes supported
+ *                                     by the display. This property is sent to DCP as part of
+ *                                     HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet
+ *                                     payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_MAX_LANE_COUNT
+ *     (u32_key) payload[0]       : HFI_PROPERTY_PANEL_MAX_LANE_COUNT |
+ *                                  (version=0 << 20) | (dsize=1 << 24)
+ *   (u32_value) payload[1]       : max_lane_count
+ */
+#define HFI_PROPERTY_PANEL_MAX_LANE_COUNT                            0x00040048
+
+/*!
+ * HFI_PROPERTY_PANEL_LANE_TUNING_PARAMS - Provides an arbitrary number of optional lane tuning
+ *                                         parameters. Each parameter is a struct of (id, value)
+ *                                         dp_lane_tuning_params, packed two per u32 payload
+ *                                         entry. Capable of packing a maximum of 16 tuning
+ *                                         parameters. IDs range 1-16 (inclusive) and are defined
+ *                                         by enum dp_phy_tuning_param_id, identifying the target
+ *                                         field in struct dp_phy_lane_tuning_params. Each value
+ *                                         is the raw 8-bit tuning value; DCP stores it in
+ *                                         the lower byte of the corresponding 16-bit field and
+ *                                         sets the upper byte to mark the tuning parameter as
+ *                                         host-overridden. This property is sent to DCP in the
+ *                                         HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_LANE_TUNING_PARAMS
+ *     (u32_key) payload[0]          : HFI_PROPERTY_PANEL_LANE_TUNING_PARAMS \|
+ *                                     (version=0 << 20) \| (dsize=(n/2 + 1) << 24)
+ *   (u32_value) payload[1]          : count(n <= 16) of dp_lane_tuning_params entries
+ *   (u32_value) payload[2..(n/2)+1] : two packed dp_lane_tuning_params entries per u32 \|
+ *                                     ((u8,u8)<id1,value1> \| (u8,u8)<id2,value2>) where id is \|
+ *                                     enum dp_phy_tuning_param_id (1..16) and value is the raw \|
+ *                                     8-bit tuning value stored in the field selected by id
+ */
+#define HFI_PROPERTY_PANEL_LANE_TUNING_PARAMS                        0x00040049
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF

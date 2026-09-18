@@ -1474,7 +1474,12 @@ static void sde_hw_rotator_map_vaddr(struct sde_dbg_buf *dbgbuf,
 
 	if (dbgbuf->dmabuf && (dbgbuf->buflen > 0)) {
 		dma_buf_begin_cpu_access(dbgbuf->dmabuf, DMA_FROM_DEVICE);
+
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+		dma_buf_vmap_unlocked(dbgbuf->dmabuf, &map);
+#else
 		dma_buf_vmap(dbgbuf->dmabuf, &map);
+#endif
 		dbgbuf->vaddr = map.vaddr;
 		SDEROT_DBG("vaddr mapping: 0x%pK/%ld w:%d/h:%d\n",
 				dbgbuf->vaddr, dbgbuf->buflen,
@@ -1489,7 +1494,12 @@ static void sde_hw_rotator_map_vaddr(struct sde_dbg_buf *dbgbuf,
 static void sde_hw_rotator_unmap_vaddr(struct sde_dbg_buf *dbgbuf)
 {
 	if (dbgbuf->vaddr) {
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+		dma_buf_vunmap_unlocked(dbgbuf->dmabuf, dbgbuf->vaddr);
+#else
 		dma_buf_vunmap(dbgbuf->dmabuf, dbgbuf->vaddr);
+#endif
+
 		dma_buf_end_cpu_access(dbgbuf->dmabuf, DMA_FROM_DEVICE);
 	}
 
@@ -2841,7 +2851,7 @@ static void sde_hw_rotator_swts_destroy(struct sde_hw_rotator *rot)
  * @mgr: Pointer to rotator manager
  * @pmon: Boolean indicate an on/off power event
  */
-void sde_hw_rotator_pre_pmevent(struct sde_rot_mgr *mgr, bool pmon)
+static void sde_hw_rotator_pre_pmevent(struct sde_rot_mgr *mgr, bool pmon)
 {
 	struct sde_hw_rotator *rot;
 	u32 l_ts, h_ts, l_hwts, h_hwts;
@@ -2917,7 +2927,7 @@ void sde_hw_rotator_pre_pmevent(struct sde_rot_mgr *mgr, bool pmon)
  * @mgr: Pointer to rotator manager
  * @pmon: Boolean indicate an on/off power event
  */
-void sde_hw_rotator_post_pmevent(struct sde_rot_mgr *mgr, bool pmon)
+static void sde_hw_rotator_post_pmevent(struct sde_rot_mgr *mgr, bool pmon)
 {
 	struct sde_hw_rotator *rot;
 	u32 l_ts, h_ts;

@@ -95,14 +95,14 @@ bool dp_hdcp1x_feature_supported(void *input);
 
 /**
  * dp_hdcp2x_init() - Initialize DP HDCP 2.x TrustZone bridge
- * @init_data: HDCP initialization data from sde_hdcp
+ * @mst: true if this connection is operating in MST mode.
  *
  * Creates HDCP 2.x context and initializes TrustZone interface.
  * This should be called during display post_enable.
  *
  * Return: Opaque handle to DP HDCP 2.x context on success, NULL on failure
  */
-void *dp_hdcp2x_init(void);
+void *dp_hdcp2x_init(bool mst);
 
 /**
  * dp_hdcp2x_deinit() - Deinitialize DP HDCP 2.x TrustZone bridge
@@ -190,16 +190,60 @@ void dp_hdcp2x_stop(void *input);
 int dp_hdcp2x_enable_encryption(void *input);
 
 /**
+ * dp_hdcp2x_force_encryption() - Force HDCP 2.x encryption in TrustZone
+ * @input: HDCP 2.x context handle
+ * @enable: true to force encryption, false otherwise
+ *
+ * Calls TrustZone to force HDCP 2.x encryption. This is invoked after
+ * encryption has been enabled when the force_encryption debug flag is set,
+ * for CTS testing.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_hdcp2x_force_encryption(void *input, bool enable);
+
+/**
  * dp_hdcp2x_query_stream() - Query stream management from TrustZone
  * @input: HDCP 2.x context handle
  * @resp_buf: Pointer to store response buffer (REP_STREAM_MANAGE from TZ)
  * @resp_len: Pointer to store response length
+ * @timeout_ms: Pointer to store TZ's suggested delay
  *
  * Called after REP_SEND_ACK is written to the sink. Issues
  * HDCP2_CMD_QUERY_STREAM to TrustZone, which generates REP_STREAM_MANAGE.
  *
  * Return: 0 on success, negative error code on failure
  */
-int dp_hdcp2x_query_stream(void *input, uint8_t **resp_buf, uint32_t *resp_len);
+int dp_hdcp2x_query_stream(void *input, uint8_t **resp_buf, uint32_t *resp_len,
+	uint32_t *timeout_ms);
+
+/**
+ * dp_hdcp2x_register_streams() - Register (open) MST streams with TrustZone
+ * @input: HDCP 2.x context handle
+ * @num_streams: Number of entries in @streams
+ * @streams: Array of stream_id/virtual_channel pairs to open
+ *
+ * For each requested stream not already tracked in ctx->streams,
+ * calls hdcp2_open_stream() so TrustZone includes it the
+ * next time it builds REP_STREAM_MANAGE.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_hdcp2x_register_streams(void *input, u8 num_streams, struct stream_info *streams);
+
+/**
+ * dp_hdcp2x_deregister_streams() - Deregister (close) MST streams with TrustZone
+ * @input: HDCP 2.x context handle
+ * @num_streams: Number of entries in @streams
+ * @streams: Array of stream_id/virtual_channel pairs to close
+ *
+ * For each matching registered stream, calls hdcp2_close_stream() and removes it
+ * from ctx->streams. Unknown/unmatched entries are ignored so callers can
+ * always pass the disabling stream's info without checking registration
+ * state first.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_hdcp2x_deregister_streams(void *input, u8 num_streams, struct stream_info *streams);
 
 #endif /* _DP_HDCP_H_ */

@@ -100,6 +100,9 @@ static int _sde_vbif_setup_clk_force_ctrl(struct sde_kms *sde_kms, enum sde_clk_
 	bool has_split_vbif = test_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_kms->catalog->features);
 	enum msm_disp_op disp_op = sde_kms->hw_mdp->hw.disp_op;
 
+	if (disp_op >= MSM_DISP_OP_MAX)
+		return rc;
+
 	if (has_split_vbif && VBIF_CLK_CLIENT(clk_ctrl).ops.setup_clk_force_ctrl[disp_op])
 		rc = VBIF_CLK_CLIENT(clk_ctrl).ops.setup_clk_force_ctrl[disp_op](
 			hw, clk_ctrl, enable);
@@ -127,6 +130,9 @@ static int _sde_vbif_get_clk_ctrl_status(struct sde_kms *sde_kms, enum sde_clk_c
 	struct sde_hw_blk_reg_map *hw = VBIF_CLK_CLIENT(clk_ctrl).hw;
 	bool has_split_vbif = test_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_kms->catalog->features);
 	enum msm_disp_op disp_op = sde_kms->hw_mdp->hw.disp_op;
+
+	if (disp_op >= MSM_DISP_OP_MAX)
+		return rc;
 
 	if (has_split_vbif && VBIF_CLK_CLIENT(clk_ctrl).ops.get_clk_ctrl_status[disp_op])
 		rc = VBIF_CLK_CLIENT(clk_ctrl).ops.get_clk_ctrl_status[disp_op](
@@ -197,6 +203,10 @@ static int _sde_vbif_wait_for_axi_halt(struct sde_hw_vbif *vbif)
 
 	if (!vbif || !vbif->cap) {
 		SDE_ERROR("invalid arguments vbif %d\n", !vbif);
+		return -EINVAL;
+	}
+	if (vbif->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", vbif->hw.disp_op);
 		return -EINVAL;
 	}
 	if (!vbif->ops.get_axi_halt_status[vbif->hw.disp_op]) {
@@ -345,6 +355,11 @@ void sde_vbif_set_ot_limit(struct sde_kms *sde_kms,
 		return;
 	}
 
+	if (vbif->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", vbif->hw.disp_op);
+		return;
+	}
+
 	if (!_sde_vbif_setup_clk_supported(sde_kms, params->clk_ctrl) ||
 			!vbif->ops.set_limit_conf[vbif->hw.disp_op] ||
 			!vbif->ops.set_xin_halt[vbif->hw.disp_op])
@@ -455,6 +470,11 @@ bool sde_vbif_set_xin_halt(struct sde_kms *sde_kms,
 	if (!vbif || !mdp) {
 		SDE_DEBUG("invalid arguments vbif %d mdp %d\n",
 				vbif != NULL, mdp != NULL);
+		return false;
+	}
+
+	if (vbif->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", vbif->hw.disp_op);
 		return false;
 	}
 
@@ -570,6 +590,11 @@ void sde_vbif_set_qos_remap(struct sde_kms *sde_kms,
 
 	if (!vbif || !vbif->cap) {
 		SDE_ERROR("invalid vbif %d\n", params->vbif_idx);
+		return;
+	}
+
+	if (vbif->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", vbif->hw.disp_op);
 		return;
 	}
 
@@ -711,6 +736,11 @@ int sde_vbif_halt_xin_mask(struct sde_kms *sde_kms, u32 xin_id_mask,
 	}
 
 	vbif = sde_kms->hw_vbif[VBIF_RT];
+
+	if (vbif->hw.disp_op >= MSM_DISP_OP_MAX) {
+		SDE_ERROR("invalid disp_op %d\n", vbif->hw.disp_op);
+		return -EINVAL;
+	}
 
 	if (!vbif->ops.get_xin_halt_status[vbif->hw.disp_op] ||
 		!vbif->ops.set_xin_halt[vbif->hw.disp_op])

@@ -341,6 +341,7 @@ int sde_core_irq_unregister_callback(struct sde_kms *sde_kms, int irq_idx,
 static void sde_clear_all_irqs(struct sde_kms *sde_kms)
 {
 	if (!sde_kms || !sde_kms->hw_intr ||
+			sde_kms->hw_intr->hw.disp_op >= MSM_DISP_OP_MAX ||
 			!sde_kms->hw_intr->ops.clear_all_irqs[sde_kms->hw_intr->hw.disp_op])
 		return;
 
@@ -351,6 +352,7 @@ static void sde_clear_all_irqs(struct sde_kms *sde_kms)
 static void sde_disable_all_irqs(struct sde_kms *sde_kms)
 {
 	if (!sde_kms || !sde_kms->hw_intr ||
+		sde_kms->hw_intr->hw.disp_op >= MSM_DISP_OP_MAX ||
 		!sde_kms->hw_intr->ops.disable_all_irqs[sde_kms->hw_intr->hw.disp_op])
 		return;
 
@@ -630,7 +632,8 @@ irqreturn_t sde_core_irq(struct sde_kms *sde_kms)
 	 * callback is finished.
 	 * Function will also clear the interrupt status after reading.
 	 */
-	if (sde_kms->hw_intr->ops.dispatch_irqs[sde_kms->hw_intr->hw.disp_op])
+	if (sde_kms->hw_intr->hw.disp_op < MSM_DISP_OP_MAX &&
+			sde_kms->hw_intr->ops.dispatch_irqs[sde_kms->hw_intr->hw.disp_op])
 		sde_kms->hw_intr->ops.dispatch_irqs[sde_kms->hw_intr->hw.disp_op](
 				sde_kms->hw_intr,
 				sde_core_irq_callback_handler,

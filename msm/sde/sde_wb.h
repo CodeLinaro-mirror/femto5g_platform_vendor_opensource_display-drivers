@@ -30,6 +30,10 @@
  * @count_modes:	Length of writeback connector modes array
  * @modes:		Writeback connector modes array
  * @needs_dspp:		Needs DSPP for Writeback connector
+ * @wb_dnsc_supported:	True if this WB block supports WB downscaler
+ * @wb_dnsc_min_ratio:	Minimum downscale ratio supported by WB DNSC
+ * @wb_dnsc_max_ratio:	Maximum downscale ratio supported by WB DNSC
+ * @wb_dnsc_integer_only: True if WB DNSC supports integer ratios only
  */
 struct sde_wb_device {
 	struct drm_device *drm_dev;
@@ -51,6 +55,11 @@ struct sde_wb_device {
 	u32 count_modes;
 	struct drm_mode_modeinfo *modes;
 	bool needs_dspp;
+
+	bool wb_dnsc_supported;
+	u32 wb_dnsc_min_ratio;
+	u32 wb_dnsc_max_ratio;
+	bool wb_dnsc_integer_only;
 };
 
 /**
@@ -402,4 +411,3 @@ int sde_wb_get_mode_info(struct drm_connector *connector,
 }
 #endif /* CONFIG_DRM_SDE_WB */
 #endif /* __SDE_WB_H__ */
-

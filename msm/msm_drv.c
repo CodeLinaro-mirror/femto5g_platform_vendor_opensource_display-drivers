@@ -529,6 +529,13 @@ static int msm_drm_uninit(struct device *dev)
 
 	drm_mode_config_cleanup(ddev);
 
+	/* drm_mode_config_cleanup() freed these; clear the caches so
+	 * re-probe creates them fresh.
+	 */
+	memset(priv->crtc_property, 0, sizeof(priv->crtc_property));
+	memset(priv->plane_property, 0, sizeof(priv->plane_property));
+	memset(priv->conn_property, 0, sizeof(priv->conn_property));
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 	msm_irq_uninstall(ddev);
 #else
@@ -1242,6 +1249,20 @@ static void msm_lastclose(struct drm_device *dev)
 
 	kms = priv->kms;
 
+	/* Prevent concurrent lastclose execution */
+	if (atomic_xchg(&kms->lastclose_active, 1)) {
+		SDE_DEBUG("lastclose already running, waiting...\n");
+		/* poll until prior lastclose finishes or timeout */
+		unsigned long timeout = jiffies +
+				msecs_to_jiffies(LASTCLOSE_TIMEOUT_MS);
+		while (atomic_read(&kms->lastclose_active) &&
+				time_before(jiffies, timeout))
+			msleep(20);
+		if (atomic_read(&kms->lastclose_active))
+			DRM_INFO("wait for lastclose active timeout\n");
+		return;
+	}
+
 	/* check for splash status before triggering cleanup
 	 * if we end up here with splash status ON i.e before first
 	 * commit then ignore the last close call
@@ -1256,7 +1277,7 @@ static void msm_lastclose(struct drm_device *dev)
 
 		rc = kms->funcs->trigger_null_flush(kms);
 		if (rc)
-			return;
+			goto end;
 	}
 
 	/*
@@ -1290,6 +1311,7 @@ static void msm_lastclose(struct drm_device *dev)
 
 	msm_atomic_flush_display_threads(priv);
 
+#if (KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE)
 	if (priv->fbdev) {
 		rc = drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev);
 		if (rc)
@@ -1301,6 +1323,7 @@ static void msm_lastclose(struct drm_device *dev)
 			DRM_ERROR("client modeset commit failed: %d\n", rc);
 #endif /* (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE) */
 	}
+#endif /* KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE */
 
 	/* wait again, before kms driver does it's lastclose commit */
 	msm_wait_event_timeout(priv->pending_crtcs_event, !priv->pending_crtcs,
@@ -1311,6 +1334,10 @@ static void msm_lastclose(struct drm_device *dev)
 
 	if (kms->funcs && kms->funcs->lastclose)
 		kms->funcs->lastclose(kms);
+
+end:
+	/* Release lastclose guard */
+	atomic_set(&kms->lastclose_active, 0);
 }
 
 static void msm_postclose(struct drm_device *dev, struct drm_file *file)
@@ -2131,7 +2158,7 @@ static int msm_pm_resume(struct device *dev)
 }
 #endif /* CONFIG_PM_SLEEP */
 
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 static int msm_pm_freeze(struct device *dev)
 {
 	struct drm_device *ddev;
@@ -2175,7 +2202,7 @@ static int msm_pm_restore(struct device *dev)
 
 	return 0;
 }
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 
 #if IS_ENABLED(CONFIG_PM)
 static int msm_runtime_suspend(struct device *dev)
@@ -2225,10 +2252,10 @@ static const struct dev_pm_ops msm_pm_ops = {
 	.suspend = msm_pm_suspend,
 	.resume = msm_pm_resume,
 #endif /* CONFIG_PM_SLEEP */
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 	.freeze = msm_pm_freeze,
 	.restore = msm_pm_restore,
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 	SET_RUNTIME_PM_OPS(msm_runtime_suspend, msm_runtime_resume, NULL)
 };
 
@@ -2449,11 +2476,11 @@ msm_gem_smmu_address_space_get(struct drm_device *dev,
 	const struct msm_kms_funcs *funcs;
 	struct msm_gem_address_space *aspace;
 
-	if (!mdss_iommu_present(dev))
-		return ERR_PTR(-ENODEV);
-
 	if ((!dev) || (!dev->dev_private))
 		return ERR_PTR(-EINVAL);
+
+	if (!mdss_iommu_present(dev))
+		return ERR_PTR(-ENODEV);
 
 	priv = dev->dev_private;
 	kms = priv->kms;
@@ -2669,15 +2696,26 @@ static struct platform_driver msm_platform_driver = {
 
 static int __init msm_drm_register(void)
 {
+	struct device_node *node;
+
 	if (!modeset)
 		return -EINVAL;
 
+	/* Skips init when display node is either not available or disabled. */
+	node = of_find_matching_node(NULL, dt_match);
+	if (!of_device_is_available(node)) {
+		of_node_put(node);
+		SDE_INFO("Display device node not found\n");
+		return -ENODEV;
+	}
+	of_node_put(node);
+
 	DBG("init");
-	msm_lsr_init();
 	sde_rsc_rpmh_register();
 	sde_rsc_register();
 	sde_cesta_register();
 	msm_smmu_driver_init();
+	msm_lsr_init();
 	sde_wb_register();
 	platform_driver_register(&msm_platform_driver);
 	dsi_display_register();

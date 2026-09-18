@@ -464,6 +464,12 @@ struct sde_encoder_hal_funcs {
 	int (*early_wakeup_call[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
+	 * idle_timer_immediate_expiry - Command FW to immediately expire the idle timer
+	 * @enc: Pointer to sde encoder structure
+	 */
+	int (*idle_timer_immediate_expiry[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
 	 * register_panel_dead_event_notify - register panel dead event notification
 	 * @enc: Pointer to sde encoder structure
 	 * @enable: flag to regitser/deregister event.
@@ -473,12 +479,31 @@ struct sde_encoder_hal_funcs {
 			bool enable);
 
 	/**
+	 * register_dcs_cmd_error_event_notify - register/unregister DCS command error
+	 *                                       event notification from DCP firmware.
+	 * @enc: Pointer to sde encoder structure
+	 * @enable: flag to register/deregister event.
+	 * Returns: status of registration/deregistration.
+	 */
+	int (*register_dcs_cmd_error_event_notify[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+			bool enable);
+
+	/**
 	 * misr_setup - Setup MISR module
 	 * @enc: Pointer to sde encoder structure
 	 * @en: enable/disable flag
 	 * @frame_count: number of frames for which MISR needs to run
 	 */
 	int (*misr_setup[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc, bool en, u32 frame_count);
+
+	/**
+	 * deregister_cwb_events - called after wait_for_commit_done completes; used
+	 * to perform teardown work (e.g. HFI event deregister) that must not
+	 * block the primary commit path.
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: Zero on success
+	 */
+	int (*deregister_cwb_events[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 };
 
 /**
@@ -665,6 +690,7 @@ struct sde_encoder_virt {
 	bool elevated_ahb_vote;
 	struct dev_pm_qos_request pm_qos_cpu_req[NR_CPUS];
 	struct cpumask valid_cpu_mask;
+	struct mutex pm_qos_lock;
 	struct msm_mode_info mode_info;
 	struct sde_encoder_vrr_info vrr_info;
 	bool delay_kickoff;
@@ -700,6 +726,12 @@ void sde_encoder_get_hw_resources(struct drm_encoder *encoder,
  * @encoder:	encoder pointer
  */
 void sde_encoder_early_wakeup(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_idle_timer_immediate_expiry - notify FW to immediately expire the idle timer
+ * @encoder:	encoder pointer
+ */
+int sde_encoder_idle_timer_immediate_expiry(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_early_ept_hint - early wake up hint handling
@@ -763,6 +795,14 @@ void sde_encoder_register_display_power_event_callback(struct drm_encoder *encod
  * @enable:		flag to register or deregister panel deadcall back.
  */
 void sde_encoder_register_panel_dead_event_callback(struct drm_encoder *drm_enc, bool enable);
+
+/**
+ * sde_encoder_register_dcs_cmd_error_event_callback - register/unregister for DCS
+ *	command error events reported by DCP firmware.
+ * @drm_enc:	encoder pointer
+ * @enable:		true to register, false to deregister.
+ */
+void sde_encoder_register_dcs_cmd_error_event_callback(struct drm_encoder *drm_enc, bool enable);
 
 /**
  * sde_encoder_get_rsc_client - gets the rsc client state for primary

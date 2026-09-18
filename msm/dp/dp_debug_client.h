@@ -66,6 +66,7 @@ struct dp_debug_client {
 	int (*read_connected)(struct dp_debug_client *client, char *buf, u32 size);
 	int (*read_info)(struct dp_debug_client *client, char *buf, u32 size);
 	int (*read_bw_code)(struct dp_debug_client *client, char *buf, u32 size);
+	int (*read_max_lclk_khz)(struct dp_debug_client *client, char *buf, u32 size);
 	int (*read_tpg)(struct dp_debug_client *client, char *buf, u32 size);
 	int (*read_hdr)(struct dp_debug_client *client, char *buf, u32 size, int panel_id);
 	int (*read_dump)(struct dp_debug_client *client, char *buf, u32 size, const char *reg_name);

@@ -91,6 +91,9 @@ struct dp_hfi {
 	bool connected;
 	u32 tgt_bpp;
 
+	int vcpi;
+	bool stream_registered;
+
 	/* Mode override */
 	struct dp_mode_override mode_ovr;
 	struct hfi_device_hotplug_config hpd_config;
@@ -184,6 +187,12 @@ int dp_hfi_end_batch_cmd(struct dp_hfi *hfi,
  * Return: error code.
  */
 int dp_hfi_send_batch_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client, bool blocking);
+
+/**
+ * dp_hfi_panel_init() - Send panel init generic caps over HFI
+ * @hfi: handle to dp hfi structure
+ */
+void dp_hfi_panel_init(struct dp_hfi *hfi);
 
 /**
  * dp_hfi_setup() - setup dp hfi interface

@@ -367,6 +367,21 @@ enum hfi_panel_esd_status_mode {
 };
 
 /**
+ * enum hfi_panel_phy_tuning_flags - Bitmask values to indicate valid PHY tuning parameters
+ * @HFI_PHY_GLBL_STR_CTRL_VALID:  Indicates glbl_str_ctrl parameter is valid
+ * @HFI_PHY_GLBL_RESCODE_VALID:   Indicates glbl_rescode_top_ctrl, glbl_rescode_bot_ctrl,
+ *                                and glbl_rescode_mid_ctrl parameters are valid
+ * @HFI_PHY_CMN_CTRL2_VALID:      Indicates cmn_ctrl2 parameter is valid
+ * @HFI_PHY_VREG_CTRL_VALID:      Indicates vreg_ctrl0 and vreg_ctrl1 parameters are valid
+ */
+enum hfi_panel_phy_tuning_flags {
+	HFI_PHY_GLBL_STR_CTRL_VALID  = 0x1,
+	HFI_PHY_GLBL_RESCODE_VALID   = 0x2,
+	HFI_PHY_CMN_CTRL2_VALID      = 0x4,
+	HFI_PHY_VREG_CTRL_VALID      = 0x8,
+};
+
+/**
  * struct hfi_panel_res_data - Panel resolution data
  * @active_width: Panel active width
  * @active_height: Panel active height
@@ -573,6 +588,34 @@ struct hfi_display_vrr_frame_params {
 struct hfi_panel_operating_mode_caps {
 	u32 panel_mode_switch_enabled;
 	u32 vsync_aligned_switch;
+};
+
+/**
+ * struct hfi_panel_phy_tuning_config - HFI DSI PHY tuning configuration
+ * @glbl_str_ctrl:         Global drive strength control value
+ * @glbl_rescode_top_ctrl: Global resistor code control (top)
+ * @glbl_rescode_bot_ctrl: Global resistor code control (bottom)
+ * @glbl_rescode_mid_ctrl: Global resistor code control (middle)
+ * @cmn_ctrl2:             Common PHY control register 2
+ * @vreg_ctrl0:            PHY regulator control 0
+ * @vreg_ctrl1:            PHY regulator control 1
+ * @flags:                 Flags indicating valid PHY tuning parameter
+ * @reserved1:             Reserved for future use
+ * @reserved2:             Reserved for future use
+ */
+
+struct hfi_panel_phy_tuning_config {
+	/* Global PHY drive strength / amplitude / de-emphasis tuning */
+	u32 glbl_str_ctrl;
+	u32 glbl_rescode_top_ctrl;
+	u32 glbl_rescode_bot_ctrl;
+	u32 glbl_rescode_mid_ctrl;
+	u32 cmn_ctrl2;
+	u32 vreg_ctrl0;
+	u32 vreg_ctrl1;
+	enum hfi_panel_phy_tuning_flags flags;
+	u32 reserved1;
+	u32 reserved2;
 };
 
 #endif // __H_HFI_DEFS_PANEL_H__

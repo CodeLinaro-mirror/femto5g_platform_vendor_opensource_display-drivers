@@ -278,6 +278,29 @@ struct hfi_display_prog_line_event_data {
 };
 
 /*
+ * struct hfi_display_dcs_cmd_error_data - payload for HFI_COMMAND_DISPLAY_EVENT_DCS_CMD_ERROR
+ * @flags:      Reserved flags for future use.
+ * @seq_no:     Failed DCS command sequence number, which was set by host as part of the
+ *              hfi_dsi_cmd_desc while sending the DCS command.
+ * @cmd_type:   DSI command type (MIPI data type byte).
+ * @cmd_index:  Index of the command within the command set.
+ * @error_code: Error code reported by DCP firmware (negative errno convention).
+ * @ts_hi:      Upper 32 bits of the DCP firmware timestamp at error time.
+ * @ts_lo:      Lower 32 bits of the DCP firmware timestamp at error time.
+ * @reserved:   Reserved array for future use.
+ */
+struct hfi_display_dcs_cmd_error_data {
+	u32 flags;
+	u32 seq_no;
+	u32 cmd_type;
+	u32 cmd_index;
+	u32 error_code;
+	u32 ts_hi;
+	u32 ts_lo;
+	u32 reserved[3];
+};
+
+/*
  * @enum hfi_display_idle_timer_control
  * @brief Enum to control idle timer.
  *
@@ -289,12 +312,15 @@ struct hfi_display_prog_line_event_data {
  *   Block the idle timer from expiring
  * @var HFI_UNBLOCK_TIMER
  *   Unblock the idle timer from expiring
+ * @var HFI_IMMEDIATE
+ *   Notify FW to immediately expire the idle timer
  */
 enum hfi_display_idle_timer_control {
 	HFI_DEFAULT          = 0x0,
 	HFI_WAKEUP           = 0x1,
 	HFI_BLOCK_TIMER      = 0x2,
 	HFI_UNBLOCK_TIMER    = 0x3,
+	HFI_IMMEDIATE        = 0x4,
 };
 
 /*
@@ -348,6 +374,8 @@ enum hfi_display_idle_timer_control {
  *   EVENT ID for AIQE COPR.
  * @HFI_EVENT_PROG_LINE_INTR:
  *     Event ID for Program Line Interrupt.
+ * @HFI_EVENT_DCS_CMD_ERROR:
+ *     Event ID for DCS command transfer error reported by DCP firmware.
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC               = 0x1,
@@ -375,6 +403,7 @@ enum hfi_display_event_id {
 	HFI_EVENT_HDCP_FEATURE_SUPPORTED = 0x17,
 	HFI_EVENT_AIQE_COPR           = 0x18,
 	HFI_EVENT_PROG_LINE_INTR      = 0x19,
+	HFI_EVENT_DCS_CMD_ERROR       = 0x1a,
 };
 
 /*
@@ -491,7 +520,9 @@ struct hfi_display_mode_info {
  * @ctrl_flags       :  CTRL flags.
  * @last_command     :  Is last DCS command.
  * @post_wait_ms     :  Wait time in milliseconds.
- * @reserved1        :  Reserved for future use.
+ * @seq_no           :  Monotonically increasing sequence number of the DCS command set by host.
+ *                      In case of error, this will be returned as part of HFI_EVENT_DCS_CMD_ERROR
+ *                      event.
  * @reserved2        :  Reserved for future use.
  */
 struct hfi_dsi_cmd_desc {
@@ -517,9 +548,41 @@ struct hfi_dsi_cmd_desc {
 	u32 last_command;
 	u32 post_wait_ms;
 
+	u32 seq_no;
+
 	/* Reserved for future use */
-	u32 reserved1;
 	u32 reserved2;
+};
+
+/*
+ * struct hfi_dsi_cmd_desc_set - hfi dcp transfer a set of dcs commands
+ * @size      : Total size of this struct including the trailing cmds array
+ *              in bytes. Used for backward compatibility.
+ * @type      : Command set type. Mirrors enum dsi_cmd_set_type, identifying
+ *              which panel command set (e.g. ON, OFF, LP1) this transfer
+ *              belongs to.
+ * @count     : Number of DCS commands in the set.
+ * @state     : Command state (LP/HS mode). Mirrors enum dsi_cmd_set_state:
+ *              0 = DSI_CMD_SET_STATE_LP (low power),
+ *              1 = DSI_CMD_SET_STATE_HS (high speed).
+ * @seq_no    :  Monotonically increasing sequence number of the DCS command set by host.
+ *               In case of error, this will be returned as part of HFI_EVENT_DCS_CMD_ERROR event.
+ * @reserved2 : Reserved for future use.
+ * @cmds      : Flexible array of DCS command descriptors; @count entries
+ *              of struct hfi_dsi_cmd_desc immediately follow this header
+ *              in the allocated buffer.
+ *
+ * The TX payload data for each command resides in DCP-mapped shared memory
+ * whose address is carried inside each hfi_dsi_cmd_desc entry.
+ */
+struct hfi_dsi_cmd_desc_set {
+	u32 size;
+	u32 type;
+	u32 count;
+	u32 state;
+	u32 seq_no;
+	u32 reserved2; /* Reserved for future use */
+	struct hfi_dsi_cmd_desc cmds[];
 };
 
 /*
@@ -982,9 +1045,10 @@ struct hfi_hdcp2_message {
  *     Compressed bits per pixel.
  * @cmpr_slice_count:
  *     Number of compressed slices per line.
- * @reserved1:
- *     Reserved for future use.
- * @reserved2:
+ * @test_pattern:
+ *     DP compliance test pattern ID (DPCD 0x221). Set to the pattern requested
+ *     by the sink during a TEST_PATTERN compliance test; 0 in all other scenarios.
+ * @reserved:
  *     Reserved for future use.
  */
 struct hfi_display_mode_extended_info {
@@ -995,8 +1059,8 @@ struct hfi_display_mode_extended_info {
 	u32 cmpr_enabled;
 	u32 cmpr_bpp;
 	u32 cmpr_slice_count;
-	u32 reserved1;
-	u32 reserved2;
+	u8  test_pattern;
+	u8  reserved[7];
 };
 
 /*
@@ -1085,6 +1149,29 @@ struct hfi_batch_mode_info {
 	enum hfi_batch_mode mode;
 	enum hfi_batch_usecase_id usecase_id;
 	u32 reserved[2];
+};
+
+/**
+ * @def HFI_WB_DNSC_CFG_DISABLE
+ * @brief Set to disable WB downscaling for the output layer.
+ */
+#define HFI_WB_DNSC_CFG_DISABLE	(1 << 0)
+
+/*!
+ * @struct hfi_dnsc_cfg
+ * @brief Downscale configuration parameters for output layer.
+ *
+ * @var flags
+ *  Configuration flags for downscaling.
+ * @var dst_width
+ *  Destination width for downscaling operation.
+ * @var dst_height
+ *  Destination height for downscaling operation.
+ */
+struct hfi_dnsc_cfg {
+	u32 flags;
+	u32 dst_width;
+	u32 dst_height;
 };
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

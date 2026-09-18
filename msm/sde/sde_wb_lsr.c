@@ -10,9 +10,6 @@
 
 #define FLIP_VIEWS 2
 
-static unsigned long s_pose_fixed_iova;
-static size_t s_pose_fixed_size;
-
 void sde_wb_lsr_get_view_fbs(struct sde_connector_state *c_state)
 {
 	int i, j;
@@ -161,7 +158,7 @@ static void _sde_wb_lsr_set_reproj_matrix(struct sde_connector *c_conn,
 	}
 
 	if (!usr_ptr) {
-		SDE_ERROR("reproj_matrix isn't set\n");
+		SDE_DEBUG("reproj_matrix isn't set\n");
 		return;
 	}
 
@@ -256,7 +253,7 @@ static void _sde_wb_lsr_set_optical_axis_offset(struct sde_connector *c_conn,
 	}
 
 	if (!usr_ptr) {
-		SDE_ERROR("optical_axis_offset isn't set\n");
+		SDE_DEBUG("optical_axis_offset isn't set\n");
 		return;
 	}
 
@@ -283,9 +280,14 @@ static int _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 	int npages;
 	int ret = 0;
 
-	if (!connector || !cstate || !val) {
-		SDE_ERROR("invalid args\n");
+	if (!connector || !cstate) {
+		SDE_ERROR("Invalid args\n");
 		return -EINVAL;
+	}
+
+	if (!val) {
+		SDE_DEBUG("Invalid FB id\n");
+		return ret;
 	}
 
 	sde_kms = sde_connector_get_kms(connector);
@@ -365,28 +367,15 @@ static int _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 	addr_map.aligned_size = ALIGN(addr_map.alloc_info.size_allocated,
 			HFI_CORE_IOMMU_MAP_SIZE_ALIGNMENT);
 
-	if (!s_pose_fixed_iova) {
-		ret = hfi_core_map_sg_table(&addr_map.alloc_info, msm_obj->sgt,
-			addr_map.aligned_size, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
-		if (ret) {
-			SDE_ERROR("failed to map sg table to iova, ret:%d\n", ret);
-			goto cleanup_fb;
-		}
-		s_pose_fixed_iova = addr_map.alloc_info.mapped_iova;
-		s_pose_fixed_size = addr_map.alloc_info.size_allocated;
-	} else {
-		addr_map.alloc_info.mapped_iova = s_pose_fixed_iova;
-		ret = hfi_core_remap_sg_table(&addr_map.alloc_info, msm_obj->sgt,
-			addr_map.aligned_size, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
-		if (ret) {
-			SDE_ERROR("failed to remap sg table to fixed iova, ret:%d\n", ret);
-			s_pose_fixed_iova = 0;
-			s_pose_fixed_size = 0;
-			goto cleanup_fb;
-		}
+	ret = hfi_core_map_sg_table(&addr_map.alloc_info, msm_obj->sgt, addr_map.aligned_size,
+		HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE | HFI_CORE_MMAP_CACHE);
+	if (ret) {
+		SDE_ERROR("failed to map sg table to iova, ret:%d\n", ret);
+		return ret;
 	}
 
 	SDE_DEBUG("HRP buffer mapped to FW with iova = 0x%lx\n", addr_map.alloc_info.mapped_iova);
+	SDE_EVT32(addr_map.alloc_info.mapped_iova);
 	cstate->reproj_pose_iova = addr_map.alloc_info.mapped_iova;
 	cstate->reproj_pose_size = addr_map.alloc_info.size_allocated;
 	return ret;
@@ -415,7 +404,7 @@ int _sde_wb_lsr_set_reproj_info(
 				&c_state->property_state, &sz, idx);
 
 	if (opq_blob == NULL) {
-		SDE_WARN("opq_blob is NULL\n");
+		SDE_DEBUG("opq_blob is NULL\n");
 		return 0;
 	}
 
@@ -807,6 +796,18 @@ int sde_wb_update_lsr_perf(struct drm_connector *connector,
 	reproj_conn = sde_conn->reproj_conn;
 
 	if (reproj_conn) {
+		if (reproj_conn->type == WB_CSC && connector->state) {
+			struct sde_connector_state *c_state =
+				to_sde_connector_state(connector->state);
+			int i, active_views = 0;
+
+			for (i = 0; i < MAX_VIEWS; i++)
+				if (c_state->view_descriptor[i].num_fbs > 0)
+					active_views++;
+
+			perf.is_mono = (active_views <= 1);
+		}
+
 		rc = reproj_conn->update_lsr_perf(reproj_conn, reproj_conn->type, perf);
 		SDE_DEBUG("lsr perf clk = %lu, bw = %lu peak_bw = %lu for display type = %d",
 			perf.clk_vote, perf.bw_vote, perf.ib_bw_vote, reproj_conn->type);

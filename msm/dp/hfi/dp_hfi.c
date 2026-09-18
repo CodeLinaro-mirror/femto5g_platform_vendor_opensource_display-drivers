@@ -22,6 +22,11 @@
 #include "dp_debug.h"
 #include "sde_hdcp.h"
 
+#define NUM_VSWING_VAL          16
+#define NUM_BW_CODE             4
+#define DP_LINK_RATE_HBR	10
+#define DP_AUX_CFG_BASE_OFFSET	0x20
+
 static int _dp_hfi_process_ssr_start(struct hfi_client_t *hfi_client)
 {
 	struct dp_hfi *hfi;
@@ -115,18 +120,37 @@ static int dp_hfi_process_cmd_buf(struct hfi_client_t *hfi_client, struct hfi_cm
 	return rc;
 }
 
-static void dp_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
+static void dp_hfi_prop_handler(struct hfi_packet_info *packet_info,
 			  struct hfi_prop_listener *listener)
 {
 	struct dp_hfi *hfi;
 	u32 dp_display_obj_id;
+	u32 hfi_uid;
+	u32 prop;
+	void *payload;
+	u32 size;
+
+	if (!packet_info) {
+		DP_ERR("invalid packet_info\n");
+		return;
+	}
 
 	if (!listener) {
 		DP_ERR("invalid listener\n");
 		return;
 	}
 
+	hfi_uid = packet_info->id;
+	prop = packet_info->cmd;
+	payload = packet_info->payload_ptr;
+	size = packet_info->payload_size;
+
 	hfi = container_of(listener, struct dp_hfi, hfi_cb_obj);
+
+	if (!hfi) {
+		DP_ERR("invalid hfi\n");
+		return;
+	}
 
 	dp_display_obj_id = sde_conn_get_display_obj_id(hfi->connector);
 	if (dp_display_obj_id != hfi_uid) {
@@ -145,7 +169,7 @@ static void dp_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 		break;
 
 	case HFI_COMMAND_DISPLAY_MODE_VALIDATE:
-		if (payload && hfi)
+		if (payload)
 			hfi->mode_valid = true;
 		break;
 	default:
@@ -214,6 +238,7 @@ static int _pack_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client,
 	remove_on_cb = ((hfi_cmd != HFI_COMMAND_DISPLAY_EVENT_REGISTER)
 			&& (hfi_cmd != HFI_COMMAND_DISPLAY_EVENT_DEREGISTER));
 	DP_INFO("hfi_cmd=0x%x, obj_id=0x%x, flags=0x%x\n", hfi_cmd, obj_id, flags);
+	SDE_EVT32_EXTERNAL(hfi_cmd, obj_id, flags);
 
 	if (flags & HFI_HOST_FLAGS_RESPONSE_REQUIRED) {
 		rc = hfi_adapter_add_get_property(hfi_client, cmd_buf, hfi_cmd, obj_id,
@@ -276,6 +301,7 @@ int dp_hfi_send_cmd_buf(struct dp_hfi *hfi,
 
 	DP_INFO("hfi_cmd=0x%x, obj_id=0x%x, cmd_buf_type=%d, flags=0x%x\n",
 		hfi_cmd, obj_id, cmd_buf_type, flags);
+	SDE_EVT32_EXTERNAL(hfi_cmd, obj_id, cmd_buf_type, flags);
 
 	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id, cmd_buf_type);
 	if (!cmd_buf) {
@@ -407,6 +433,273 @@ int dp_hfi_send_batch_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client, b
 	SDE_EVT32(obj_id, rc, SDE_EVTLOG_FUNC_CASE2);
 
 	return rc;
+}
+
+/*
+ * _append_aux_cfg - Pack AUX config KV pairs into kv_props.
+ *
+ * aux_cfg_payload must remain valid until hfi_adapter_add_prop_array().
+ */
+static int _append_aux_cfg(struct dp_hfi *hfi, u32 *aux_cfg_payload)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
+	struct dp_parser *parsed;
+	struct dp_aux_cfg *aux_cfg;
+	struct hfi_util_kv_helper *kv_props = hfi->kv_props;
+	u32 aux_offset, kv_size = 0;
+	int i;
+
+	if (!hfi_priv->parser)
+		return kv_size;
+
+	parsed = hfi_priv->parser;
+	aux_cfg = parsed->aux_cfg;
+
+	if (!kv_props)
+		return kv_size;
+
+	aux_cfg_payload[0] = PHY_AUX_CFG_MAX;
+	for (i = 0; i < PHY_AUX_CFG_MAX; i++) {
+		aux_offset = (aux_cfg[i].offset - DP_AUX_CFG_BASE_OFFSET) / 4;
+		aux_cfg_payload[i + 1] = ((u8)aux_offset << 16) | (u8)aux_cfg[i].lut[0];
+	}
+
+	if (hfi_priv->aux_params_valid && aux_cfg_payload) {
+		hfi_util_kv_helper_add(kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_DP_AUX_CFG, 0,
+				(((PHY_AUX_CFG_MAX + 1) * sizeof(aux_cfg_payload[0]))
+				/ sizeof(u32))), aux_cfg_payload);
+		kv_size += PHY_AUX_CFG_MAX * sizeof(u32);
+	}
+
+	return kv_size;
+}
+
+/*
+ * _append_lt_params - Pack vswing/preemph KV pairs into kv_props.
+ *
+ * lt_params_payload must remain valid until hfi_adapter_add_prop_array().
+ */
+static int _append_lt_params(struct dp_hfi *hfi, u32 *payload)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
+	struct dp_parser *parsed;
+	struct hfi_util_kv_helper *kv_props = hfi->kv_props;
+	u32 bw_code[NUM_BW_CODE] = {6, 10, 20, 30};
+	u32 (*lt_params_payload)[2 + NUM_VSWING_VAL] = (u32 (*)[2 + NUM_VSWING_VAL])payload;
+	u32 kv_size = 0, lt_params_cols;
+	int i, j;
+	u8 *vswing_lut, *pre_emp_lut;
+
+	if (!hfi_priv->parser)
+		return kv_size;
+
+	parsed = hfi_priv->parser;
+
+	if (!kv_props)
+		return kv_size;
+
+	if (parsed->valid_lt_params && payload) {
+		lt_params_cols = 2 + NUM_VSWING_VAL;
+		for (i = 0; i < NUM_BW_CODE; i++) {
+			if (bw_code[i] <= DP_LINK_RATE_HBR) {
+				vswing_lut = parsed->swing_hbr_rbr;
+				pre_emp_lut = parsed->pre_emp_hbr_rbr;
+			} else {
+				vswing_lut = parsed->swing_hbr2_3;
+				pre_emp_lut = parsed->pre_emp_hbr2_3;
+			}
+
+			lt_params_payload[i][0] = bw_code[i];
+			lt_params_payload[i][1] = NUM_VSWING_VAL;
+
+			for (j = 0; j < NUM_VSWING_VAL; j++)
+				lt_params_payload[i][j + 2] =
+					(vswing_lut[j] << 16) | pre_emp_lut[j];
+
+			hfi_util_kv_helper_add(kv_props,
+					HFI_PACKKEY(HFI_PROPERTY_PANEL_DP_VOLTAGESWING_PREEMPHASIS,
+					0, lt_params_cols), lt_params_payload[i]);
+			kv_size += lt_params_cols * sizeof(u32);
+		}
+	}
+
+	return kv_size;
+}
+
+/*
+ * _append_max_link_params - Pack max link rate and lane count KV pairs.
+ *
+ * Uses &parsed->max_lclk_khz / max_lane_count as value pointers so the stored
+ * kv_pair stays valid until hfi_adapter_add_prop_array() is called.
+ */
+static int _append_max_link_params(struct dp_hfi *hfi)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
+	struct dp_parser *parsed;
+	struct hfi_util_kv_helper *kv_props = hfi->kv_props;
+	u32 kv_size = 0;
+
+	if (!hfi_priv->parser)
+		return kv_size;
+
+	parsed = hfi_priv->parser;
+
+	if (!kv_props)
+		return kv_size;
+
+	if (parsed->max_lclk_khz) {
+		hfi_util_kv_helper_add(kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_MAX_LINK_RATE, 0,
+				sizeof(parsed->max_lclk_khz) / sizeof(u32)),
+				&parsed->max_lclk_khz);
+		kv_size += sizeof(parsed->max_lclk_khz);
+	}
+
+	if (parsed->max_lane_count) {
+		hfi_util_kv_helper_add(kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_MAX_LANE_COUNT, 0,
+				sizeof(parsed->max_lane_count) / sizeof(u32)),
+				&parsed->max_lane_count);
+		kv_size += sizeof(parsed->max_lane_count);
+	}
+
+	return kv_size;
+}
+
+/*
+ * _append_lane_tuning_params - Pack lane tuning param KV pair into kv_props.
+ */
+static int _append_lane_tuning_params(struct dp_hfi *hfi, u32 *lane_tuning_payload)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
+	struct dp_parser *parsed;
+	struct hfi_util_kv_helper *kv_props = hfi->kv_props;
+	u32 kv_size = 0, words, count, i;
+	u16 entry;
+
+	if (!hfi_priv->parser)
+		return kv_size;
+
+	parsed = hfi_priv->parser;
+
+	if (!kv_props || !lane_tuning_payload || !parsed->lane_tuning_params)
+		return kv_size;
+
+	count = parsed->lane_tuning_count;
+	if (!count)
+		return kv_size;
+
+	/* words = 1 (count) + ceil(count/2) packed entries */
+	words = 1 + ((count + 1) / 2);
+
+	lane_tuning_payload[0] = count;
+	for (i = 0; i < count; i++) {
+		entry = ((u16)parsed->lane_tuning_params[i].value << 8) |
+				parsed->lane_tuning_params[i].id;
+		if (i % 2 == 0)
+			lane_tuning_payload[1 + (i / 2)] = entry;
+		else
+			lane_tuning_payload[1 + (i / 2)] |= ((u32)entry << 16);
+	}
+
+	hfi_util_kv_helper_add(kv_props,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_LANE_TUNING_PARAMS, 0, words),
+			lane_tuning_payload);
+	kv_size += words * sizeof(u32);
+
+	return kv_size;
+}
+
+void dp_hfi_panel_init(struct dp_hfi *hfi)
+{
+	/*
+	 * Number of kv_props entries contributed by each helper.
+	 * DP_HFI_KV_PROP_COUNT is the last enumerator and automatically
+	 * accumulates the total count of kv_props to allocate.
+	 */
+	enum {
+		DP_HFI_KV_PROP_AUX_CFG = 1,
+		DP_HFI_KV_PROP_LT_PARAMS = NUM_BW_CODE,
+		DP_HFI_KV_PROP_MAX_LINK_RATE,
+		DP_HFI_KV_PROP_MAX_LANE_COUNT,
+		DP_HFI_KV_PROP_LANE_TUNING_PARAMS,
+		DP_HFI_KV_PROP_COUNT,
+	};
+
+	struct hfi_client_t *hfi_client = hfi->hfi_client;
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
+	struct hfi_util_kv_helper *kv_props;
+	struct hfi_cmdbuf_t *buffer;
+	u32 obj_id;
+	int rc = 0;
+
+	/* Declared here so they remain valid when hfi_adapter_add_prop_array()
+	 * uses the kv_pairs packed by _append_aux_cfg() and _append_lt_params().
+	 */
+	u32 aux_cfg_payload[PHY_AUX_CFG_MAX + 1];
+	u32 lt_params_payload[NUM_BW_CODE * (2 + NUM_VSWING_VAL)];
+	u32 lane_tuning_payload[1 + ((DP_MAX_LANE_TUNING_PARAMS + 1) / 2)];
+	u32 kv_count, payload_size, kv_size = 0;
+
+	if (!hfi_client) {
+		DP_ERR("Failed to get HFI client for dp panel init\n");
+		return;
+	}
+
+	if (!hfi_priv || !hfi_priv->parser) {
+		DP_ERR("No parser available for dp panel init\n");
+		return;
+	}
+
+	obj_id = sde_conn_get_display_obj_id(hfi->connector);
+	buffer = hfi_adapter_get_cmd_buf(hfi_client, obj_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!buffer) {
+		DP_ERR("Failed to get cmd buffer for dp panel init\n");
+		return;
+	}
+
+	kv_props = hfi_util_kv_helper_alloc(DP_HFI_KV_PROP_COUNT);
+	if (!kv_props) {
+		DP_ERR("Failed to allocate kv_props for dp panel init\n");
+		hfi_adapter_release_cmd_buf(hfi_client, buffer);
+		return;
+	}
+
+	hfi->kv_props = kv_props;
+	hfi_util_kv_helper_reset(kv_props);
+
+	kv_size += _append_aux_cfg(hfi, aux_cfg_payload);
+	kv_size += _append_lt_params(hfi, lt_params_payload);
+	kv_size += _append_max_link_params(hfi);
+	kv_size += _append_lane_tuning_params(hfi, lane_tuning_payload);
+
+	if (!kv_size) {
+		DP_DEBUG("No dp panel init caps to send\n");
+		kfree(kv_props);
+		hfi_adapter_release_cmd_buf(hfi_client, buffer);
+		return;
+	}
+
+	kv_count = hfi_util_kv_helper_get_count(kv_props);
+	payload_size = (kv_count * sizeof(u32)) + kv_size;
+	rc = hfi_adapter_add_prop_array(buffer->ctx, buffer,
+			HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, obj_id, HFI_PAYLOAD_TYPE_U32_ARRAY,
+			hfi_util_kv_helper_get_payload_addr(kv_props), kv_count, payload_size);
+	if (rc) {
+		DP_ERR("Failed to append HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, rc=%d\n", rc);
+		kfree(kv_props);
+		hfi_adapter_release_cmd_buf(hfi_client, buffer);
+		return;
+	}
+
+	rc = hfi_adapter_set_cmd_buf(hfi_client, buffer);
+	if (rc) {
+		DP_ERR("Failed to send HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, rc=%d\n", rc);
+		hfi_adapter_release_cmd_buf(hfi_client, buffer);
+	}
+
+	kfree(kv_props);
 }
 
 /**

@@ -102,6 +102,11 @@
  *              this field will carry the Display-ID for which the commands
  *              buffers are applicable, which allows the decoder side of this
  *              commands buffer to schedule the job accordingly.
+ *              Bits 0:7  - Display_id for display HFI commands,
+ *                          device_id for the device hfi commands.
+ *              Bits 8:15 - Flags associated with the command buffer
+ *                          (see hfi_cmd_buff_flag for valid flags).
+
  * @timestamp_hi : Timestamp high-value.
  * @timestamp_lo : Timestamp low-value.
  * @header_id : Unique identifier for this Header. This is an opaque identifier
@@ -158,6 +163,24 @@ struct hfi_packet {
 	u32 id;
 	u32 packet_id;
 	u32 reserved[3];
+};
+
+/**
+ * enum hfi_cmd_buff_flag - Per-bit flags encoded in object_id bits [15:8].
+ *
+ * Each enumerator represents a single bit within the 8-bit cmd_buff_flag
+ * field. Multiple flags may be combined with bitwise OR.
+ *
+ * @HFI_CMD_BUFF_FLAG_NONE    : No flags set.
+ * @HFI_CMD_BUFF_FLAG_ASYNC   : Command buffer should be processed
+ *                              asynchronously.
+ * @HFI_CMD_BUFF_FLAG_NO_WAIT : Command buffer should be processed
+ *                              without waits.
+ */
+enum hfi_cmd_buff_flag {
+	HFI_CMD_BUFF_FLAG_NONE    = 0x00,
+	HFI_CMD_BUFF_FLAG_ASYNC   = 0x01,
+	HFI_CMD_BUFF_FLAG_NO_WAIT = 0x02,
 };
 
 /*

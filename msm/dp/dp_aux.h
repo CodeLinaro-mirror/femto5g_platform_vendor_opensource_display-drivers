@@ -45,11 +45,14 @@ struct dp_aux {
 	u32 state;
 
 	bool read;
+	bool dp_cec_feature;
 
 	struct mutex *access_lock;
 	void *ipc_log_context;
 
 	struct drm_dp_aux *drm_aux;
+	struct drm_connector *connector;
+
 	int (*drm_aux_register)(struct dp_aux *aux, struct drm_device *drm_dev);
 	void (*drm_aux_deregister)(struct dp_aux *aux);
 	void (*isr)(struct dp_aux *aux);

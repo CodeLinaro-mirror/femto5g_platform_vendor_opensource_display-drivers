@@ -205,6 +205,7 @@ enum frame_trigger_mode_type {
  * @prev_secure_level: previous secure level
  * @transition_type: transition request type
  * @transition_error: whether there is error while transitioning the state
+ * @crtc_id: DRMID of the CRTC that owns the current secure session
  */
 struct sde_kms_smmu_state_data {
 	uint32_t state;
@@ -214,6 +215,7 @@ struct sde_kms_smmu_state_data {
 	uint32_t transition_type;
 	uint32_t transition_error;
 	uint32_t sui_misr_state;
+	uint32_t crtc_id;
 };
 
 /*
@@ -530,6 +532,9 @@ struct sde_kms {
 	enum msm_disp_op debugfs_display_op;
 	enum msm_disp_op frame_trigger_state;
 	bool hfi_tvm_start;
+
+	u32 lpai_buf_size;
+	unsigned long lpai_buf_base;
 };
 
 struct vsync_info {
@@ -696,7 +701,7 @@ void *sde_debugfs_get_root(struct sde_kms *sde_kms);
  * These functions/definitions allow for building up a 'sde_info' structure
  * containing one or more "key=value\n" entries.
  */
-#if IS_ENABLED(CONFIG_DRM_LOW_MSM_MEM_FOOTPRINT)
+#if IS_ENABLED(CONFIG_DRM_MSM_LOW_MEM_FOOTPRINT)
 #define SDE_KMS_INFO_MAX_SIZE (1 << 12)
 #elif IS_ENABLED(CONFIG_DSI_EXTENDED_MODES)
 #define SDE_KMS_INFO_MAX_SIZE (6 * (1 << 14))
@@ -1060,5 +1065,17 @@ int sde_kms_wait_for_display_off(struct sde_kms *kms);
  * Return: 0 on success, negative error code on failure
  */
 int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev);
+
+/**
+ * sde_kms_populate_wb_dnsc_caps - populate WB DNSC capability fields in wb_dev
+ * @sde_kms: Pointer to sde kms object
+ * @wb_dev:  Pointer to writeback device to populate
+ *
+ * Reads WB DNSC support indices, ratio range, and integer-only flag from the
+ * HFI catalog and stores them in the wb_dev capability fields.
+ */
+struct sde_wb_device;
+void sde_kms_populate_wb_dnsc_caps(struct sde_kms *sde_kms,
+		struct sde_wb_device *wb_dev);
 
 #endif /* __sde_kms_H__ */

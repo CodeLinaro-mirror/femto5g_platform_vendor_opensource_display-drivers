@@ -233,6 +233,7 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_FLUSH_SYNC_EN,
 	CRTC_PROP_DISPLAY_OP,
 	CRTC_PROP_LSR_MODE,
+	CRTC_PROP_GMU_REPROJ_MODE,
 	CRTC_PROP_BATCH_SIZE,
 	CRTC_PROP_BATCH_INDEX,
 	CRTC_PROP_BATCH_TYPE,
@@ -254,6 +255,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_DIMMING_BL_LUT,
 	CONNECTOR_PROP_DNSC_BLUR,
 	CONNECTOR_PROP_WB_CSC_CONFIG,
+	CONNECTOR_PROP_WB_DNSC,
 
 	/* reprojection blob properties */
 	CONNECTOR_PROP_REPROJ_SPARSE_GRID,
@@ -288,6 +290,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_PRIVACY_LAYER_V2,
 	CONNECTOR_PROP_VSYNC_OFFSET,
 	CONN_PROP_GMU_DCP_INTF_MEM,
+	CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES,
 
 	/* enum/bitmask properties */
 	CONNECTOR_PROP_TOPOLOGY_NAME,
@@ -309,6 +312,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_WB_ROT_TYPE,
 	CONNECTOR_PROP_WB_ROT_BYTES_PER_CLK,
 	CONNECTOR_PROP_BPP_MODE,
+	CONNECTOR_PROP_SPR_MODE,
 
 	/* LSR connector properties*/
 	CONNECTOR_PROP_OUT_FB_LIST,
@@ -497,6 +501,20 @@ enum msm_display_dsc_mode {
 };
 
 /**
+ * enum msm_display_spr_mode - panel spr chroma format mode
+ * @MSM_DISPLAY_SPR_DISABLED: SPR chroma format disabled (RGB 4:4:4)
+ * @MSM_DISPLAY_SPR_YUV_422: SPR chroma format YUV 4:2:2
+ * @MSM_DISPLAY_SPR_YUV_420: SPR chroma format YUV 4:2:0
+ * @MSM_DISPLAY_SPR_MAX: max and invalid SPR chroma foramt
+ */
+enum msm_display_spr_mode {
+	MSM_DISPLAY_SPR_DISABLED,
+	MSM_DISPLAY_SPR_YUV_422,
+	MSM_DISPLAY_SPR_YUV_420,
+	MSM_DISPLAY_SPR_MAX,
+};
+
+/**
  * struct msm_display_mode - wrapper for drm_display_mode
  * @base: drm_display_mode attached to this msm_mode
  * @private_flags: integer holding private driver mode flags
@@ -513,11 +531,13 @@ struct msm_display_mode {
  * @dsc_enabled: boolean used to indicate if dsc should be enabled
  * @pixel_format_mode: used to indicate pixel format mode
  * @emsync_fps: used to indicate emsync fps
+ * @spr_mode: used to indicate spr mode
  */
 struct msm_sub_mode {
 	enum msm_display_dsc_mode dsc_mode;
 	enum msm_display_pixel_format pixel_format_mode;
 	u32 emsync_fps;
+	enum msm_display_spr_mode spr_mode;
 };
 
 /**
@@ -540,6 +560,7 @@ struct msm_ratio {
  * @MSM_ENC_DISPLAY_POWER - notify display power event
  * @MSM_ENC_CAPTURE_COMPLETE - wait for the HW to complete frame capture (CWB)
  * @MSM_ENC_PANEL_DEAD - wait for panel dead event to occur
+ * @MSM_ENC_DCS_CMD_ERROR - notify DCS command transfer error from DCP firmware
  * @MSM_ENC_EVENT_MAX - maximum value for events related to frame
  * @MSM_ENC_MISR - Interface MISR values
  */
@@ -553,6 +574,7 @@ enum msm_event_wait {
 	MSM_ENC_CAPTURE_COMPLETE,
 	MSM_ENC_PANEL_DEAD,
 	MSM_ENC_MISR,
+	MSM_ENC_DCS_CMD_ERROR,
 	MSM_ENC_EVENT_MAX,
 };
 
@@ -1320,6 +1342,16 @@ enum msm_disp_op {
 enum lsr_mode {
 	MSM_DISP_LSR_MODE_DISABLED,
 	MSM_DISP_LSR_MODE_ENABLED,
+};
+
+/**
+ * enum gmu_reproj_mode: GMU reprojection mode status on primary display
+ * @MSM_DISP_GMU_REPROJ_MODE_DISABLED: GMU reprojection is disabled.
+ * @MSM_DISP_GMU_REPROJ_MODE_ENABLED: GMU reprojection is enabled.
+ */
+enum gmu_reproj_mode {
+	MSM_DISP_GMU_REPROJ_MODE_DISABLED,
+	MSM_DISP_GMU_REPROJ_MODE_ENABLED,
 };
 
 /**

@@ -220,9 +220,8 @@ struct dp_aux_switch *dp_aux_switch_get(struct device *dev)
 	priv->dev = dev;
 	priv->aux_switch_node = of_parse_phandle(dev->of_node, phandle, 0);
 	if (!priv->aux_switch_node) {
-		DP_ERR("cannot parse %s handle\n", phandle);
-		rc = -ENODEV;
-		goto bail;
+		DP_ERR("%s handle not present, no aux switch\n", phandle);
+		return NULL;
 	}
 
 	if (!strcmp(priv->aux_switch_node->name, "fsa4480"))
@@ -232,7 +231,12 @@ struct dp_aux_switch *dp_aux_switch_get(struct device *dev)
 	else
 		priv->switch_type = DP_AUX_SWITCH_BYPASS;
 
-	DP_DEBUG("DP AUX SWITCH: %s\n", priv->aux_switch_node->name);
+	if (priv->switch_type == DP_AUX_SWITCH_BYPASS) {
+		DP_ERR("DP AUX SWITCH: bypass mode, no switch needed\n");
+		return NULL;
+	}
+
+	DP_ERR("DP AUX SWITCH: %s\n", priv->aux_switch_node->name);
 
 #if IS_ENABLED(CONFIG_QCOM_FSA4480_I2C)
 	if (priv->switch_type == DP_AUX_SWITCH_FSA4480) {

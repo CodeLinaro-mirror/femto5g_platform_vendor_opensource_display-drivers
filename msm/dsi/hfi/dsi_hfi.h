@@ -242,6 +242,8 @@ struct dsi_panel_timing_caps {
  * @poms_caps:                      HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY
  * @custom_cmd_set_info:            HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO
  * @ulps_supported:                 HFI_PROPERTY_PANEL_ULPS_SUPPORTED
+ * @phy_tuning_config:              HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG
+ * @phy_tuning_config_valid:        true if phy_tuning_config has been populated
  */
 struct dsi_panel_generic_caps {
 	u32 panel_name;
@@ -282,6 +284,8 @@ struct dsi_panel_generic_caps {
 	struct hfi_panel_operating_mode_caps poms_caps;
 	u32 custom_cmd_set_info[2]; /* [0]=start_index, [1]=count */
 	u32 ulps_supported;
+	struct hfi_panel_phy_tuning_config phy_tuning_config;
+	bool phy_tuning_config_valid;
 };
 
 /**
@@ -316,13 +320,10 @@ int dsi_hfi_process_cmd_buf(struct hfi_client_t *hfi_client, struct hfi_cmdbuf_t
 
 /**
  * dsi_hfi_prop_handler() - handle/parse hfi properties
- * @UNIQUE_DISP_OR_OBJ_ID:	display/object ID
- * @CMD_ID: command ID
- * @payload: handle to payload
- * @size: size of payload
+ * @packet_info: handle to hfi packet info
  * @listener: handle to hfi property listener
  */
-void dsi_hfi_prop_handler(u32 UNIQUE_DISP_OR_OBJ_ID, u32 CMD_ID, void *payload, u32 size,
+void dsi_hfi_prop_handler(struct hfi_packet_info *packet_info,
 						struct hfi_prop_listener *listener);
 
 /**
@@ -475,5 +476,37 @@ int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
  *         -ENOENT  if no runtime custom DCS commands have been captured
  */
 int dsi_hfi_send_dcs_cmd_set_replace_cmd(struct dsi_display *display, bool resp_req);
+
+/**
+ * dsi_hfi_exec_dcs_cmd_type() - instruct DCP to immediately execute a DCS command set
+ * @display:   handle to dsi display structure
+ * @cmd_type:  DCS command type to execute; either a standard command type
+ *             value (range [0, DSI_CMD_SET_MAX)), or a custom command type index within
+ *             the range [DSI_CUSTOM_CMD_SET_START_IDX, DSI_CUSTOM_CMD_SET_MAX)
+ * @resp_req:  if true, HFI_HOST_FLAGS_RESPONSE_REQUIRED is appended to the flags,
+ *             causing the call to block until DCP acknowledges execution
+ *
+ * Sends HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE to DCP, instructing it to immediately
+ * execute the pre-configured DCS command set identified by cmd_type.
+ *
+ * Return: 0 on success, negative error code on failure
+ *         -EINVAL  if params are invalid or cmd_type is out of range
+ */
+int dsi_hfi_exec_dcs_cmd_type(struct dsi_display *display, u32 cmd_type, bool resp_req);
+
+/**
+ * dsi_hfi_tx_cmd_set() - transfers a set of DSI write commands from host to DCP
+ *                        in a single HFI operation
+ * @display:              pointer to the DSI display structure
+ * @cmd_set:              pointer to the panel command set containing an array of DSI commands
+ *
+ * Packs all commands in @cmd_set into a single HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET
+ * packet, copying all TX payloads into one contiguous DCP-mapped shared memory region.
+ * This avoids the per-command HFI round-trip overhead of dsi_hfi_host_transfer_sub().
+ * Only write (TX) commands are supported; read commands are not handled by this function.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dsi_hfi_tx_cmd_set(struct dsi_display *display, struct dsi_panel_cmd_set *cmd_set);
 
 #endif

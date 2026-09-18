@@ -92,8 +92,8 @@ void sde_connector_add_roi_v1(u32 hfi_prop, struct sde_connector *conn,
 	struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf);
 
 void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
-	struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf,
-	bool is_cont_splash);
+	struct sde_connector_state *old_state, bool is_cont_splash,
+	struct hfi_util_u32_prop_helper *prop_collector);
 
 /**
  * hfi_conn_send_panel_init - send panel config and opertaing modes to fw
@@ -131,6 +131,20 @@ void hfi_connector_set_esd_recovery_pending(struct sde_connector *c_conn);
 void hfi_connector_report_panel_dead(struct sde_connector *c_conn,
 	bool skip_pre_kickoff);
 
+/**
+ * hfi_connector_set_gmu_dcp_intf_mem - map the gmu dcp interface buffer to FW
+ * @connector: pointer to the DRM connector structure
+ * @val: framebuffer id of the gmu dcp interface buffer (0 to clear)
+ */
+void hfi_connector_set_gmu_dcp_intf_mem(struct drm_connector *connector,
+	uint64_t val);
+
+/**
+ * hfi_connector_cleanup_gmu_dcp_fb - unmap and release the gmu dcp interface buffer
+ * @c_conn: Pointer to sde_connector struct
+ */
+void hfi_connector_cleanup_gmu_dcp_fb(struct sde_connector *c_conn);
+
 #else
 static inline int hfi_connector_init(int connector_type,
 	struct sde_connector *c_conn)
@@ -158,6 +172,12 @@ static inline void hfi_connector_set_esd_recovery_pending(struct sde_connector *
 {
 }
 
+static inline void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
+	struct sde_connector_state *old_state, bool is_cont_splash,
+	struct hfi_util_u32_prop_helper *prop_collector)
+{
+}
+
 static inline void hfi_connector_report_panel_dead(
 	struct sde_connector *sde_conn, bool skip_pre_kickoff)
 {
@@ -167,6 +187,15 @@ static inline int hfi_connector_set_debug_prop(
 	struct drm_connector *drm_conn, struct hfi_display_dbg_property *dbg_prop)
 {
 	return 0;
+}
+
+static inline void hfi_connector_set_gmu_dcp_intf_mem(
+	struct drm_connector *connector, uint64_t val)
+{
+}
+
+static inline void hfi_connector_cleanup_gmu_dcp_fb(struct sde_connector *c_conn)
+{
 }
 
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)

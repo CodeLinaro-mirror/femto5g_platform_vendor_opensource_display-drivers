@@ -148,15 +148,14 @@ end:
 }
 
 void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
-		struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf,
-		bool is_cont_splash)
+		struct sde_connector_state *old_state, bool is_cont_splash,
+		struct hfi_util_u32_prop_helper *prop_collector)
 {
 	struct hfi_connector *hfi_conn;
-	struct hfi_display_autorefresh_cfg payload;
-	u32 key;
+	struct hfi_display_autorefresh_cfg payload = {0};
 	int ret = 0;
 
-	if (!conn || !cmd_buf || !old_state)
+	if (!conn || !old_state)
 		return;
 
 	hfi_conn = to_hfi_connector(conn);
@@ -166,10 +165,8 @@ void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
 		payload.enable = false;
 		payload.frame_count = 0;
 	}
-
-	key = HFI_PACKKEY(HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG, 0, sizeof(payload));
-
-	ret = hfi_util_kv_helper_add(hfi_conn->kv_props, key, (u32 *)&payload);
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+			HFI_VAL_U32_ARRAY, &payload, sizeof(payload));
 	if (ret)
 		HFI_ERROR_CONN(hfi_conn, "failed adding HFI KV prop:0x%x\n", hfi_prop);
 }
@@ -376,8 +373,8 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 }
 
 /**
- * hfi_connector_populate_custom_kv_setter_props:  this is for all basic payloads.
- * Collects all listed props into a linear memory and voids memcopy of value by value at adapeter
+ * _hfi_connector_set_props_base: this is for all basic payloads. Collects all
+ * listed props into a linear memory and voids memcopy of value by value at adapeter
  */
 static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id,
 		struct sde_connector_state *old_cstate, struct hfi_cmdbuf_t *cmd_buf)
@@ -385,11 +382,22 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 	u32 drm_prop, hfi_prop;
 	int i, ret = 0;
 	struct hfi_connector *hfi_conn = to_hfi_connector(conn);
+	struct sde_kms *sde_kms;
+	struct msm_kms *msm_kms;
+	bool is_cont_splash = false;
 
 	if (!hfi_conn || !hfi_conn->base_props) {
 		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
 	}
+
+	sde_kms = sde_connector_get_kms(&conn->base);
+	if (!sde_kms)
+		return -EINVAL;
+
+	msm_kms = &sde_kms->base;
+	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
+		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
 
 	mutex_lock(&hfi_conn->hfi_lock);
 	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
@@ -413,6 +421,10 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 		_hfi_connector_add_base_prop_helper(hfi_prop, conn, old_cstate,
 				 hfi_conn->base_props);
 	}
+
+	if (is_cont_splash)
+		sde_connector_add_autorefresh(HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG,
+				conn, old_cstate, is_cont_splash, hfi_conn->base_props);
 
 	if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->base_props))
 		goto end;
@@ -452,22 +464,12 @@ static int hfi_connector_populate_custom_kv_setter_props(struct sde_connector *c
 	struct hfi_prop_map *setter;
 	int i, ret = 0;
 	struct hfi_connector *hfi_conn = to_hfi_connector(conn);
-	struct sde_kms *sde_kms;
-	struct msm_kms *msm_kms;
 	u32 kv_count;
-	bool is_cont_splash = false;
 
 	if (!hfi_conn || !old_cstate || !cmd_buf) {
 		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
 	}
-
-	sde_kms = sde_connector_get_kms(&conn->base);
-	if (!sde_kms)
-		return -EINVAL;
-	msm_kms = &sde_kms->base;
-	if (!msm_kms)
-		return -EINVAL;
 
 	mutex_lock(&hfi_conn->hfi_lock);
 	hfi_util_kv_helper_reset(hfi_conn->kv_props);
@@ -482,14 +484,6 @@ static int hfi_connector_populate_custom_kv_setter_props(struct sde_connector *c
 		if (setter->add_hfi_prop)
 			setter->add_hfi_prop(setter->hfi_prop, conn, old_cstate, cmd_buf);
 	}
-
-	/* Check continuous splash HFI for autorefresh disable */
-	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
-		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
-
-	if (is_cont_splash)
-		sde_connector_add_autorefresh(HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG,
-				conn, old_cstate, cmd_buf, is_cont_splash);
 
 	kv_count = hfi_util_kv_helper_get_count(hfi_conn->kv_props);
 	if (!kv_count)
@@ -1065,3 +1059,151 @@ void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre
 
 	sde_connector_report_panel_dead(c_conn, skip_pre_kickoff);
 }
+
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
+void hfi_connector_cleanup_gmu_dcp_fb(struct sde_connector *c_conn)
+{
+	struct sde_kms *sde_kms;
+	struct msm_gem_address_space *aspace;
+	struct drm_gem_object *gem_obj;
+	int ret;
+
+	if (!c_conn || !c_conn->gmu_dcp_fb)
+		return;
+
+	sde_kms = sde_connector_get_kms(&c_conn->base);
+	if (!sde_kms) {
+		HFI_ERROR_CONN(c_conn->hfi_conn, "failed to get sde_kms for gmu dcp cleanup\n");
+		return;
+	}
+	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
+
+	if (c_conn->gmu_dcp_iova) {
+		SDE_EVT32(DRMID(&c_conn->base), c_conn->gmu_dcp_iova,
+				c_conn->gmu_dcp_size);
+		ret = hfi_adapter_unmap_sg_table(&to_hfi_kms(sde_kms)->hfi_client,
+				c_conn->gmu_dcp_iova, c_conn->gmu_dcp_size);
+		if (ret)
+			HFI_ERROR_CONN(c_conn->hfi_conn,
+			"failed to unmap gmu dcp iova, ret:%d\n", ret);
+		c_conn->gmu_dcp_iova = 0;
+		c_conn->gmu_dcp_size = 0;
+	}
+
+	gem_obj = msm_framebuffer_bo(c_conn->gmu_dcp_fb, 0);
+	if (!IS_ERR_OR_NULL(gem_obj))
+		msm_gem_put_vaddr(gem_obj);
+
+	msm_framebuffer_cleanup(c_conn->gmu_dcp_fb, aspace);
+	drm_framebuffer_put(c_conn->gmu_dcp_fb);
+	c_conn->gmu_dcp_fb = NULL;
+}
+
+void hfi_connector_set_gmu_dcp_intf_mem(struct drm_connector *connector, uint64_t val)
+{
+	struct sde_connector *c_conn;
+	struct sde_kms *sde_kms;
+	struct msm_gem_address_space *aspace;
+	struct hfi_shared_addr_map addr_map = {0};
+	struct drm_gem_object *gem_obj;
+	struct msm_gem_object *msm_obj;
+	void *cpu_va = NULL;
+	dma_addr_t phys_addr;
+	struct page **pages;
+	int npages, ret;
+
+	if (!connector)
+		return;
+
+	c_conn = to_sde_connector(connector);
+
+	hfi_connector_cleanup_gmu_dcp_fb(c_conn);
+
+	if (!val)
+		return;
+
+	sde_kms = sde_connector_get_kms(connector);
+	if (!sde_kms) {
+		HFI_ERROR_CONN(c_conn->hfi_conn, "failed to get sde_kms\n");
+		return;
+	}
+	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
+
+	c_conn->gmu_dcp_fb = drm_framebuffer_lookup(connector->dev, NULL, val);
+	if (!c_conn->gmu_dcp_fb) {
+		HFI_ERROR_CONN(c_conn->hfi_conn,
+			"failed to lookup gmu dcp framebuffer id:%llu\n", val);
+		return;
+	}
+
+	ret = msm_framebuffer_prepare(c_conn->gmu_dcp_fb, aspace);
+	if (ret) {
+		HFI_ERROR_CONN(c_conn->hfi_conn,
+			"failed to prepare gmu dcp framebuffer, ret:%d\n", ret);
+		goto cleanup_prepare;
+	}
+
+	gem_obj = msm_framebuffer_bo(c_conn->gmu_dcp_fb, 0);
+	if (IS_ERR_OR_NULL(gem_obj)) {
+		HFI_ERROR_CONN(c_conn->hfi_conn,
+			"failed to get gem object from gmu dcp framebuffer\n");
+		goto cleanup_prepare;
+	}
+
+	msm_obj = to_msm_bo(gem_obj);
+	npages = gem_obj->size >> PAGE_SHIFT;
+	HFI_DEBUG_CONN(c_conn->hfi_conn, "gmu dcp gem size:%zu pages:%d\n", gem_obj->size, npages);
+
+	pages = msm_gem_get_pages(gem_obj);
+	if (IS_ERR(pages)) {
+		HFI_ERROR_CONN(c_conn->hfi_conn, "msm_gem_get_pages for gmu dcp failed, ret:%ld\n",
+				PTR_ERR(pages));
+		goto cleanup_prepare;
+	}
+
+	cpu_va = msm_gem_get_vaddr(gem_obj);
+	if (IS_ERR_OR_NULL(cpu_va)) {
+		HFI_ERROR_CONN(c_conn->hfi_conn, "failed to get cpu VA from gmu dcp gem object\n");
+		goto cleanup_prepare;
+	}
+
+	phys_addr = msm_framebuffer_phys(c_conn->gmu_dcp_fb, 0);
+
+	addr_map.alloc_info.phy_addr = phys_addr;
+	addr_map.alloc_info.size_allocated = c_conn->gmu_dcp_fb->obj[0]->size;
+	addr_map.alloc_info.cpu_va = cpu_va;
+	addr_map.alloc_info.mapped_iova = 0;
+	addr_map.size = c_conn->gmu_dcp_fb->obj[0]->size;
+
+	ret = hfi_adapter_map_sg_table(&to_hfi_kms(sde_kms)->hfi_client, msm_obj->sgt,
+			&addr_map);
+	if (ret) {
+		HFI_ERROR_CONN(c_conn->hfi_conn,
+			"failed to map gmu dcp sg table to iova, ret:%d\n", ret);
+		goto cleanup_vaddr;
+	}
+
+	HFI_DEBUG_CONN(c_conn->hfi_conn, "gmu dcp buffer mapped to FW iova=0x%lx\n",
+			addr_map.remote_addr);
+	c_conn->gmu_dcp_iova = addr_map.remote_addr;
+	c_conn->gmu_dcp_size = addr_map.aligned_size;
+	SDE_EVT32(DRMID(&c_conn->base), c_conn->gmu_dcp_iova,
+			c_conn->gmu_dcp_size);
+	return;
+
+cleanup_vaddr:
+	msm_gem_put_vaddr(gem_obj);
+cleanup_prepare:
+	msm_framebuffer_cleanup(c_conn->gmu_dcp_fb, aspace);
+	drm_framebuffer_put(c_conn->gmu_dcp_fb);
+	c_conn->gmu_dcp_fb = NULL;
+}
+#else
+void hfi_connector_cleanup_gmu_dcp_fb(struct sde_connector *c_conn)
+{
+}
+
+void hfi_connector_set_gmu_dcp_intf_mem(struct drm_connector *connector, uint64_t val)
+{
+}
+#endif /* CONFIG_QTI_HFI_CORE */
