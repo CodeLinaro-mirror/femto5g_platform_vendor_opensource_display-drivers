@@ -190,7 +190,7 @@ static inline int hfi_util_u32_prop_helper_validate(
 
 	if (!prop_helper || !prop_helper->cur) {
 		SDE_ERROR("invalid prop helper %pK, cur %pK, prop_id 0x%x\n",
-			prop_helper, prop_helper->cur, prop_id);
+			prop_helper, prop_helper ? prop_helper->cur : NULL, prop_id);
 		return -EINVAL;
 	}
 
