@@ -242,7 +242,7 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @dsc_continuous_pps: PPS sent every frame by HW
  * @has_widebus: widebus (2PPC) feature eanble status
  * @lphw_hpd: Low power hardware HPD feature enable status
-  *@mst_fixed_port: mst port_num reserved for fixed topology
+ * @mst_fixed_port: mst port_num reserved for fixed topology
  * @qos_cpu_mask: CPU mask for QOS
  * @qos_cpu_latency: CPU Latency setting for QOS
  * @swing_hbr2_3: Voltage swing levels for HBR2 and HBR3 rates
@@ -250,6 +250,10 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @swing_hbr_rbr: Voltage swing levels for HBR and RBR rates
  * @pre_emp_hbr_rbr: Pre-emphasis for HBR and RBR rates
  * @valid_lt_params: valid lt params
+ * @bl_min_level: minimum brightness value for backlight
+ * @bl_max_level: maximum brightness value for backlight
+ * @brightness_max_level: maximum brightness level for backlight
+ * @pwm_period_usecs: pwm period in usecs for backlight pwm
  * @parse: function to be called by client to parse device tree.
  * @get_io: function to be called by client to get io data.
  * @get_io_buf: function to be called by client to get io buffers.
@@ -284,6 +288,10 @@ struct dp_parser {
 	bool is_edp;
 	bool lphw_hpd;
 	bool panel_notifier_support;
+	u32 bl_min_level;
+	u32 bl_max_level;
+	u32 brightness_max_level;
+	u32 pwm_period_usecs;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 pixel_base_off[MAX_DP_MST_STREAMS];
 	const char *mst_fixed_display_type[MAX_DP_MST_STREAMS];
