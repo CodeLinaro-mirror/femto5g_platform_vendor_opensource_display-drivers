@@ -435,7 +435,6 @@ struct sde_kms {
 
 	struct generic_pm_domain genpd;
 	bool genpd_init;
-	atomic_t pd_enable_count;
 
 	struct msm_gem_address_space *aspace[MSM_SMMU_DOMAIN_MAX];
 	struct sde_power_event *power_event;
