@@ -49,7 +49,7 @@ static inline void HDMI_PHY_CONF_REG(struct hdmi_phy *phy, u32 off, u32 val, int
 	reg_val  = hdmi_read(phy, off);
 	reg_val = hdmi_phy_snps_operation(reg_val, val, op);
 	hdmi_write(phy, off, reg_val);
-	usleep_range(200, 50000);
+	usleep_range(200, 500);
 }
 
 static inline void HDMI_PHY_CONF_REG_GRP(struct hdmi_phy *phy, u32 reg, u32 val, int op)
