@@ -1,6 +1,7 @@
 targets = [
     # keep sorted
     "honu",
+    "honu16k",
     "art",
     "bengal",
     "art16k",
