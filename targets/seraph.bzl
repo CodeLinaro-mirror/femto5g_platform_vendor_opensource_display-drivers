@@ -31,5 +31,6 @@ def define_seraph():
                     "CONFIG_DRM_SDE_LSR",
                     "CONFIG_LSR_SERAPH",
                     "CONFIG_QTI_HW_FENCE",
+                    "CONFIG_QCOM_SECURE_BUFFER",
                 ],
             )

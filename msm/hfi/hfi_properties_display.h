@@ -818,6 +818,60 @@
 #define HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE                                   0x00020035
 
 /*
+ * HFI_PROPERTY_DISPLAY_PRIVACY_LAYER - Sets privacy layer regions on the
+ *                                      panel. The mode field selects whether
+ *                                      the regions are interpreted as
+ *                                      LAYER_MODE (v1: a single packed DCS
+ *                                      command carrying all regions) or
+ *                                      AREA_MODE (v2: independent HW regions
+ *                                      R0/R1/R2, each with an index).
+ *                                      Host sends this to configure
+ *                                      rectangular regions.
+ *
+ * @BasicFuntionality @Display - HFI_PROPERTY_DISPLAY_PRIVACY_LAYER
+ *
+ * Two possible HFI layout:
+ *
+ * 1. LAYER MODE
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_PRIVACY_LAYER \|
+ * ^                             | (version=0 << 20) \| (dsize=(payload_size/4) << 24)
+ *   (u32_value) payload [1]     | mode  (1=LAYER_MODE)
+ *   (u32_value) payload [2]     | no_of_layers  (u32) — number of region
+ *                               | blocks that follow below (5 fields/region)
+ *   (u32_value) payload [3]     | reserved1  (u32, reserved for future use)
+ *   (u32_value) payload [4]     | reserved2  (u32, reserved for future use)
+ *   (u32_value) payload [5]     | region[0].left
+ *   (u32_value) payload [6]     | region[0].top
+ *   (u32_value) payload [7]     | region[0].right  (0 = region disabled)
+ *   (u32_value) payload [8]     | region[0].bottom
+ *   (u32_value) payload [9]     | region[0].corner_radius
+ *   ...                         | (5 u32 fields per region, repeated
+ *                               | no_of_layers times — once per region)
+ *
+ * 2. AREA MODE
+ *  * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_PRIVACY_LAYER \|
+ * ^                             | (version=0 << 20) \| (dsize=(payload_size/4) << 24)
+ *   (u32_value) payload [1]     | mode  (2=AREA_MODE)
+ *   (u32_value) payload [2]     | no_of_layers  (u32) — number of region
+ *                               | blocks that follow below (6 fields/region)
+ *   (u32_value) payload [3]     | reserved1  (u32, reserved for future use)
+ *   (u32_value) payload [4]     | reserved2  (u32, reserved for future use)
+ *   (u32_value) payload [5]     | region[0].index  (0=R0, 1=R1, 2=R2)
+ *   (u32_value) payload [6]     | region[0].left
+ *   (u32_value) payload [7]     | region[0].top
+ *   (u32_value) payload [8]     | region[0].right  (0 = region disabled)
+ *   (u32_value) payload [9]     | region[0].bottom
+ *   (u32_value) payload [10]    | region[0].corner_radius
+ *   ...                         | (6 u32 fields per region, repeated
+ *                               | no_of_layers times — once per region)
+ */
+#define HFI_PROPERTY_DISPLAY_PRIVACY_LAYER                           0x00020036
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100

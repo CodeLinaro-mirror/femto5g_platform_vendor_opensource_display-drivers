@@ -1174,4 +1174,25 @@ struct hfi_dnsc_cfg {
 	u32 dst_height;
 };
 
+/*
+ * @enum hfi_privacy_mode
+ * @brief HFI wire values for the privacy layer operating mode.
+ *        The mode field is always payload[0] and DCP uses it to determine
+ *        the per-region field count:
+ *          LAYER_MODE: 5 fields per region (no index)
+ *          AREA_MODE:  6 fields per region (index present as first field)
+ *
+ * @var HFI_PRIVACY_LAYER_MODE
+ *   V1: single packed DCS command carrying all privacy regions.
+ *   Per-region wire layout: (left, top, right, bottom, corner_radius)
+ * @var HFI_PRIVACY_AREA_MODE
+ *   V2: independent hardware regions (R0/R1/R2), each driven by a
+ *       separate MIPI command sequence.
+ *   Per-region wire layout: (index, left, top, right, bottom, corner_radius)
+ */
+enum hfi_privacy_mode {
+	HFI_PRIVACY_LAYER_MODE = 1,
+	HFI_PRIVACY_AREA_MODE  = 2,
+};
+
 #endif // __H_HFI_DEFS_DISPLAY_H__

@@ -13,6 +13,7 @@
 #include <linux/kthread.h>
 #include <linux/spinlock.h>
 #include <linux/scatterlist.h>
+#include <linux/wait.h>
 #if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
 #include "hfi_pack_unpack_common.h"
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE)
@@ -96,6 +97,7 @@ struct callback_work {
  * @packet_id_lock: Lock for packet id
  * @hfi_adapter_cmd_buf_list_lock:Lock for cmd_buf list
  * @ssr_in_progress: atomic member storing current ssr status
+ * @cmd_buf_wq: wait queue for blocking cmd buf senders until ack or SSR
  */
 struct hfi_adapter_t {
 	u32  sde_or_vm_instance;
@@ -119,6 +121,7 @@ struct hfi_adapter_t {
 	spinlock_t packet_id_lock;
 	struct mutex hfi_adapter_cmd_buf_list_lock;
 	atomic_t ssr_in_progress;
+	wait_queue_head_t cmd_buf_wq;
 
 	/* Shutdown coordination */
 	atomic_t shutdown_in_progress;

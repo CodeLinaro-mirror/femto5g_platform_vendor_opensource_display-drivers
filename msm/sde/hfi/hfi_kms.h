@@ -275,6 +275,17 @@ struct hfi_cmdbuf_t *hfi_kms_get_cmd_buf(struct hfi_kms *hfi_kms,
 int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms);
 
 /**
+ * hfi_kms_send_generic_device_caps - send runtime-selected catalog properties to DCP
+ * @hfi_kms: Pointer to hfi_kms structure
+ *
+ * Sends properties that HLOS selects at runtime (e.g. highest_bank_bit based on DDR type)
+ * and that DCP cannot determine from its own device tree.
+ *
+ * Returns: 0 on success, or error code on failure
+ */
+int hfi_kms_send_generic_device_caps(struct hfi_kms *hfi_kms);
+
+/**
  * hfi_kms_set_vm_state - set vm state for display
  * @crtc: Pointer to DRM CRTC
  * @crtc_state: Pointer to DRM CRTC state

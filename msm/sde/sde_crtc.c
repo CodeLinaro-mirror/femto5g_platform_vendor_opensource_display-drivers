@@ -458,6 +458,12 @@ static int _sde_crtc_check_modeset_dnsc_blur(struct drm_crtc *crtc,
 	for (i = 0; i < cstate->num_connectors; i++) {
 		conn = cstate->connectors[i];
 		conn_state = drm_atomic_get_new_connector_state(crtc_state->state, conn);
+		if (!conn_state) {
+			SDE_DEBUG("no new connector state found for conn %d skipping\n",
+				conn->base.id);
+			continue;
+		}
+
 		sde_conn_state = to_sde_connector_state(conn_state);
 		msm_mode = &sde_conn_state->msm_mode;
 

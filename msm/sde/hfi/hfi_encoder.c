@@ -379,7 +379,6 @@ static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, vo
 	}
 
 	hfi_connector_set_esd_recovery_pending(sde_conn);
-	wake_up_all(&hfi_enc->pending_kickoff_wq);
 	hfi_connector_report_panel_dead(sde_conn, false);
 }
 
@@ -941,6 +940,62 @@ static int hfi_enc_wait_for_event(struct sde_encoder_virt *enc, u32 event)
 	return ret;
 }
 
+static int hfi_enc_early_wakeup_call(struct sde_encoder_virt *enc)
+{
+	struct drm_connector *conn;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_cmdbuf_t *cmd_buf;
+	u32 disp_id, payload = 0;
+	int ret = 0;
+
+	if (!enc) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi_kms\n");
+		return -EINVAL;
+	}
+
+	conn = sde_encoder_get_connector(enc->base.dev, &enc->base);
+	if (!conn) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	disp_id = sde_conn_get_display_obj_id(conn);
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client, MSM_DRV_HFI_ID,
+			HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get a valid command buffer\n");
+		return -EINVAL;
+	}
+
+	payload = HFI_WAKEUP;
+
+	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, disp_id, HFI_PAYLOAD_TYPE_U32,
+			&payload, sizeof(payload), HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (ret) {
+		SDE_ERROR("failed to add early wakeup hint\n");
+		return ret;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+	if (ret)
+		SDE_ERROR("failed to send early wakeup command\n");
+
+	return ret;
+}
+
 static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool enable)
 {
 	int ret = 0;
@@ -949,6 +1004,28 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 
 	if (!hfi_enc || event >= MSM_ENC_EVENT_MAX)
 		return -EINVAL;
+
+	/*
+	 * Perform an early wake up along with vblank enable event
+	 * when there's actual enable transion(false->true).
+
+	 * This follows existing wakeup mechanism by using HFI property + WAKEUP
+	 * from HLOS to DCP.The operation only occurs on a genuine enable transition
+	 * and is therefore infrequent.
+	 * The small overhead is considered an acceptable tradeoff to guarantee
+	 * that DCP is awake before processing the display enable sequence
+	 * and to avoid boot-time black-screen issues. DCP also gaurantees
+	 * that it ignores the request if it is already in idle.
+	 */
+	if (event == MSM_ENC_VBLANK && enable &&
+			!hfi_enc->hw_events_state[event].state) {
+		int wakeup_ret = hfi_enc_early_wakeup_call(enc);
+
+		if (wakeup_ret)
+			SDE_ERROR("enc:%d vsync reg wakeup hint failed:%d\n",
+					DRMID(drm_enc), wakeup_ret);
+		SDE_EVT32(DRMID(drm_enc), event, enable, wakeup_ret);
+	}
 
 	if (event == MSM_ENC_VBLANK || event == MSM_ENC_COMMIT_DONE ||
 			event == MSM_ENC_HW_RECOVERY || event == MSM_ENC_TX_COMPLETE ||
@@ -1763,64 +1840,6 @@ static int hfi_enc_misr_setup(struct sde_encoder_virt *enc, bool en, u32 frame_c
 		SDE_ERROR("failed to send HFI_PROPERTY_DISPLAY_MISR_CONFIG\n");
 
 	mutex_unlock(&hfi_conn->hfi_lock);
-	return ret;
-}
-
-static int hfi_enc_early_wakeup_call(struct sde_encoder_virt *enc)
-{
-	struct drm_connector *conn;
-	struct hfi_encoder *hfi_enc;
-	struct sde_kms *sde_kms;
-	struct hfi_kms *hfi_kms;
-	struct hfi_cmdbuf_t *cmd_buf;
-	u32 disp_id, payload = 0;
-	int ret = 0;
-
-	if (!enc) {
-		SDE_ERROR("invalid encoder\n");
-		return -EINVAL;
-	}
-
-	hfi_enc = to_hfi_encoder(enc);
-	sde_kms = sde_encoder_get_kms(&enc->base);
-	if (!sde_kms) {
-		SDE_ERROR("Failed to get sde_kms\n");
-		return -EINVAL;
-	}
-	hfi_kms = to_hfi_kms(sde_kms);
-	if (!hfi_kms) {
-		SDE_ERROR("failed to get hfi_kms\n");
-		return -EINVAL;
-	}
-
-	conn = sde_encoder_get_connector(enc->base.dev, &enc->base);
-	if (!conn) {
-		SDE_ERROR("invalid connector\n");
-		return -EINVAL;
-	}
-
-	disp_id = sde_conn_get_display_obj_id(conn);
-	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client, MSM_DRV_HFI_ID,
-			HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
-	if (!cmd_buf) {
-		SDE_ERROR("failed to get a valid command buffer\n");
-		return -EINVAL;
-	}
-
-	payload = HFI_WAKEUP;
-
-	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
-			HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, disp_id, HFI_PAYLOAD_TYPE_U32,
-			&payload, sizeof(payload), HFI_HOST_FLAGS_NON_DISCARDABLE);
-	if (ret) {
-		SDE_ERROR("failed to add early wakeup hint\n");
-		return ret;
-	}
-
-	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
-	if (ret)
-		SDE_ERROR("failed to send early wakeup command\n");
-
 	return ret;
 }
 

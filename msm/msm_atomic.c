@@ -367,7 +367,8 @@ msm_crtc_set_mode(struct drm_device *dev, struct drm_atomic_state *old_state)
 					old_conn_state, false) && !crtc_in_loopback)
 				continue;
 		} else if (!new_crtc_state->mode_changed) {
-			if (!msm_is_private_mode_changed(
+			if (!old_conn_state->crtc ||
+				!msm_is_private_mode_changed(
 					_msm_get_conn_state(old_conn_state->crtc->state)))
 				continue;
 		}

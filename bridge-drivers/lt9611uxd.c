@@ -27,6 +27,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/firmware.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/hdmi.h>
 #include <drm/drm_print.h>
 #include <drm/drm_atomic.h>
@@ -122,6 +123,9 @@ struct lt9611uxd {
 	u32 irq_gpio;
 	u32 reset_gpio;
 	u32 hdmi_en_gpio;
+
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *pinctrl_active;
 
 	bool hdmi_power_on;
 
@@ -1312,10 +1316,12 @@ static u8 lt9611uxd_read_fw_crc(struct lt9611uxd *pdata)
 {
 	u8 ucFwCrcReg = 0;
 
+	lt9611uxd_ctl_en(pdata);
 	if (!lt9611uxd_read(pdata, 0x21, &ucFwCrcReg, 1))
 		dev_dbg(pdata->dev, "LT9611 get ucFwCrcReg: 0x%x\n", ucFwCrcReg);
 	else
 		dev_err(pdata->dev, "LT9611 get ucFwCrcReg failed\n");
+	lt9611uxd_ctl_disable(pdata);
 
 	return ucFwCrcReg;
 }
@@ -1693,6 +1699,26 @@ static int lt9611uxd_parse_dt(struct device *dev,
 	pdata->audio_support =
 		of_property_read_bool(np, "lt,audio-support");
 	dev_dbg(pdata->dev, "audio support = %d\n", pdata->audio_support);
+
+	/* pinctrl */
+	pdata->pinctrl = devm_pinctrl_get(dev);
+	if (IS_ERR(pdata->pinctrl)) {
+		ret = PTR_ERR(pdata->pinctrl);
+		pdata->pinctrl = NULL;
+		if (ret != -ENODEV) {
+			dev_err(dev, "lt9611uxd: failed to get pinctrl, rc=%d\n", ret);
+			return ret;
+		}
+		dev_dbg(dev, "lt9611uxd: pinctrl not available, skipping\n");
+	} else {
+		pdata->pinctrl_active = pinctrl_lookup_state(pdata->pinctrl, "active");
+		if (IS_ERR_OR_NULL(pdata->pinctrl_active)) {
+			dev_dbg(dev, "lt9611uxd: pinctrl active state not found\n");
+			pdata->pinctrl_active = NULL;
+		} else {
+			dev_dbg(dev, "lt9611uxd: pinctrl active state found\n");
+		}
+	}
 
 	/*get display modes from device tree*/
 	INIT_LIST_HEAD(&pdata->mode_list);
@@ -2915,6 +2941,17 @@ static int lt9611uxd_probe(struct i2c_client *client)
 	if (ret) {
 		dev_err(&client->dev, "failed to parse device tree\n");
 		goto err_dt_parse;
+	}
+
+	if (pdata->pinctrl && pdata->pinctrl_active) {
+		ret = pinctrl_select_state(pdata->pinctrl, pdata->pinctrl_active);
+		if (ret) {
+			dev_err(&client->dev,
+				"lt9611uxd: failed to apply pinctrl active, rc=%d\n",
+				ret);
+			goto err_dt_parse;
+		}
+		dev_dbg(&client->dev, "lt9611uxd: pinctrl active state applied\n");
 	}
 
 	ret = lt9611uxd_gpio_configure(pdata, true);

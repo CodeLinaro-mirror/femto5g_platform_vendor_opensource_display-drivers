@@ -237,6 +237,7 @@ static bool _hfi_notify_hpd_user(struct dp_hfi *hfi, bool connection)
 	struct dp_client *client;
 	int rc = 0;
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
+	u32 bpp_val, pattern_val;
 
 	connector = hfi->connector;
 	client = &hfi_priv->client;
@@ -247,7 +248,16 @@ static bool _hfi_notify_hpd_user(struct dp_hfi *hfi, bool connection)
 	}
 
 	client->is_sst_connected = connection;
-	connector->status = connection ? connector_status_connected : connector_status_disconnected;
+
+	if (connection) {
+		connector->status = connector_status_connected;
+		bpp_val = hfi->tgt_bpp;
+		pattern_val = ((hfi->mode_count > 0) ? hfi->mode_list[0].test_pattern : 0);
+	} else {
+		connector->status = connector_status_disconnected;
+		bpp_val = 0;
+		pattern_val = 0;
+	}
 
 	dev = connector->dev;
 
@@ -255,15 +265,12 @@ static bool _hfi_notify_hpd_user(struct dp_hfi *hfi, bool connection)
 	snprintf(status, HPD_STRING_SIZE, "status=%s",
 		drm_get_connector_status_name(connector->status));
 
-	snprintf(bpp, HPD_STRING_SIZE, "bpp=%d",
-		connection ? hfi->tgt_bpp : 0);
+	snprintf(bpp, HPD_STRING_SIZE, "bpp=%d", bpp_val);
 	/* test_pattern is u8 (DP compliance test pattern ID, DPCD 0x221) */
-	snprintf(pattern, HPD_STRING_SIZE, "pattern=%u",
-		(connection && hfi->mode_count > 0) ? hfi->mode_list[0].test_pattern : 0);
+	snprintf(pattern, HPD_STRING_SIZE, "pattern=%u", pattern_val);
 
 	DP_INFO("[%s]:[%s] [%s] [%s]\n", name, status, bpp, pattern);
-	SDE_EVT32_EXTERNAL(connector->base.id, hfi->connected, hfi->tgt_bpp,
-			hfi->mode_list[0].test_pattern);
+	SDE_EVT32_EXTERNAL(connector->base.id, connection, hfi->connected, bpp_val, pattern_val);
 
 	envp[0] = name;
 	envp[1] = status;
@@ -1080,11 +1087,24 @@ static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv)
 	return rc;
 }
 
+static void _disconnect_displays(struct dp_mgr_hfi_priv *hfi_priv)
+{
+	struct dp_hfi *hfi;
+	int i;
+
+	for (i = 0 ; i < DP_STREAMS_MAX; i++) {
+		hfi = hfi_priv->hfi[i];
+		if (!hfi || !hfi->hfi_client || !hfi->connected)
+			continue;
+		hfi->connected = false;
+		_hfi_notify_hpd_user(hfi, false);
+	}
+}
+
 static int dp_mgr_hfi_hpd_disconnect_helper(struct dp_mgr_hfi_priv *hfi_priv)
 {
 	struct hfi_device_hotplug_config config = {0};
 	int rc = 0;
-	struct dp_hfi *hfi;
 
 	if (!hfi_priv) {
 		DP_ERR("Invalid hfi_priv data\n");
@@ -1096,33 +1116,44 @@ static int dp_mgr_hfi_hpd_disconnect_helper(struct dp_mgr_hfi_priv *hfi_priv)
 		return 0;
 	}
 
-	if (!hfi_priv->connected) {
-		DP_INFO("DP already disconnected, ignoring\n");
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, hfi_priv->configured, hfi_priv->connected);
+
+	mutex_lock(&hfi_priv->hpd_mutex);
+
+	if (!hfi_priv->configured) {
+		DP_WARN("DP already cleaned up\n");
 		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, hfi_priv->connected);
 		complete_all(&hfi_priv->hpd_comp);
-		return 0;
+		goto end;
 	}
 
-	hfi = hfi_priv->hfi[0];
-	if (!hfi || !hfi->hfi_client)
-		return -EINVAL;
+	if (!hfi_priv->connected) {
+		/* disconnected but still configured */
+		DP_INFO("DP already disconnected. Cleaning up!\n");
+		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE2, hfi_priv->connected,
+				hfi_priv->configured);
+		complete_all(&hfi_priv->hpd_comp);
+		_aux_switch_enable(hfi_priv, false);
+		goto cleanup;
+	}
 
 	hfi_priv->connected = false;
 	_aux_switch_enable(hfi_priv, false);
 
-
 	if (hfi_priv->audio && hfi_priv->audio_supported)
 		hfi_priv->audio->off(hfi_priv->audio, false);
 
+	_disconnect_displays(hfi_priv);
 	_hfi_update_config(hfi_priv, &config);
 	rc = _hfi_send_hot_plug(hfi_priv, &config);
-	mutex_lock(&hfi_priv->hpd_mutex);
 
+cleanup:
 	if (!rc)
 		dp_mgr_hfi_hpd_cleanup(hfi_priv);
 
+end:
 	DP_INFO("disconnected\n");
-	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hfi_priv->connected);
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hfi_priv->connected, hfi_priv->configured, rc);
 
 	mutex_unlock(&hfi_priv->hpd_mutex);
 	return rc;
@@ -1144,44 +1175,39 @@ int dp_mgr_hfi_hpd_attention_helper(struct dp_mgr_hfi_priv *hfi_priv)
 	if (hfi_priv->soft_unplug)
 		return 0;
 
-	hpd_state = hfi_priv->hpd->hpd_high;
-	hpd_irq = hfi_priv->hpd->hpd_irq;
-
-	DP_DEBUG("hpd status from %d to %d irq %d\n", hfi_priv->connected, hpd_state, hpd_irq);
-	SDE_EVT32_EXTERNAL(hpd_state, hfi_priv->connected);
-
 	mutex_lock(&hfi_priv->hpd_mutex);
 
+	hpd_state = hfi_priv->hpd->hpd_high;
+	hpd_irq = hfi_priv->hpd->hpd_irq;
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, hfi_priv->connected, hpd_state, hpd_irq);
+	DP_DEBUG("hpd status from %d to %d irq %d\n", hfi_priv->connected, hpd_state, hpd_irq);
+
 	/* check if there was any change in state */
-	if ((hpd_state == hfi_priv->connected) && !hpd_irq) {
-		SDE_EVT32(hpd_state, hfi_priv->connected, hpd_irq);
-		mutex_unlock(&hfi_priv->hpd_mutex);
-		return 0;
-	}
+	if ((hpd_state == hfi_priv->connected) && !hpd_irq)
+		goto end;
 
 	if (hpd_state && !hfi_priv->configured) {
 		/* skip hpd here as it will be sent below */
 		rc = _hpd_configure(hfi_priv, true);
-		if (rc) {
-			mutex_unlock(&hfi_priv->hpd_mutex);
-			return rc;
-		}
+		if (rc)
+			goto end;
 	}
 
 	/* allow HPD LOW when TUI is active, ignore all other attention messages */
 	if (hpd_state && hfi_priv->tui_active) {
 		DP_INFO("TUI is active\n");
-		mutex_unlock(&hfi_priv->hpd_mutex);
-		return 0;
+		goto end;
 	}
 
+	if (!hpd_state)
+		_disconnect_displays(hfi_priv);
 	_hfi_update_config(hfi_priv, &config);
 	hfi_priv->connected = hpd_state;
 	rc = _hfi_send_hot_plug(hfi_priv, &config);
 
+end:
 	DP_INFO("attention %d\n", hpd_state);
-	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hpd_state, config.hpd_irq);
-
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hfi_priv->connected, hpd_state, hpd_irq, rc);
 	mutex_unlock(&hfi_priv->hpd_mutex);
 
 	return rc;
@@ -1203,8 +1229,10 @@ static void dp_mgr_hfi_hpd_connect_work(struct work_struct *work)
 	struct dp_mgr_hfi_priv *hfi_priv = container_of(work,
 			struct dp_mgr_hfi_priv, connect_work);
 	struct hfi_device_hotplug_config config = {0};
+	int rc = 0;
 
 	mutex_lock(&hfi_priv->hpd_mutex);
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, hfi_priv->connected);
 
 	if (hfi_priv->connected) {
 		_hfi_update_config(hfi_priv, &config);
@@ -1212,9 +1240,53 @@ static void dp_mgr_hfi_hpd_connect_work(struct work_struct *work)
 		config.hpd_state = 1;
 		config.hpd_irq = 0;
 
-		_hfi_send_hot_plug(hfi_priv, &config);
+		rc = _hfi_send_hot_plug(hfi_priv, &config);
 	}
 
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, rc);
+	mutex_unlock(&hfi_priv->hpd_mutex);
+}
+
+static void dp_mgr_hfi_hpd_reconnect_work(struct work_struct *work)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = container_of(work,
+			struct dp_mgr_hfi_priv, reconnect_work);
+	struct dp_hfi *hfi;
+	int rc = 0;
+
+	mutex_lock(&hfi_priv->hpd_mutex);
+
+	hfi = hfi_priv->hfi[0];
+	if (!hfi || !hfi_priv->connected)
+		goto end;
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, hfi->stream_id);
+
+	reinit_completion(&hfi_priv->hpd_comp);
+
+	hfi->connected = false;
+	_hfi_notify_hpd_user(hfi, false);
+
+	if (!wait_for_completion_timeout(&hfi_priv->hpd_comp, HZ * 3)) {
+		DP_WARN("display disable timed out\n");
+		rc = -ETIMEDOUT;
+		goto end;
+	}
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, hfi->stream_id);
+	reinit_completion(&hfi_priv->hpd_comp);
+
+	hfi->connected = true;
+	_hfi_notify_hpd_user(hfi, true);
+
+	if (!wait_for_completion_timeout(&hfi_priv->hpd_comp, HZ * 3)) {
+		DP_WARN("display enable timed out\n");
+		rc = -ETIMEDOUT;
+		goto end;
+	}
+
+end:
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, rc);
 	mutex_unlock(&hfi_priv->hpd_mutex);
 }
 
@@ -1254,8 +1326,8 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 		return -EINVAL;
 	}
 
-	if (!hfi_priv->connected) {
-		DP_INFO("DP already disconnected, ignoring\n");
+	if (!hfi_priv->configured) {
+		DP_INFO("DP already cleaned up, ignoring\n");
 		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, hfi_priv->connected);
 		complete_all(&hfi_priv->hpd_comp);
 		return 0;
@@ -1264,6 +1336,7 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 	cancel_work_sync(&hfi_priv->configure_work);
 	cancel_work_sync(&hfi_priv->attention_work);
 	cancel_work_sync(&hfi_priv->connect_work);
+	cancel_work_sync(&hfi_priv->reconnect_work);
 	flush_workqueue(hfi_priv->wq);
 
 	return dp_mgr_hfi_hpd_disconnect_helper(hfi_priv);
@@ -1296,6 +1369,7 @@ int dp_mgr_hfi_hpd_attention_cb(void *data)
 		cancel_work_sync(&hfi_priv->configure_work);
 		cancel_work_sync(&hfi_priv->attention_work);
 		cancel_work_sync(&hfi_priv->connect_work);
+		cancel_work_sync(&hfi_priv->reconnect_work);
 		flush_workqueue(hfi_priv->wq);
 
 		/* handle hpd low asap in the same thread */
@@ -1954,9 +2028,7 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	}
 
 	/* Connection status is not in the payload - set connected=1 based on receiving EDID info */
-	if (edid_buf->size > 0) {
-		hfi->connected = true;
-	} else {
+	if (edid_buf->size <= 0) {
 		hfi->connected = false;
 		hfi_priv->audio_supported = false;
 		DP_INFO("Setting connected=0 due to empty EDID buffer\n");
@@ -2012,13 +2084,25 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 		SDE_EVT32_EXTERNAL(hfi->stream_id, i, mode->h_active, mode->v_active,
 				mode->refresh_rate);
 	}
-end:
-	_hfi_notify_hpd_user(hfi, hfi->connected);
 
 	if (hfi->edid_ctrl && hfi->edid_ctrl->edid) {
 		edid = hfi->edid_ctrl->edid;
 		hfi_priv->audio_supported = drm_detect_monitor_audio(edid);
 	}
+
+	/*
+	 * This is a valid EDID Info. check if its currently connected and if so then we need to
+	 * first disable it
+	 */
+	if (hfi->connected) {
+		/* queue reconnect work */
+		queue_work(hfi_priv->wq, &hfi_priv->reconnect_work);
+		return;
+	}
+
+	hfi->connected = true;
+end:
+	_hfi_notify_hpd_user(hfi, hfi->connected);
 }
 
 static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 size)
@@ -2042,15 +2126,16 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 		hfi_priv->fec_en = 0;
 		hfi_priv->dsc_en = 0;
 
-		if (!hfi->connected) /* already disconnected, ignore */
-			break;
-		hfi->connected = false;
-		_hfi_notify_hpd_user(hfi, false);
-		if (!hfi_priv->active_streams) {
-			complete_all(&hfi_priv->hpd_comp);
-			if (hfi_priv->connected)
-				queue_work(hfi_priv->wq, &hfi_priv->connect_work);
+		if (hfi->connected) {
+			/* Disconnect came from DCP - can happen in MST case when handling IRQ */
+			hfi->connected = false;
+			_hfi_notify_hpd_user(hfi, false);
 		}
+
+		/* if all streams in disable state then no disable coming from user mode */
+		if (!hfi_priv->active_streams)
+			complete_all(&hfi_priv->hpd_comp);
+
 		break;
 	case HFI_DP_EVENT_HPD_PLUGGED:
 		queue_work(hfi_priv->wq, &hfi_priv->connect_work);
@@ -3258,6 +3343,7 @@ static int dp_mgr_hfi_pre_hw_release(void *data)
 		cancel_work_sync(&mgr->configure_work);
 		cancel_work_sync(&mgr->attention_work);
 		cancel_work_sync(&mgr->connect_work);
+		cancel_work_sync(&mgr->reconnect_work);
 		flush_workqueue(mgr->wq);
 	}
 
@@ -3368,6 +3454,7 @@ static void dp_mgr_hfi_unbind(struct device *dev, struct device *master,
 		cancel_work_sync(&hfi_priv->configure_work);
 		cancel_work_sync(&hfi_priv->attention_work);
 		cancel_work_sync(&hfi_priv->connect_work);
+		cancel_work_sync(&hfi_priv->reconnect_work);
 		flush_workqueue(hfi_priv->wq);
 		destroy_workqueue(hfi_priv->wq);
 		hfi_priv->wq = NULL;
@@ -3689,6 +3776,7 @@ static bool dp_mgr_hfi_hpd_detect(struct dp_client *client, int panel_id)
 	DP_DEBUG("conn=%d stream_id=%d connected=%d\n",
 				(hfi->connector ? hfi->connector->base.id : -1),
 				stream_id, connected);
+	SDE_EVT32_EXTERNAL(stream_id, connected);
 
 	return connected;
 }
@@ -3800,6 +3888,7 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_
 	INIT_WORK(&hfi_priv->configure_work, dp_mgr_hfi_hpd_configure_work);
 	INIT_WORK(&hfi_priv->attention_work, dp_mgr_hfi_hpd_attention_work);
 	INIT_WORK(&hfi_priv->connect_work, dp_mgr_hfi_hpd_connect_work);
+	INIT_WORK(&hfi_priv->reconnect_work, dp_mgr_hfi_hpd_reconnect_work);
 
 	DP_INFO("DP HFI display initialized successfully\n");
 	return client;

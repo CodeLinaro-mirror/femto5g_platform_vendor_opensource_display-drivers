@@ -1384,6 +1384,8 @@ static int _sde_connector_update_dirty_properties(
 	bool is_lp_dirty = false;
 	bool is_qsync_dirty = false;
 	bool is_vsync_offset_dirty = false;
+	bool is_privacy_v1_dirty = false;
+	bool is_privacy_v2_dirty = false;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1439,6 +1441,12 @@ static int _sde_connector_update_dirty_properties(
 					CONNECTOR_PROP_VSYNC_OFFSET)) > 0)
 				is_vsync_offset_dirty = true;
 			break;
+		case CONNECTOR_PROP_PRIVACY_LAYER_V1:
+			is_privacy_v1_dirty = true;
+			break;
+		case CONNECTOR_PROP_PRIVACY_LAYER_V2:
+			is_privacy_v2_dirty = true;
+			break;
 		default:
 			/* nothing to do for most properties */
 			break;
@@ -1490,6 +1498,14 @@ static int _sde_connector_update_dirty_properties(
 	if ((disp_op == MSM_DISP_OP_HFI) && is_vsync_offset_dirty)
 		msm_property_set_dirty(&c_conn->property_info,
 			&c_state->property_state, CONNECTOR_PROP_VSYNC_OFFSET);
+
+	if ((disp_op == MSM_DISP_OP_HFI) && is_privacy_v1_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_PRIVACY_LAYER_V1);
+
+	if ((disp_op == MSM_DISP_OP_HFI) && is_privacy_v2_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_PRIVACY_LAYER_V2);
 
 	return 0;
 }
@@ -4330,7 +4346,10 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	if (ret <= 0) {
 		/* cancel if any pending esd work */
 		sde_connector_schedule_status_work(conn, false);
-		sde_connector_report_panel_dead(sde_conn, true);
+		if (sde_connector_get_disp_op(conn) == MSM_DISP_OP_HFI)
+			hfi_connector_report_panel_dead(sde_conn, true);
+		else
+			sde_connector_report_panel_dead(sde_conn, true);
 		ret = -ETIMEDOUT;
 	} else {
 		SDE_DEBUG("Successfully received TE from panel\n");
@@ -4381,7 +4400,10 @@ static void sde_connector_check_status_work(struct work_struct *work)
 		return;
 	}
 
-	sde_connector_report_panel_dead(conn, false);
+	if (sde_connector_get_disp_op(&conn->base) == MSM_DISP_OP_HFI)
+		hfi_connector_report_panel_dead(conn, false);
+	else
+		sde_connector_report_panel_dead(conn, false);
 }
 
 static const struct drm_connector_helper_funcs sde_connector_helper_ops = {

@@ -122,6 +122,7 @@ struct dp_mgr_hfi_priv {
 	struct work_struct configure_work;
 	struct work_struct attention_work;
 	struct work_struct connect_work;
+	struct work_struct reconnect_work;
 
 	struct dp_aux_switch *aux_switch;
 	struct dp_display_mode default_mode;

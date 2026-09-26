@@ -88,6 +88,16 @@ else
 endif
 endif
 
+ifeq ($(CONFIG_ARCH_HONU), y)
+ifeq ($(CONFIG_ARCH_QTI_VM), y)
+	include $(DISPLAY_ROOT)/config/gki_honudisptui.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_honudisptuiconf.h
+else
+	include $(DISPLAY_ROOT)/config/gki_honudisp.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_honudispconf.h
+endif
+endif
+
 ifeq ($(CONFIG_ARCH_MONACO), y)
 	include $(DISPLAY_ROOT)/config/gki_monacodisp.conf
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_monacodispconf.h
@@ -168,6 +178,7 @@ endif
 
 KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/display-drivers/hdcp/Module.symvers
 KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/display-drivers/msm/Module.symvers
+KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/kernel_platform/soc-repo/drivers/soc/qcom/Module.symvers
 
 ifeq ($(call cc-option-yn, -Wheader-guard),y)
 EXTRA_CFLAGS += -Wheader-guard

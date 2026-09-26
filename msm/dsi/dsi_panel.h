@@ -421,6 +421,7 @@ struct dsi_panel {
 
 	char dce_pps_cmd[DSI_CMD_PPS_SIZE];
 	enum dsi_dms_mode dms_mode;
+	bool dms_peripheral_flush_en;
 
 	struct dsi_panel_spr_info spr_info;
 

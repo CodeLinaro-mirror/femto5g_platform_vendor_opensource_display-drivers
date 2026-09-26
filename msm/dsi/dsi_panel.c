@@ -562,7 +562,7 @@ int dsi_panel_power_off(struct dsi_panel *panel)
 		       rc);
 	}
 
-	if (atomic_read(&panel->ssr_in_progress)) {
+	if (atomic_read(&panel->ssr_in_progress) || atomic_read(&panel->esd_recovery_pending)) {
 		/*
 		 * Due to an abrupt device crash, the proper power-off sequence cannot
 		 * be followed, including sending the sleep-in command to the panel.
@@ -1445,6 +1445,9 @@ static int dsi_panel_parse_misc_host_config(struct dsi_host_common_cfg *host,
 		host->dma_sched_window = window;
 	DSI_DEBUG("[%s] DMA scheduling parameters Line: %d Window: %d\n", name,
 			host->dma_sched_line, host->dma_sched_window);
+
+	host->dma_sched_en = utils->read_bool(utils->data,
+					"qcom,mdss-dsi-dma-schedule-override-en");
 
 	host->skip_pps_update = utils->read_bool(utils->data,
 					"qcom,mdss-dsi-panel-skip-pps-update");
@@ -2528,6 +2531,12 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-custom-on-command",
 	"qcom,mdss-dsi-roi-pre-command",
 	"qcom,mdss-dsi-roi-post-command",
+	"qcom,mdss-dsi-privacy-area-reg1-on-command",
+	"qcom,mdss-dsi-privacy-area-reg1-off-command",
+	"qcom,mdss-dsi-privacy-area-reg2-on-command",
+	"qcom,mdss-dsi-privacy-area-reg2-off-command",
+	"qcom,mdss-dsi-privacy-area-reg3-on-command",
+	"qcom,mdss-dsi-privacy-area-reg3-off-command",
 };
 
 /**
@@ -2591,6 +2600,12 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-custom-on-command-state",
 	"qcom,mdss-dsi-roi-pre-command-state",
 	"qcom,mdss-dsi-roi-post-command-state",
+	"qcom,mdss-dsi-privacy-area-reg1-on-command-state",
+	"qcom,mdss-dsi-privacy-area-reg1-off-command-state",
+	"qcom,mdss-dsi-privacy-area-reg2-on-command-state",
+	"qcom,mdss-dsi-privacy-area-reg2-off-command-state",
+	"qcom,mdss-dsi-privacy-area-reg3-on-command-state",
+	"qcom,mdss-dsi-privacy-area-reg3-off-command-state",
 };
 
 /**
@@ -2797,6 +2812,203 @@ error:
 
 }
 
+/**
+ * dsi_panel_parse_privacy_programmable_region() - parse a
+ * "qcom,mdss-dsi-privacy-area-reg<N>-on-programmable-region" DT property into
+ * a <cmd_index, offset, len> tuple array, sized to the DT property's actual
+ * tuple count.
+ * @utils:       DT parser utils
+ * @prop_name:   DT property name to parse
+ * @region_info: output tuple list; region_info->region is heap-allocated by
+ *               this function on success, region_info->count is 0 if the
+ *               property isn't present
+ *
+ * Absence of the property is not an error -- panels using LAYER_MODE, or
+ * AREA_MODE panels with only one hardware region, will not define it for
+ * every regN. Return: 0 on success (including "not present"), -EINVAL on
+ * malformed data, -ENOMEM on allocation failure.
+ */
+static int dsi_panel_parse_privacy_programmable_region(struct dsi_parser_utils *utils,
+		const char *prop_name,
+		struct dsi_privacy_region_info *region_info)
+{
+	u32 length = 0, count;
+	u32 *arr32;
+	u32 i;
+	int rc;
+
+	region_info->region = NULL;
+	region_info->count = 0;
+
+	if (!utils->get_property(utils->data, prop_name, &length))
+		return 0;
+
+	if (!length || (length % (3 * sizeof(u32)))) {
+		DSI_ERR("%s: invalid tuple length %u\n", prop_name, length);
+		return -EINVAL;
+	}
+
+	count = length / (3 * sizeof(u32));
+
+	arr32 = kcalloc(count * 3, sizeof(u32), GFP_KERNEL);
+	if (!arr32)
+		return -ENOMEM;
+
+	rc = utils->read_u32_array(utils->data, prop_name, arr32, count * 3);
+	if (rc) {
+		DSI_ERR("%s: failed to read tuples, rc=%d\n", prop_name, rc);
+		kfree(arr32);
+		return rc;
+	}
+
+	region_info->region = kcalloc(count, sizeof(struct dsi_privacy_programmable_region),
+			GFP_KERNEL);
+	if (!region_info->region) {
+		kfree(arr32);
+		return -ENOMEM;
+	}
+
+	for (i = 0; i < count; i++) {
+		region_info->region[i].cmd_index = arr32[i * 3 + 0];
+		region_info->region[i].offset    = arr32[i * 3 + 1];
+		region_info->region[i].len       = arr32[i * 3 + 2];
+	}
+	region_info->count = count;
+
+
+	kfree(arr32);
+	return 0;
+}
+
+/**
+ * dsi_panel_parse_privacy_area_list() - probe and parse programmable-region
+ * tuples for every V2 AREA_MODE region defined in this panel's DT.
+ * @priv_info: destination mode-info struct; privacy_area_list is populated
+ *             on success, zeroed otherwise
+ * @utils:     DT parser utils
+ *
+ * Probes "qcom,mdss-dsi-privacy-area-reg<N>-on-programmable-region" for
+ * N = 1, 2, 3, ... and stops at the first N that isn't defined.
+ *
+ * Return: 0 on success (including "no regions defined in DT"), negative
+ * error code on parse or allocation failure.
+ */
+static int dsi_panel_parse_privacy_area_list(struct dsi_display_mode_priv_info *priv_info,
+		struct dsi_parser_utils *utils)
+{
+	struct dsi_privacy_region_info parsed[DSI_PRIVACY_AREA_REGION_PROBE_MAX];
+	u32 present_count = 0;
+	u32 probed_count = 0;
+	u32 n, e;
+	int rc = 0;
+
+	priv_info->privacy_area_list.entries = NULL;
+	priv_info->privacy_area_list.count = 0;
+
+	for (n = 0; n < DSI_PRIVACY_AREA_REGION_PROBE_MAX; n++) {
+		char prop_name[80];
+		u32 probe_length = 0;
+
+		snprintf(prop_name, sizeof(prop_name),
+				"qcom,mdss-dsi-privacy-area-reg%u-on-programmable-region", n + 1);
+
+		if (!utils->get_property(utils->data, prop_name, &probe_length)) {
+			if (n > 0)
+				DSI_DEBUG("privacy area probe stopped at reg%u (not in DT)\n",
+						n + 1);
+			break; /* reg<n+1> not defined -- stop probing */
+		}
+
+		rc = dsi_panel_parse_privacy_programmable_region(utils, prop_name, &parsed[n]);
+		if (rc) {
+			DSI_DEBUG("failed to parse privacy area reg%u programmable region, rc=%d\n",
+					n + 1, rc);
+			goto cleanup;
+		}
+		probed_count = n + 1;
+		if (parsed[n].count)
+			present_count++;
+	}
+
+	if (!present_count)
+		goto cleanup; /* rc is 0; no regions defined is not an error here */
+
+	priv_info->privacy_area_list.entries = kcalloc(present_count,
+			sizeof(struct dsi_privacy_area_entry), GFP_KERNEL);
+	if (!priv_info->privacy_area_list.entries) {
+		DSI_ERR("failed to allocate privacy area region list\n");
+		rc = -ENOMEM;
+		goto cleanup;
+	}
+
+	e = 0;
+	for (n = 0; n < probed_count; n++) {
+		if (!parsed[n].count) {
+			kfree(parsed[n].region);
+			parsed[n].region = NULL;  /* prevent double-free in cleanup */
+			continue;
+		}
+		priv_info->privacy_area_list.entries[e].region_idx = n;
+		priv_info->privacy_area_list.entries[e].tuples = parsed[n];
+		parsed[n].region = NULL; /* ownership transferred; prevent double-free */
+		e++;
+	}
+	priv_info->privacy_area_list.count = present_count;
+	return 0;
+
+cleanup:
+	for (n = 0; n < probed_count; n++)
+		kfree(parsed[n].region);
+	return rc;
+}
+
+/**
+ * dsi_panel_privacy_layer_mode_dcs_cmds - allocate a zeroed
+ * placeholder command set for the V1 LAYER_MODE privacy layer.
+ *
+ * DCP patches this buffer in-place at
+ * runtime with the ROI received over HFI.
+ */
+static int dsi_panel_privacy_layer_mode_dcs_cmds(struct dsi_panel *panel,
+		struct dsi_panel_cmd_set *set)
+{
+	const int privacy_v1_cmd_count = 1;
+	int rc = 0;
+	u8 *tx;
+
+	if (!set) {
+		DSI_ERR("Panel command set for Privacy Layer is NULL\n");
+		return -EINVAL;
+	}
+
+	if (!panel) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	set->cmds = kcalloc(privacy_v1_cmd_count, sizeof(*set->cmds), GFP_KERNEL);
+	if (!set->cmds)
+		return -ENOMEM;
+
+	tx = kzalloc(PRIVACY_V1_CMD_LEN, GFP_KERNEL);
+	if (!tx) {
+		kfree(set->cmds);
+		set->cmds = NULL;
+		return -ENOMEM;
+	}
+	tx[0] = 0x66; /* privacy layer register byte */
+	set->cmds[0].msg.type      = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[0].msg.tx_buf    = tx;
+	set->cmds[0].msg.tx_len    = PRIVACY_V1_CMD_LEN;
+	set->cmds[0].last_command  = 1;
+
+	set->type  = DSI_CMD_SET_PRIVACY_LAYER;
+	set->state = DSI_CMD_SET_STATE_HS;
+	set->count = privacy_v1_cmd_count;
+
+	return rc;
+}
+
 static int dsi_panel_parse_cmd_sets(
 		struct dsi_panel *panel,
 		struct dsi_display_mode_priv_info *priv_info,
@@ -2828,11 +3040,26 @@ static int dsi_panel_parse_cmd_sets(
 			rc = dsi_panel_set_brightness_prepare_dcs_cmds(panel, set, 0x00);
 			if (rc)
 				DSI_ERR("failed to allocate cmd set %d, rc = %d\n", i, rc);
+		} else if (i == DSI_CMD_SET_PRIVACY_LAYER && panel->privacy_feature_enabled) {
+			rc = dsi_panel_privacy_layer_mode_dcs_cmds(panel, set);
+			if (rc)
+				DSI_ERR("failed to allocate cmd set %d, rc = %d\n", i, rc);
 		} else {
 			rc = dsi_panel_parse_cmd_sets_sub(set, i, utils);
 			if (rc)
 				DSI_DEBUG("failed to parse set %d\n", i);
 		}
+	}
+
+	/* V2 AREA_MODE: parse programmable-region tuples for each region's ON command */
+	if (panel->privacy_feature_enabled) {
+		rc = dsi_panel_parse_privacy_area_list(priv_info, utils);
+		if (rc)
+			DSI_ERR("[%s] failed to parse privacy area list, rc=%d\n",
+				panel->name, rc);
+		else if (!priv_info->privacy_area_list.count)
+			DSI_DEBUG("[%s] No privacy programmable regions defined in DT\n",
+				panel->name);
 	}
 
 	/* Parse custom command sets */
@@ -4408,6 +4635,14 @@ static int dsi_panel_parse_dms_info(struct dsi_panel *panel)
 
 	panel->dms_vid_caps.maintain_const_clk = utils->read_bool(utils->data,
 		"qcom,dms-vid-maintain-const-clk");
+
+	/*
+	 * On HFI, when enabled the DMS timing switch command is tagged so the
+	 * DCP triggers its DMA on the MDP frame flush boundary (peripheral
+	 * flush) rather than issuing it immediately. Panel-specific.
+	 */
+	panel->dms_peripheral_flush_en = utils->read_bool(utils->data,
+		"qcom,mdss-dsi-dms-timing-switch-peripheral-flush");
 
 	panel->dms_mode = DSI_DMS_MODE_DISABLED;
 	dms_enabled = utils->read_bool(utils->data,

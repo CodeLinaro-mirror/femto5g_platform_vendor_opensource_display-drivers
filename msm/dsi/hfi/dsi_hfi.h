@@ -216,6 +216,7 @@ struct dsi_panel_timing_caps {
  * @te_mode:                        HFI_PROPERTY_PANEL_TE_MODE
  * @dma_sched_line:                 HFI_PROPERTY_PANEL_DMA_SCHEDULE_LINE
  * @dma_sched_window:               HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW
+ * @dma_sched_en:                   HFI_PROPERTY_PANEL_DMA_SCHEDULE_EN
  * @tx_eot_append:                  HFI_PROPERTY_PANEL_TX_EOT_APPEND
  * @eof_power_mode:                 HFI_PROPERTY_PANEL_BLLP_EOF_POWER_MODE
  * @bllp_power_mode:                HFI_PROPERTY_PANEL_BLLP_POWER_MODE
@@ -246,6 +247,8 @@ struct dsi_panel_timing_caps {
  * @phy_tuning_config:              HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG
  * @phy_tuning_config_valid:        true if phy_tuning_config has been populated
  * @pll_config:                     HFI_PROPERTY_PANEL_PLL_CONFIG
+ * @intra_frame_dcvs_level:        HFI_PROPERTY_PANEL_INTRA_FRAME_DCVS_LEVEL
+ * @split_link_info:                HFI_PROPERTY_PANEL_SPLIT_LINK
  */
 struct dsi_panel_generic_caps {
 	u32 panel_name;
@@ -260,6 +263,7 @@ struct dsi_panel_generic_caps {
 	u32 te_mode;
 	u32 dma_sched_line;
 	u32 dma_sched_window;
+	u32 dma_sched_en;
 	u32 tx_eot_append;
 	u32 eof_power_mode;
 	u32 bllp_power_mode;
@@ -290,6 +294,8 @@ struct dsi_panel_generic_caps {
 	struct hfi_panel_phy_tuning_config phy_tuning_config;
 	bool phy_tuning_config_valid;
 	struct hfi_panel_pll_config pll_config;
+	enum hfi_intra_frame_dcvs_level intra_frame_dcvs_level;
+	u32 split_link_info; /* bit0: enabled, bits[8:15]: lanes_per_sublink */
 };
 
 /**
