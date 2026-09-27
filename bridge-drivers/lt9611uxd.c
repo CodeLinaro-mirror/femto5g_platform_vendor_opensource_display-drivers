@@ -51,6 +51,7 @@
 #include <sound/tlv.h>
 
 #include <msm_ext_display.h>
+#include <drm/sde_drm.h>
 
 #define EDID_SEG_SIZE 256
 #define READ_BUF_MAX_SIZE 128
@@ -176,6 +177,13 @@ struct lt9611uxd {
 
 	int mute;
 
+	/*
+	 * Cached static HDR metadata, replayed by lt9611uxd_config_hdr()
+	 * when called with hdr_meta == NULL (e.g. on bridge re-enable after
+	 * a modeset), mirroring hdmi_panel_setup_hdr()'s replay-on-NULL path.
+	 */
+	bool hdr_active;
+	struct drm_msm_ext_hdr_metadata cached_hdr_meta;
 };
 
 struct CrcInfoTypeS {
@@ -203,6 +211,7 @@ static int lt9611uxd_write_byte(struct lt9611uxd *pdata, const u8 reg, u8 value)
 static int lt9611uxd_read(struct lt9611uxd *pdata, u8 reg, char *buf, u32 size);
 static bool lt9611uxd_interactive_cmd(struct lt9611uxd *pdata, u8 *params, unsigned int param_count,
 	u8 *return_buffer, unsigned int return_count);
+static struct lt9611uxd *connector_to_lt9611(struct drm_connector *connector);
 
 static int lt9611_setup_audio_infoframes(struct lt9611uxd *pdata,
 		struct msm_ext_disp_audio_setup_params *params)
@@ -597,8 +606,10 @@ static void lt9611uxd_helper_read_edid(struct lt9611uxd *pdata)
 	drm_edid = drm_edid_read_custom(&pdata->connector,
 			lt9611uxd_get_edid_block, pdata);
 
-	if (!drm_edid)
+	if (!drm_edid) {
+		pr_err("lt9611uxd: drm_edid_read_custom failed, no EDID blob\n");
 		return;
+	}
 
 	edid_raw = drm_edid_raw(drm_edid);
 
@@ -618,6 +629,24 @@ static void lt9611uxd_helper_read_edid(struct lt9611uxd *pdata)
 	} else {
 		dev_err(pdata->dev, "lt9611uxd: EDID DRM parse failed\n");
 	}
+
+	if (!pdata->edid) {
+		pr_err("lt9611uxd: failed to read EDID, edid_blob_ptr will stay unset\n");
+		return;
+	}
+
+	/*
+	 * Populate connector->edid_blob_ptr as soon as EDID is available,
+	 * rather than waiting for get_modes() — the ext-bridge DSI panel DT
+	 * node always defines qcom,mdss-dsi-display-timings, so
+	 * dsi_display_drm_ext_get_modes() takes the internal timing-node path
+	 * and never calls into this bridge's connector_get_modes(), which is
+	 * where drm_connector_update_edid_property() would otherwise run.
+	 */
+	drm_connector_update_edid_property(&pdata->connector, pdata->edid);
+	pr_debug("lt9611uxd: edid_blob_ptr updated, len=%zd\n",
+		pdata->connector.edid_blob_ptr ?
+		(ssize_t)pdata->connector.edid_blob_ptr->length : (ssize_t)-1);
 }
 
 static int lt9611uxd_read_hpd_status(struct lt9611uxd *pdata)
@@ -682,6 +711,7 @@ static void lt9611uxd_hpd_work(struct work_struct *work)
 		kfree(pdata->edid);
 		pdata->edid = NULL;
 		WRITE_ONCE(pdata->edid_ready, false);
+		drm_connector_update_edid_property(&pdata->connector, NULL);
 	}
 
 	scnprintf(name, 32, "name=%s",
@@ -2014,8 +2044,12 @@ static int lt9611uxd_read_edid(struct lt9611uxd *pdata)
 	}
 
 	edid_size = (get_edid_size_ret[4] << 8) | get_edid_size_ret[5];
-	if (edid_size > EDID_SEG_SIZE)
+	if (edid_size > EDID_SEG_SIZE) {
+		pr_err("lt9611uxd: reported EDID size %d exceeds buffer, clamping to %d\n",
+			edid_size, EDID_SEG_SIZE);
 		edid_size = EDID_SEG_SIZE;
+	}
+
 	pdata->edid_with_ext_blk = (edid_size > EDID_LENGTH) ? true : false;
 
 	memset(buf, 0, EDID_SEG_SIZE);
@@ -2049,6 +2083,13 @@ static int lt9611uxd_get_edid_block(void *data, u8 *buf, unsigned int block,
 	if ((!pdata->edid_with_ext_blk) && (block != 0))
 		return -EIO;
 
+	if (block * 128 + len > EDID_SEG_SIZE) {
+		pr_err("lt9611uxd: requested EDID block=%d len=%d exceeds buffer, rejecting\n",
+			block, (int)len);
+		return -EINVAL;
+	}
+
+	pr_info("get edid block: block=%d, len=%d\n", block, (int)len);
 	memcpy(buf, pdata->edid_buf + block * 128, len);
 
 	print_hex_dump_debug("lt9611uxd EDID: ", DUMP_PREFIX_NONE, 16, 1,
@@ -2210,6 +2251,289 @@ static enum drm_mode_status lt9611uxd_connector_mode_valid(
 	return MODE_BAD;
 }
 
+/*
+ * lt9611uxd_config_avi_infoframe - (re)send the AVI InfoFrame for RGB/SDR
+ * content once HDR metadata has ended.
+ *
+ * Mirrors hdmi_panel_setup_hdr()'s HDR-disable path, which follows up the
+ * zeroed HDR Static Metadata InfoFrame with _hdmi_panel_update_avi_colorimetry()
+ * so the sink's AVI colorimetry is restored to the non-HDR default (CEA-861-3
+ * Section 6.9). Called from lt9611uxd_config_hdr() once it detects the
+ * HDR -> normal transition.
+ *
+ * The colorspace after an HDR->normal transition is always RGB (this
+ * bridge has no "Colorspace" connector property wired up the way
+ * hdmi_panel.c does via connector->state->colorspace), so PB1-PB3 below
+ * are hardcoded for RGB/no-data-colorimetry rather than read from the
+ * connector state.
+ *
+ * Follows the same fixed 36-byte interactive-cmd framing as
+ * lt9611uxd_config_hdr().
+ */
+static int lt9611uxd_config_avi_infoframe(struct lt9611uxd *pdata)
+{
+	const struct drm_display_mode *mode = &pdata->curr_mode;
+	u8 vic, i, checksum = 0;
+	int ret;
+	u8 set_avi_cmd[36] = {
+		0x57, 0x48, 0x35, 0x3A,   /* framing: W, H, seq-5, :     */
+		0x01,                      /* Y0  Infoframe Type (AVI)    */
+		0x82,                      /* Y1  Packet Type             */
+		0x02,                      /* Y2  Version                 */
+		0x0D,                      /* Y3  Length (13)              */
+		0x00,                      /* Y4  Checksum (computed below) */
+		0x00,                      /* Y5  PB1                      */
+		0x00,                      /* Y6  PB2                      */
+		0x00,                      /* Y7  PB3                      */
+		0x00,                      /* Y8  PB4  VIC                 */
+		0x00,                      /* Y9  PB5                      */
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		/* Y10-Y31 PB6-PB27 Reserved */
+	};
+	u8 set_avi_ret[5];
+
+	vic = drm_match_cea_mode(mode);
+
+	/*
+	 * PB1 (Y5): bit7 reserved, bits[6:5] Y1Y0 colorspace (0 = RGB),
+	 * bit4 A0 (active format info present), bits[3:2] B1B0 (bar info),
+	 * bits[1:0] S1S0 (scan info). RGB/SDR content -> all zero.
+	 */
+	set_avi_cmd[9] = 0x00;
+
+	/*
+	 * PB2 (Y6): bits[7:6] C1C0 colorimetry (0 = no data, matching
+	 * _hdmi_panel_update_avi_colorimetry()'s post-HDR default),
+	 * bits[5:4] R3R2 picture aspect ratio, bits[3:0] active format
+	 * aspect ratio (unused since A0 = 0 above).
+	 */
+	set_avi_cmd[10] = (mode->picture_aspect_ratio & 0x3) << 4;
+
+	/*
+	 * PB3 (Y7): bit7 ITC, bits[6:4] EC2-EC0 extended colorimetry,
+	 * bits[3:2] Q1Q0 quantization range, bits[1:0] NUPS. All zero
+	 * for default RGB range with no extended colorimetry.
+	 */
+	set_avi_cmd[11] = 0x00;
+
+	/* PB4 (Y8): VIC */
+	set_avi_cmd[12] = vic;
+
+	/*
+	 * PB5 (Y9): bits[7:6] YQ1YQ0 YCC quant range, bits[5:4] CN1CN0
+	 * content type (0 = graphics), bits[3:0] PR3-PR0 pixel repeat.
+	 */
+	set_avi_cmd[13] = (mode->flags & DRM_MODE_FLAG_DBLCLK) ? 0x01 : 0x00;
+
+	/*
+	 * Checksum (Y4): per HDMI spec the sum of HB0+HB1+HB2+PB0(checksum)
+	 * +PB1..PBn must equal 0x00 mod 256.
+	 *
+	 * checksum = 0x100 - ((HB0 + HB1 + HB2 + PB1 + ... + PB27) & 0xFF)
+	 */
+	for (i = 5; i < 36; i++) {         /* sum Y1..Y31, skip checksum slot */
+		if (i == 8)
+			continue;
+		checksum += set_avi_cmd[i];
+	}
+	set_avi_cmd[8] = (0x100 - (checksum & 0xFF)) & 0xFF;
+
+	pr_debug("lt9611uxd: config_avi_infoframe sending InfoFrame: vic=%u aspect=%u checksum=0x%02X\n",
+		 vic, mode->picture_aspect_ratio, set_avi_cmd[8]);
+	print_hex_dump_debug("lt9611uxd_avi_cmd: ", DUMP_PREFIX_NONE,
+				16, 1, set_avi_cmd, ARRAY_SIZE(set_avi_cmd), false);
+
+	ret = lt9611uxd_interactive_cmd(pdata, set_avi_cmd,
+					ARRAY_SIZE(set_avi_cmd), set_avi_ret, 5);
+	if (!ret) {
+		pr_err("lt9611uxd: AVI InfoFrame cmd send FAILED (interactive_cmd returned 0)\n");
+		return -EIO;
+	}
+
+	pr_debug("lt9611uxd: AVI InfoFrame cmd sent OK ret[0..4]= %02X %02X %02X %02X %02X\n",
+		 set_avi_ret[0], set_avi_ret[1], set_avi_ret[2],
+		 set_avi_ret[3], set_avi_ret[4]);
+
+	return 0;
+}
+
+static int lt9611uxd_config_hdr(struct lt9611uxd *pdata,
+				struct drm_msm_ext_hdr_metadata *hdr_meta)
+{
+	const struct drm_msm_ext_hdr_metadata *meta;
+	bool was_hdr_active;
+	u8 pb1, i, checksum = 0;
+	int ret;
+	u8 set_hdr_cmd[36] = {
+		0x57, 0x48, 0x35, 0x3A,   /* framing: W, H, seq-5, :     */
+		0x03,                      /* Y0  Infoframe Type (HDR)     */
+		0x87,                      /* Y1  Packet Type              */
+		0x01,                      /* Y2  Version                  */
+		0x1A,                      /* Y3  Length (26, spec + reserved) */
+		0x00,                      /* Y4  Checksum (computed below) */
+		0x00,                      /* Y5  PB1: EOTF + desc ID      */
+		0x00,                      /* Y6  PB2: descriptor type     */
+		0x00, 0x00,                /* Y7-Y8   PB3-PB4  R_x LE      */
+		0x00, 0x00,                /* Y9-Y10  PB5-PB6  R_y LE      */
+		0x00, 0x00,                /* Y11-Y12 PB7-PB8  G_x LE      */
+		0x00, 0x00,                /* Y13-Y14 PB9-PB10 G_y LE      */
+		0x00, 0x00,                /* Y15-Y16 PB11-PB12 B_x LE     */
+		0x00, 0x00,                /* Y17-Y18 PB13-PB14 B_y LE     */
+		0x00, 0x00,                /* Y19-Y20 PB15-PB16 WP_x LE    */
+		0x00, 0x00,                /* Y21-Y22 PB17-PB18 WP_y LE    */
+		0x00, 0x00,                /* Y23-Y24 PB19-PB20 MaxLum LE  */
+		0x00, 0x00,                /* Y25-Y26 PB21-PB22 MinLum LE  */
+		0x00, 0x00,                /* Y27-Y28 PB23-PB24 MaxCLL LE  */
+		0x00, 0x00,                /* Y29-Y30 PB25-PB26 MaxFALL LE */
+		0x00,                      /* Y31     PB27 Reserved        */
+	};
+	u8 set_hdr_ret[5];
+
+	/*
+	 * NULL hdr_meta is a replay request (e.g. bridge re-enable after a
+	 * modeset), mirroring hdmi_panel_setup_hdr()'s NULL-hdr_meta path:
+	 * resend whichever HDR metadata was last active from the cache,
+	 * without touching the cache. No-op if HDR was never enabled.
+	 */
+	if (!hdr_meta) {
+		if (!pdata->hdr_active) {
+			pr_debug("lt9611uxd: HDR replay requested but no cached HDR state, skipping\n");
+			return 0;
+		}
+		meta = &pdata->cached_hdr_meta;
+		was_hdr_active = pdata->hdr_active;
+	} else {
+		was_hdr_active = pdata->hdr_active;
+		memcpy(&pdata->cached_hdr_meta, hdr_meta, sizeof(*hdr_meta));
+		pdata->hdr_active = hdr_meta->hdr_state;
+		meta = hdr_meta;
+	}
+
+	/*
+	 * PB1 (Y5):
+	 *   bits[2:0] = EOTF (0=SDR, 1=HLG trad, 2=ST2084/HDR10, 3=HLG)
+	 *   bits[5:3] = Static Metadata Descriptor ID (0 = Type 1)
+	 *   bits[7:6] = Reserved = 0
+	 * When hdr_state == 0 (disable), PB1 = 0x00 clears the InfoFrame.
+	 */
+	pb1 = meta->hdr_state ? (meta->eotf & 0x07) : 0x00;
+	set_hdr_cmd[9] = pb1;
+
+	/* PB2 (Y6): Static Metadata Descriptor Type 1 identifier = 0x00 */
+	set_hdr_cmd[10] = 0x00;
+
+	/*
+	 * PB3–PB12 (Y7–Y16): Display Color Volume primaries.
+	 * drm_msm_ext_hdr_metadata stores:
+	 *   display_primaries_x/y[0] = Red
+	 *   display_primaries_x/y[1] = Green
+	 *   display_primaries_x/y[2] = Blue
+	 * All 16-bit, little-endian (LSB first) per CTA-861-G Table 46.
+	 */
+	set_hdr_cmd[11] =  meta->display_primaries_x[0]        & 0xFF; /* PB3  R_x LSB */
+	set_hdr_cmd[12] = (meta->display_primaries_x[0] >> 8)  & 0xFF; /* PB4  R_x MSB */
+	set_hdr_cmd[13] =  meta->display_primaries_y[0]        & 0xFF; /* PB5  R_y LSB */
+	set_hdr_cmd[14] = (meta->display_primaries_y[0] >> 8)  & 0xFF; /* PB6  R_y MSB */
+	set_hdr_cmd[15] =  meta->display_primaries_x[1]        & 0xFF; /* PB7  G_x LSB */
+	set_hdr_cmd[16] = (meta->display_primaries_x[1] >> 8)  & 0xFF; /* PB8  G_x MSB */
+	set_hdr_cmd[17] =  meta->display_primaries_y[1]        & 0xFF; /* PB9  G_y LSB */
+	set_hdr_cmd[18] = (meta->display_primaries_y[1] >> 8)  & 0xFF; /* PB10 G_y MSB */
+	set_hdr_cmd[19] =  meta->display_primaries_x[2]        & 0xFF; /* PB11 B_x LSB */
+	set_hdr_cmd[20] = (meta->display_primaries_x[2] >> 8)  & 0xFF; /* PB12 B_x MSB */
+
+	/*
+	 * PB13–PB26 (Y17–Y30): Display Primary B_y, white point, and
+	 * mastering/content luminance fields, per CTA-861-G Table 46.
+	 * All 16-bit, little-endian (LSB first).
+	 */
+	set_hdr_cmd[21] =  meta->display_primaries_y[2]           & 0xFF; /* PB13 B_y LSB */
+	set_hdr_cmd[22] = (meta->display_primaries_y[2] >> 8)     & 0xFF; /* PB14 B_y MSB */
+	set_hdr_cmd[23] =  meta->white_point_x                    & 0xFF; /* PB15 WP_x LSB */
+	set_hdr_cmd[24] = (meta->white_point_x >> 8)               & 0xFF; /* PB16 WP_x MSB */
+	set_hdr_cmd[25] =  meta->white_point_y                    & 0xFF; /* PB17 WP_y LSB */
+	set_hdr_cmd[26] = (meta->white_point_y >> 8)               & 0xFF; /* PB18 WP_y MSB */
+	set_hdr_cmd[27] =  meta->max_luminance                    & 0xFF; /* PB19 MaxLum LSB */
+	set_hdr_cmd[28] = (meta->max_luminance >> 8)               & 0xFF; /* PB20 MaxLum MSB */
+	set_hdr_cmd[29] =  meta->min_luminance                    & 0xFF; /* PB21 MinLum LSB */
+	set_hdr_cmd[30] = (meta->min_luminance >> 8)               & 0xFF; /* PB22 MinLum MSB */
+	set_hdr_cmd[31] =  meta->max_content_light_level          & 0xFF; /* PB23 MaxCLL LSB */
+	set_hdr_cmd[32] = (meta->max_content_light_level >> 8)     & 0xFF; /* PB24 MaxCLL MSB */
+	set_hdr_cmd[33] =  meta->max_average_light_level          & 0xFF; /* PB25 MaxFALL LSB */
+	set_hdr_cmd[34] = (meta->max_average_light_level >> 8)     & 0xFF; /* PB26 MaxFALL MSB */
+	set_hdr_cmd[35] = 0x00;                                            /* PB27 Reserved */
+
+	/*
+	 * Checksum (Y4): per HDMI spec the sum of HB0+HB1+HB2+PB0(checksum)
+	 * +PB1..PBn must equal 0x00 mod 256.
+	 *
+	 * checksum = 0x100 - ((HB0 + HB1 + HB2 + PB1 + ... + PB27) & 0xFF)
+	 */
+	for (i = 5; i < 36; i++) {         /* sum Y1..Y31, skip checksum slot */
+		if (i == 8)
+			continue;
+		checksum += set_hdr_cmd[i];
+	}
+	set_hdr_cmd[8] = (0x100 - (checksum & 0xFF)) & 0xFF;
+
+	pr_debug("lt9611uxd: config_hdr sending InfoFrame: state=%u eotf=%u checksum=0x%02X\n",
+		 meta->hdr_state, meta->eotf, set_hdr_cmd[8]);
+	print_hex_dump_debug("lt9611uxd_hdr_cmd: ", DUMP_PREFIX_NONE,
+				16, 1, set_hdr_cmd, ARRAY_SIZE(set_hdr_cmd), false);
+
+	ret = lt9611uxd_interactive_cmd(pdata, set_hdr_cmd,
+					ARRAY_SIZE(set_hdr_cmd), set_hdr_ret, 5);
+	if (!ret) {
+		pr_err("lt9611uxd: HDR InfoFrame cmd send FAILED (interactive_cmd returned 0)\n");
+		return -EIO;
+	}
+
+	pr_debug("lt9611uxd: HDR InfoFrame cmd sent OK ret[0..4]= %02X %02X %02X %02X %02X\n",
+		 set_hdr_ret[0], set_hdr_ret[1], set_hdr_ret[2],
+		 set_hdr_ret[3], set_hdr_ret[4]);
+
+	/*
+	 * HDR -> normal (RGB) transition: the zeroed HDR InfoFrame above has
+	 * now been sent and the sink knows HDR metadata has ended, so follow
+	 * up with an AVI InfoFrame carrying RGB content, matching
+	 * hdmi_panel_setup_hdr()'s HDR-disable path.
+	 */
+	if (was_hdr_active && !meta->hdr_state) {
+		ret = lt9611uxd_config_avi_infoframe(pdata);
+		if (ret)
+			pr_err("lt9611uxd: failed to restore AVI InfoFrame after HDR disable, ret=%d\n",
+				ret);
+	}
+	return 0;
+}
+
+static int lt9611uxd_connector_atomic_set_property(
+				struct drm_connector *connector,
+				struct drm_connector_state *state,
+				struct drm_property *property,
+				uint64_t val)
+{
+	struct lt9611uxd *pdata = connector_to_lt9611(connector);
+
+	if (!strcmp(property->name, "hdr_metadata")) {
+		struct drm_msm_ext_hdr_metadata *hdr_meta =
+			(struct drm_msm_ext_hdr_metadata *)(uintptr_t)val;
+
+		pr_debug("lt9611uxd: HDR atomic_set_property received hdr_metadata=%s\n",
+			hdr_meta ? "valid" : "NULL (replay)");
+
+		if (!pdata->bridge_enabled) {
+			pr_debug("lt9611uxd: bridge disabled, skipping HDR config\n");
+			return 0;
+		}
+
+		return lt9611uxd_config_hdr(pdata, hdr_meta);
+	}
+
+	return 0;
+}
+
 /* bridge funcs */
 static void lt9611uxd_bridge_enable(struct drm_bridge *bridge)
 {
@@ -2246,6 +2570,16 @@ static void lt9611uxd_bridge_enable(struct drm_bridge *bridge)
 	}
 
 	mutex_unlock(&pdata->lock);
+
+	/*
+	 * Replay cached HDR metadata (if any was active before this
+	 * enable) now that the bridge is powered back up, mirroring
+	 * dp_mgr_stream_post_enable()'s panel->setup_hdr(panel, NULL, ...)
+	 * call. lt9611uxd_config_hdr() takes pdata->lock internally via
+	 * lt9611uxd_interactive_cmd(), so this must run outside the lock
+	 * held above.
+	 */
+	lt9611uxd_config_hdr(pdata, NULL);
 }
 
 static void lt9611uxd_bridge_disable(struct drm_bridge *bridge)
@@ -2392,12 +2726,13 @@ static const struct drm_connector_helper_funcs
 
 
 static const struct drm_connector_funcs lt9611uxd_connector_funcs = {
-	.fill_modes = drm_helper_probe_single_connector_modes,
-	.detect = lt9611uxd_connector_detect,
-	.destroy = drm_connector_cleanup,
-	.reset = drm_atomic_helper_connector_reset,
+	.fill_modes             = drm_helper_probe_single_connector_modes,
+	.detect                 = lt9611uxd_connector_detect,
+	.destroy                = drm_connector_cleanup,
+	.reset                  = drm_atomic_helper_connector_reset,
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
-	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
+	.atomic_destroy_state   = drm_atomic_helper_connector_destroy_state,
+	.atomic_set_property    = lt9611uxd_connector_atomic_set_property,
 };
 
 

@@ -4107,6 +4107,8 @@ static int sde_connector_get_modes(struct drm_connector *connector)
 	struct sde_connector *c_conn;
 	struct msm_resource_caps_info avail_res;
 	int mode_count = 0;
+	bool is_dsi_hdmi_bridge = false;
+	struct dsi_display *dsi_display;
 
 	if (!connector) {
 		SDE_ERROR("invalid connector\n");
@@ -4129,11 +4131,22 @@ static int sde_connector_get_modes(struct drm_connector *connector)
 		return 0;
 	}
 
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		dsi_display = _sde_connector_get_display(c_conn);
+
+		if (dsi_display && dsi_display->panel &&
+				dsi_display->panel->host_config.ext_bridge_mode)
+			is_dsi_hdmi_bridge = true;
+	}
+	if (c_conn->ops.get_hdr_info)
+		c_conn->ops.get_hdr_info(&c_conn->base, c_conn->display);
+
 	if (c_conn->hdr_capable)
 		sde_connector_update_hdr_props(connector);
 
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
-			c_conn->connector_type == DRM_MODE_CONNECTOR_HDMIA)
+			(c_conn->connector_type == DRM_MODE_CONNECTOR_HDMIA) ||
+			is_dsi_hdmi_bridge)
 		sde_connector_update_colorspace(connector);
 
 	return mode_count;
@@ -4690,6 +4703,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	int rc;
 	struct drm_connector *connector;
 	u64 panel_id = ~0x0;
+	bool is_dsi_hdmi_bridge = false;
 
 	msm_property_install_blob(&c_conn->property_info, "capabilities",
 			DRM_MODE_PROP_IMMUTABLE, CONNECTOR_PROP_SDE_INFO);
@@ -4709,6 +4723,10 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 
 	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
 		dsi_display = _sde_connector_get_display(c_conn);
+
+		if (dsi_display && dsi_display->panel &&
+				dsi_display->panel->host_config.ext_bridge_mode)
+			is_dsi_hdmi_bridge = true;
 
 		if (dsi_display && dsi_display->panel) {
 			msm_property_install_blob(&c_conn->property_info,
@@ -4767,7 +4785,8 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	_sde_connector_install_dither_property(dev, sde_kms, c_conn);
 
 	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
-			connector_type == DRM_MODE_CONNECTOR_HDMIA) {
+			connector_type == DRM_MODE_CONNECTOR_HDMIA ||
+			is_dsi_hdmi_bridge) {
 		struct drm_msm_ext_hdr_properties hdr = {0};
 
 		c_conn->hdr_capable = true;
@@ -4876,7 +4895,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	c_conn->bl_scale_sv = MAX_SV_BL_SCALE_LEVEL;
 
 	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
-			connector_type == DRM_MODE_CONNECTOR_HDMIA)
+			connector_type == DRM_MODE_CONNECTOR_HDMIA || is_dsi_hdmi_bridge)
 		msm_property_install_range(&c_conn->property_info,
 			"supported_colorspaces",
 			DRM_MODE_PROP_IMMUTABLE, 0, 0xffff, 0,
