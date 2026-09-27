@@ -99,18 +99,6 @@
 #define HDCP2P2_RXSTATUS_HW_DDC_FORCE_LOOP          2
 #define HDCP2P2_RXSTATUS_HW_DDC_SW_TRIGGER          3
 
-struct hdmi_ddc {
-	struct device *dev;
-	struct hdmi_io_data *io_data;
-	bool use_hard_timeout;
-	u32 timeout_count;
-	struct i2c_adapter *i2c;
-
-	void (*isr)(struct i2c_adapter *i2c);
-	void (*scrambling_isr)(void *hdmi_ddc);
-	spinlock_t reg_lock;
-};
-
 struct hdmi_hdcp_status {
 	int hdcp_state;
 	int hdcp_version;
@@ -162,6 +150,20 @@ struct hdmi_tx_ddc_ctrl {
 	struct hdmi_tx_hdcp2p2_ddc_data hdcp2p2_ddc_data;
 };
 
+struct hdmi_ddc {
+	struct device *dev;
+	struct hdmi_io_data *io_data;
+	bool use_hard_timeout;
+	u32 timeout_count;
+	int busy_wait_us;
+	struct i2c_adapter *i2c;
+	struct hdmi_tx_ddc_ctrl ddc_ctrl;
+	const struct drm_display_mode *mode;
+	void (*isr)(struct i2c_adapter *i2c);
+	void (*scrambling_isr)(void *hdmi_ddc);
+	spinlock_t reg_lock;
+};
+
 enum hdmi_tx_io_type {
 	HDMI_TX_CORE_IO,
 	HDMI_TX_QFPROM_IO,
@@ -179,33 +181,34 @@ struct hdmi_i2c_adapter {
 /*
  * DDC utility functions
  */
-int hdmi_ddc_read(struct hdmi *hdmi, u16 addr, u8 offset,
+int hdmi_ddc_read(struct hdmi_ddc *ddc, u16 addr, u8 offset,
 				  u8 *data, u16 data_len, bool self_retry);
-int hdmi_ddc_write(struct hdmi *hdmi, u16 addr, u8 offset,
+int hdmi_ddc_write(struct hdmi_ddc *ddc, u16 addr, u8 offset,
 				   u8 *data, u16 data_len, bool self_retry);
-
 #if IS_ENABLED(CONFIG_DRM_MSM_HDMI)
 int hdmi_ddc_write_helper(struct hdmi_ddc *ddc);
 int hdmi_ddc_read_helper(struct hdmi_ddc *ddc);
 #else
-int hdmi_ddc_write_helper(struct hdmi_ddc *ddc)
+static inline int hdmi_ddc_write_helper(struct hdmi_ddc *ddc)
 {
 	return 0;
 }
-int hdmi_ddc_read_helper(struct hdmi_ddc *ddc)
+static inline int hdmi_ddc_read_helper(struct hdmi_ddc *ddc)
 {
 	return 0;
 }
 #endif
 void sde_hdmi_ddc_scrambling_isr(void *hdmi_ddc);
 
+int hdmi_get_timeout_in_hysnc(struct hdmi_ddc *ddc,
+					u32 timeout_ms);
 void _sde_hdmi_scrambler_ddc_disable(void *hdmi_display);
 
-void hdmi_hdcp2p2_ddc_disable(void *hdmi_display);
+void hdmi_hdcp2p2_ddc_disable(struct hdmi_ddc *ddc);
 
-int hdmi_hdcp2p2_read_rxstatus(void *hdmi_display);
-void hdmi_ddc_config(void *hdmi_display);
-int hdmi_ddc_hdcp2p2_isr(void *hdmi_display);
+int hdmi_hdcp2p2_read_rxstatus(struct hdmi_ddc *ddc);
+void hdmi_ddc_config(struct hdmi_ddc *ddc);
+void hdmi_hdcp2p2_ddc_clear_status(struct hdmi_ddc *ddc);
 void hdmi_ddc_isr(struct i2c_adapter *i2c);
 struct hdmi_ddc *hdmi_ddc_get(struct device *dev, struct hdmi_parser *parser);
 void hdmi_ddc_put(struct hdmi_ddc *ddc);

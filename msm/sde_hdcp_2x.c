@@ -324,10 +324,14 @@ static inline void sde_hdcp_2x_send_message(struct sde_hdcp_2x_ctrl *hdcp)
 
 	cdata.context = hdcp->client_data;
 	cdata.transaction_delay = hdcp->app_data.timeout;
-	cdata.buf_len = hdcp->app_data.response.length;
-
-	/* ignore the first byte as it contains the message id */
-	cdata.buf = hdcp->app_data.response.data + 1;
+	if (hdcp->device_type == HDCP_TXMTR_DP) {
+		cdata.buf_len = hdcp->app_data.response.length;
+		/* ignore the first byte as it contains the message id */
+		cdata.buf = hdcp->app_data.response.data + 1;
+	} else if (hdcp->device_type == HDCP_TXMTR_HDMI) {
+		cdata.buf_len = hdcp->app_data.response.length;
+		cdata.buf = hdcp->app_data.response.data;
+	}
 
 	sde_hdcp_2x_wakeup_client(hdcp, &cdata);
 }
@@ -516,7 +520,7 @@ static void sde_hdcp_2x_msg_sent(struct sde_hdcp_2x_ctrl *hdcp)
 			/* poll for link check */
 			sde_hdcp_2x_initialize_command(hdcp,
 					HDCP_TRANSPORT_CMD_LINK_POLL, &cdata);
-		} else {
+		} else if (hdcp->device_type == HDCP_TXMTR_DP) {
 			hdcp->app_data.response.data[0] = SKE_SEND_TYPE_ID;
 			hdcp->app_data.response.data[1] =
 				sde_hdcp_2x_stream_type(hdcp->min_enc_level);
@@ -524,6 +528,22 @@ static void sde_hdcp_2x_msg_sent(struct sde_hdcp_2x_ctrl *hdcp)
 			hdcp->app_data.timeout = 100;
 
 			sde_hdcp_2x_send_message(hdcp);
+		} else if (hdcp->device_type == HDCP_TXMTR_HDMI) {
+			if (!hdcp2_app_comm(hdcp->hdcp2_ctx,
+				HDCP2_CMD_EN_ENCRYPTION, &hdcp->app_data)) {
+				hdcp->authenticated = true;
+
+				if (hdcp->force_encryption)
+					hdcp2_force_encryption(
+						hdcp->hdcp2_ctx, 1);
+
+				cdata.cmd = HDCP_TRANSPORT_CMD_STATUS_SUCCESS;
+				sde_hdcp_2x_wakeup_client(hdcp, &cdata);
+			}
+
+			/* poll for link check */
+			sde_hdcp_2x_initialize_command(hdcp,
+				HDCP_TRANSPORT_CMD_LINK_POLL, &cdata);
 		}
 		break;
 	case REP_SEND_ACK:
@@ -541,7 +561,10 @@ static void sde_hdcp_2x_msg_sent(struct sde_hdcp_2x_ctrl *hdcp)
 	default:
 		cdata.cmd = HDCP_TRANSPORT_CMD_RECV_MESSAGE;
 		cdata.transaction_delay = hdcp->app_data.timeout;
-		cdata.buf = hdcp->app_data.request.data + 1;
+		if (hdcp->device_type == HDCP_TXMTR_DP)
+			cdata.buf = hdcp->app_data.request.data + 1;
+		else if (hdcp->device_type == HDCP_TXMTR_HDMI)
+			cdata.buf = hdcp->app_data.request.data;
 	}
 
 	sde_hdcp_2x_wakeup_client(hdcp, &cdata);
@@ -648,7 +671,10 @@ static void sde_hdcp_2x_msg_recvd(struct sde_hdcp_2x_ctrl *hdcp)
 	if (msg[0] == AKE_SEND_H_PRIME && hdcp->no_stored_km) {
 		cdata.cmd = HDCP_TRANSPORT_CMD_RECV_MESSAGE;
 		cdata.transaction_delay = hdcp->app_data.timeout;
-		cdata.buf = hdcp->app_data.request.data + 1;
+		if (hdcp->device_type == HDCP_TXMTR_DP)
+			cdata.buf = hdcp->app_data.request.data + 1;
+		else if (hdcp->device_type == HDCP_TXMTR_HDMI)
+			cdata.buf = hdcp->app_data.request.data;
 		goto exit;
 	}
 
@@ -705,7 +731,10 @@ static void sde_hdcp_2x_msg_recvd(struct sde_hdcp_2x_ctrl *hdcp)
 
 	if (!atomic_read(&hdcp->hdcp_off)) {
 		cdata.cmd = HDCP_TRANSPORT_CMD_SEND_MESSAGE;
-		cdata.buf = hdcp->app_data.response.data + 1;
+		if (hdcp->device_type == HDCP_TXMTR_DP)
+			cdata.buf = hdcp->app_data.response.data + 1;
+		else if (hdcp->device_type == HDCP_TXMTR_HDMI)
+			cdata.buf = hdcp->app_data.response.data;
 		cdata.buf_len = hdcp->app_data.response.length;
 		cdata.transaction_delay = hdcp->app_data.timeout;
 	}
