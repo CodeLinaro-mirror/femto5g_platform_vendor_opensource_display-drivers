@@ -24,6 +24,7 @@ module_entry(
             "msm/hdmi/hdmi_phy_snps.c",
 	    "msm/hdmi/hdmi_audio.c",
 	    "msm/hdmi/hdmi_cec.c",
+            "msm/hdmi/hdmi_hdcp2p2.c",
         ],
         "CONFIG_HDCP_QSEECOM": [
             "hdcp/msm_hdcp.c",
