@@ -62,6 +62,9 @@ int msm_framebuffer_prepare(struct drm_framebuffer *fb,
 	msm_fb = to_msm_framebuffer(fb);
 	n = fb->format->num_planes;
 	for (i = 0; i < n; i++) {
+		if (!fb->obj[i])
+			continue;
+
 		ret = msm_gem_get_iova(fb->obj[i], aspace, &iova);
 		DBG("FB[%u]: iova[%d]: %08llx (%d)", fb->base.id, i, iova, ret);
 		if (ret)

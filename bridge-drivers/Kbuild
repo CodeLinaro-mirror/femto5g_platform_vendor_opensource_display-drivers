@@ -2,7 +2,7 @@
 
 KDIR := $(TOP)/kernel_platform/msm-kernel
 
-ifeq ($(CONFIG_ARCH_SUN), Y)
+ifeq ($(CONFIG_ARCH_SUN), y)
         include $(DISPLAY_ROOT)/config/gki_sundisp.conf
         LINUX_INC +=    -include $(DISPLAY_ROOT)/config/gki_sundispconf.h
 endif

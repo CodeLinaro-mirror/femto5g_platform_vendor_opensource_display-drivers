@@ -37,6 +37,7 @@ struct sde_lsr_perf {
 	unsigned long ib_bw_vote;
 	unsigned long clk_vote;
 	unsigned long ddr_vote;
+	bool is_mono;
 };
 
 struct sde_reproj {

@@ -39,6 +39,10 @@ struct crtc_hw_event_state {
  * @pending_enc_mask: encoder_mask that has pending commit on the drm_crtc
  * @hw_events_state: tracks the state of the hw events
  * @hfi_cb_obj: hfi callback object for crtc events from hfi
+ * @batch_mode_running: true when BATCH_MODE_END was sent and a BATCH_MODE_CANCEL
+ *                      must be issued before the next normal (non-batch) commit
+ * @batch_type: usecase_id saved when BATCH_MODE_END is sent; used to
+ *              populate the BATCH_MODE_CANCEL payload
  */
 struct hfi_crtc {
 	struct sde_crtc *sde_base;
@@ -52,6 +56,8 @@ struct hfi_crtc {
 	u32 pending_enc_mask;
 	struct crtc_hw_event_state hw_events_state[HFI_CRTC_EVENT_MAX];
 	struct hfi_prop_listener hfi_cb_obj;
+	bool batch_mode_running;
+	enum hfi_batch_usecase_id batch_type;
 };
 
 /**
@@ -78,6 +84,31 @@ struct hfi_hw_fence {
  * @enc_mask: input encoder mask to cache
  */
 void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask);
+
+/**
+ * hfi_crtc_mark_hw_events_pending_from_user_events - derive HFI event re-sync
+ * state from user_event_list after SSR.
+ * @sde_crtc: Pointer to sde crtc struct
+ *
+ * Return: number of mapped events marked pending.
+ */
+int hfi_crtc_mark_hw_events_pending_from_user_events(struct sde_crtc *sde_crtc);
+
+/**
+ * hfi_crtc_try_resync_hw_events - retry re-sync of HW events pending after SSR
+ * @sde_crtc: Pointer to sde crtc struct
+ *
+ * Return: number of events re-synced or negative error code.
+ */
+int hfi_crtc_try_resync_hw_events(struct sde_crtc *sde_crtc);
+
+/**
+ * hfi_crtc_has_pending_hw_events - check if any HFI hw event is pending re-sync
+ * @sde_crtc: Pointer to sde crtc struct
+ *
+ * Return: true if at least one event is pending, false otherwise.
+ */
+bool hfi_crtc_has_pending_hw_events(struct sde_crtc *sde_crtc);
 
 #if IS_ENABLED(CONFIG_MDSS_HFI)
 /**
@@ -151,6 +182,21 @@ static inline u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc
 
 static inline void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask)
 {
+}
+
+static inline int hfi_crtc_mark_hw_events_pending_from_user_events(struct sde_crtc *sde_crtc)
+{
+	return 0;
+}
+
+static inline int hfi_crtc_try_resync_hw_events(struct sde_crtc *sde_crtc)
+{
+	return 0;
+}
+
+static inline bool hfi_crtc_has_pending_hw_events(struct sde_crtc *sde_crtc)
+{
+	return false;
 }
 
 static inline int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_buf,

@@ -241,7 +241,7 @@ struct hfi_buffer_pool {
  * listener of each packet while unpacking HFI command buffer.
  */
 struct hfi_prop_listener {
-	void (*hfi_prop_handler)(u32 obj_id, u32 cmd_id, void *payload, u32 size,
+	void (*hfi_prop_handler)(struct hfi_packet_info *packet_info,
 			struct hfi_prop_listener *listener);
 };
 
@@ -530,6 +530,17 @@ size_t hfi_adapter_get_shared_mem_allocated_size(struct hfi_client_t *ctx,
  */
 int hfi_adapter_unmap_iova(struct hfi_client_t *ctx, unsigned long iova, size_t size);
 
+/**
+ * hfi_adapter_handle_hibernation_entry - API to handle hibernation entry at hfi adapter
+ * @hfi_client: pointer to hfi client structure
+ */
+int hfi_adapter_handle_hibernation_entry(struct hfi_client_t *hfi_client);
+
+/**
+ * hfi_adapter_handle_hibernation_exit - API to handle hibernation exit at hfi adapter
+ */
+int hfi_adapter_handle_hibernation_exit(void);
+
 #else
 
 static inline struct hfi_adapter_t *hfi_adapter_init(int instance)
@@ -655,6 +666,16 @@ static inline size_t hfi_adapter_get_shared_mem_allocated_size(
 }
 
 static inline int hfi_adapter_unmap_iova(struct hfi_client_t *ctx, unsigned long iova, size_t size)
+{
+	return 0;
+}
+
+static inline int hfi_adapter_handle_hibernation_entry(struct hfi_client_t *hfi_client)
+{
+	return 0;
+}
+
+static inline int hfi_adapter_handle_hibernation_exit(void)
 {
 	return 0;
 }

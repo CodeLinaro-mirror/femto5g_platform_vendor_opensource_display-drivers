@@ -8,6 +8,7 @@
 #include <linux/version.h>
 #include "hdmi_drm.h"
 #include "hdmi_debug.h"
+#include "hdmi_cec.h"
 
 #define HDMI_DISPLAY_MAX_WIDTH          4096
 #define HDMI_DISPLAY_MAX_HEIGHT         2160
@@ -37,6 +38,9 @@ int hdmi_connector_post_init(struct drm_connector *connector, void *display)
 
 	hdmi_display->base_connector = connector;
 	hdmi_display->bridge->connector = connector;
+
+	HDMI_DEBUG("%s: connector=%p, name=%s\n",
+		    __func__, connector, connector->name);
 
 	if (hdmi_display->post_init) {
 		rc = hdmi_display->post_init(hdmi_display);

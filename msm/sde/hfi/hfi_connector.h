@@ -131,6 +131,20 @@ void hfi_connector_set_esd_recovery_pending(struct sde_connector *c_conn);
 void hfi_connector_report_panel_dead(struct sde_connector *c_conn,
 	bool skip_pre_kickoff);
 
+/**
+ * hfi_connector_set_gmu_dcp_intf_mem - map the gmu dcp interface buffer to FW
+ * @connector: pointer to the DRM connector structure
+ * @val: framebuffer id of the gmu dcp interface buffer (0 to clear)
+ */
+void hfi_connector_set_gmu_dcp_intf_mem(struct drm_connector *connector,
+	uint64_t val);
+
+/**
+ * hfi_connector_cleanup_gmu_dcp_fb - unmap and release the gmu dcp interface buffer
+ * @c_conn: Pointer to sde_connector struct
+ */
+void hfi_connector_cleanup_gmu_dcp_fb(struct sde_connector *c_conn);
+
 #else
 static inline int hfi_connector_init(int connector_type,
 	struct sde_connector *c_conn)
@@ -173,6 +187,15 @@ static inline int hfi_connector_set_debug_prop(
 	struct drm_connector *drm_conn, struct hfi_display_dbg_property *dbg_prop)
 {
 	return 0;
+}
+
+static inline void hfi_connector_set_gmu_dcp_intf_mem(
+	struct drm_connector *connector, uint64_t val)
+{
+}
+
+static inline void hfi_connector_cleanup_gmu_dcp_fb(struct sde_connector *c_conn)
+{
 }
 
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)

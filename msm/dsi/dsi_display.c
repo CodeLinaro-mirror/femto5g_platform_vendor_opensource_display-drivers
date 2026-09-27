@@ -10,6 +10,7 @@
 #include <linux/err.h>
 #include <linux/version.h>
 #include <linux/ktime.h>
+#include <linux/suspend.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
 
 #include "msm_drv.h"
@@ -478,7 +479,7 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 	struct device *dev;
 	unsigned int te_irq, tlmm_gpio_cfg;
 	struct resource te_res;
-	void __iomem *tlmm_base;
+	void __iomem *te_gpio_base;
 
 	pdev = display->pdev;
 	if (!pdev) {
@@ -519,20 +520,24 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 	 * first TE IRQ registration. Read the TE GPIO configuration before
 	 * IRQ registration to restore it after registration.
 	 */
-	tlmm_base = devm_ioremap(&display->pdev->dev, te_res.start, TLMM_GPIO_CFG_LEN);
 
-	if (tlmm_base)
-		tlmm_gpio_cfg = DSI_GEN_R32(tlmm_base, TLMM_GPIO_CFG_OFFSET);
-	else
-		DSI_ERR("Failed to ioremap GPIO address for restore\n");
+	te_gpio_base = devm_ioremap(&display->pdev->dev, te_res.start,
+		TLMM_GPIO_CFG_LEN);
 
-	rc = devm_request_irq(dev, te_irq, dsi_display_panel_te_irq_handler,
-			      IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-			      "TE_GPIO", display);
+	if (!te_gpio_base ) {
+		DSI_ERR("Failed to mmap gpio cfg len\n");
+		return;
+	}
+
+	tlmm_gpio_cfg = DSI_GEN_R32(te_gpio_base, TLMM_GPIO_CFG_OFFSET);
+
+	rc = devm_request_irq(dev, te_irq,
+			dsi_display_panel_te_irq_handler,
+			IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+			"TE_GPIO", display);
 
 	/* Restore TE gpio configuration after IRQ registration */
-	if (tlmm_base)
-		DSI_GEN_W32(tlmm_base, TLMM_GPIO_CFG_OFFSET, tlmm_gpio_cfg);
+	DSI_GEN_W32(te_gpio_base, TLMM_GPIO_CFG_OFFSET, tlmm_gpio_cfg);
 
 	if (rc) {
 		DSI_ERR("TE request_irq failed for ESD rc:%d\n", rc);
@@ -1293,21 +1298,29 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
 		dsi_display->tx_cmd_buf_ndx = 0;
 
 		dsi_panel_acquire_panel_lock(dsi_display->panel);
-		for (i = 0; i < cnt; i++) {
-			if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
-				rc = dsi_hfi_host_transfer_sub(&dsi_display->host, cmds);
-			else
-				rc = dsi_host_transfer_sub(&dsi_display->host, cmds,
-							do_peripheral_flush);
+
+		if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI) {
+			set->state = (cmds->msg.flags & MIPI_DSI_MSG_USE_LPM) ?
+					DSI_CMD_SET_STATE_LP : DSI_CMD_SET_STATE_HS;
+			rc = dsi_hfi_tx_cmd_set(dsi_display, set);
 			if (rc < 0) {
-				DSI_ERR("failed to send command, rc=%d\n", rc);
-				break;
+				DSI_ERR("failed to send cmd set via HFI, rc=%d\n", rc);
 			}
-			if (cmds->post_wait_ms)
-				usleep_range(cmds->post_wait_ms*1000,
-						((cmds->post_wait_ms*1000)+10));
-			cmds++;
+		} else {
+			for (i = 0; i < cnt; i++) {
+				rc = dsi_host_transfer_sub(&dsi_display->host, cmds,
+						do_peripheral_flush);
+				if (rc < 0) {
+					DSI_ERR("failed to send command, rc=%d\n", rc);
+					break;
+				}
+				if (cmds->post_wait_ms)
+					usleep_range(cmds->post_wait_ms * 1000,
+							(cmds->post_wait_ms * 1000) + 10);
+				cmds++;
+			}
 		}
+
 		dsi_panel_release_panel_lock(dsi_display->panel);
 
 		memset(dbgfs_tx_cmd_buf, 0, SZ_4K);
@@ -1337,7 +1350,8 @@ static void _dsi_display_continuous_clk_ctrl(struct dsi_display *display,
 		 * DSI PHY to force clk lane to HS mode always whereas
 		 * for other phy ver chipsets, configure DSI controller only.
 		 */
-		if (ctrl->phy->hw.ops.set_continuous_clk[ctrl->ctrl->disp_op]) {
+		if (ctrl->ctrl->disp_op < MSM_DISP_OP_MAX &&
+				ctrl->phy->hw.ops.set_continuous_clk[ctrl->ctrl->disp_op]) {
 			dsi_ctrl_hs_req_sel(ctrl->ctrl, true);
 			dsi_ctrl_set_continuous_clk(ctrl->ctrl, enable);
 			dsi_phy_set_continuous_clk(ctrl->phy, enable);
@@ -1658,7 +1672,7 @@ static ssize_t debugfs_misr_setup(struct file *file,
 	}
 
 	disp_op = display->ctrl->ctrl->disp_op;
-	if (display->display_ops.misr_setup[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && display->display_ops.misr_setup[disp_op]) {
 		rc = display->display_ops.misr_setup[disp_op](display);
 		if (rc)
 			DSI_ERR("[%s] failed to enable MISR through hfi, rc=%d\n",
@@ -1730,7 +1744,7 @@ static ssize_t debugfs_misr_read(struct file *file,
 	}
 
 	disp_op = display->ctrl->ctrl->disp_op;
-	if (display->display_ops.misr_read[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && display->display_ops.misr_read[disp_op]) {
 		display->display_ops.misr_read[disp_op](display);
 
 		for (i = 0; i < display->misr_vals.count ; i++) {
@@ -2660,7 +2674,7 @@ static void adjust_timing_by_ctrl_count(const struct dsi_display *display,
 		mode->timing.h_skew /= sublinks_count;
 		mode->pixel_clk_khz /= sublinks_count;
 	} else {
-		if (mode->priv_info->dsc_enabled && mode_set)
+		if (mode->priv_info && mode->priv_info->dsc_enabled && mode_set)
 			mode->priv_info->dsc.config.pic_width =
 				mode->timing.h_active;
 		mode->timing.h_active /= display->ctrl_count;
@@ -3582,7 +3596,8 @@ static int dsi_display_ctrl_host_disable(struct dsi_display *display)
 	 * and return early.
 	 */
 	if (display->panel->ulps_suspend_enabled &&
-			!m_ctrl->phy->hw.ops.ulps_ops.ulps_request[m_ctrl->ctrl->disp_op]) {
+			(m_ctrl->ctrl->disp_op >= MSM_DISP_OP_MAX ||
+			!m_ctrl->phy->hw.ops.ulps_ops.ulps_request[m_ctrl->ctrl->disp_op])) {
 		display_for_each_ctrl(i, display) {
 			ctrl = &display->ctrl[i];
 			rc = dsi_ctrl_update_host_state(ctrl->ctrl,
@@ -5902,7 +5917,8 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 			if (!ctrl->ctrl || (ctrl != mctrl))
 				continue;
 
-			if (ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op])
+			if (ctrl->ctrl->disp_op < MSM_DISP_OP_MAX &&
+					ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op])
 				ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op](
 						&ctrl->ctrl->hw, true);
 			dsi_phy_dynamic_refresh_clear(ctrl->phy);
@@ -6509,8 +6525,13 @@ static int dsi_display_bind(struct device *dev,
 	if (!display->panel_node && !display->fw)
 		return 0;
 
+	if (!display->panel) {
+		DSI_ERR("[%s] invalid panel\n", display->name);
+		return -EINVAL;
+	}
+
 	/* defer bind if ext bridge driver is not loaded */
-	if (display->panel && display->panel->host_config.ext_bridge_mode) {
+	if (display->panel->host_config.ext_bridge_mode) {
 		for (i = 0; i < display->ext_bridge_cnt; i++) {
 			if (!of_drm_find_bridge(
 					display->ext_bridge[i].node_of)) {
@@ -6537,6 +6558,7 @@ static int dsi_display_bind(struct device *dev,
 	}
 
 	atomic_set(&display->clkrate_change_pending, 0);
+	atomic_set(&display->cmd_seq_no, 0);
 	display->cached_clk_rate = 0;
 
 	memset(&info, 0x0, sizeof(info));
@@ -6765,7 +6787,7 @@ static void dsi_display_unbind(struct device *dev,
 	mutex_unlock(&display->display_lock);
 }
 
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
 static int dsi_display_pm_freeze(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -6818,6 +6840,21 @@ static int dsi_display_pm_restore(struct device *dev)
 	if (!hfi_kms)
 		return -EINVAL;
 
+	/*
+	 * Rebind DSI HFI client to current active adapter on restore.
+	 * Prevent stale host/session usage after hibernation.
+	 */
+	if (display->dsi_hfi_info && display->dsi_hfi_info->hfi_client &&
+			hfi_kms->hfi_adapter &&
+			(display->dsi_hfi_info->hfi_adapter != hfi_kms->hfi_adapter ||
+			 display->dsi_hfi_info->hfi_client->host != hfi_kms->hfi_adapter)) {
+		DSI_WARN("rebinding dsi hfi client: old_adapter=%pK new_adapter=%pK old_host=%pK\n",
+			display->dsi_hfi_info->hfi_adapter, hfi_kms->hfi_adapter,
+			display->dsi_hfi_info->hfi_client->host);
+		display->dsi_hfi_info->hfi_adapter = hfi_kms->hfi_adapter;
+		display->dsi_hfi_info->hfi_client->host = hfi_kms->hfi_adapter;
+	}
+
 	rc = hfi_kms_send_trace_cfg(hfi_kms, HFI_TRUE);
 	if (rc) {
 		DSI_ERR("failed to send trace config to DCP, rc: %d\n", rc);
@@ -6843,11 +6880,34 @@ static int dsi_display_pm_restore(struct device *dev)
 
 	return rc;
 }
+
+#if IS_ENABLED(CONFIG_DEEPSLEEP)
+static int dsi_display_pm_suspend(struct device *dev)
+{
+	if (pm_suspend_target_state == PM_SUSPEND_MEM)
+		return dsi_display_pm_freeze(dev);
+
+	return 0;
+}
+
+static int dsi_display_pm_resume(struct device *dev)
+{
+	if (pm_suspend_target_state == PM_SUSPEND_MEM)
+		return dsi_display_pm_restore(dev);
+
+	return 0;
+}
+#endif
+
 static const struct dev_pm_ops dsi_display_pm_ops = {
 	.freeze = dsi_display_pm_freeze,
 	.restore = dsi_display_pm_restore,
+#if IS_ENABLED(CONFIG_DEEPSLEEP)
+	.suspend = dsi_display_pm_suspend,
+	.resume = dsi_display_pm_resume,
+#endif
 };
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION || CONFIG_DEEPSLEEP */
 
 static const struct component_ops dsi_display_comp_ops = {
 	.bind = dsi_display_bind,
@@ -6860,9 +6920,9 @@ static struct platform_driver dsi_display_driver = {
 	.driver = {
 		.name = "msm-dsi-display",
 		.of_match_table = dsi_display_dt_match,
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
 		.pm = &dsi_display_pm_ops,
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION || CONFIG_DEEPSLEEP */
 		.suppress_bind_attrs = true,
 	},
 };
@@ -7298,12 +7358,16 @@ static int dsi_display_drm_ext_get_modes(
 		const struct msm_resource_caps_info *avail_res)
 {
 	struct dsi_display *display = disp;
+	struct drm_property_blob *edid_blob;
 	struct drm_display_mode *pmode, *pt;
 	int count;
 
 	/* if there are modes defined in panel, ignore external modes */
 	if (display->panel->num_timing_nodes)
 		return dsi_connector_get_modes(connector, disp, avail_res);
+
+	if (!display->ext_conn || !display->ext_conn->helper_private)
+		return 0;
 
 	count = display->ext_conn->helper_private->get_modes(
 			display->ext_conn);
@@ -7313,7 +7377,23 @@ static int dsi_display_drm_ext_get_modes(
 		list_move_tail(&pmode->head, &connector->probed_modes);
 	}
 
-	connector->display_info = display->ext_conn->display_info;
+	/*
+	 * Do not shallow-copy display_info from ext_conn. A struct copy
+	 * aliases the info->vics pointer between two connectors: when the
+	 * framework calls drm_connector_update_edid_property(sde_conn, NULL)
+	 * on disconnect it frees sde_conn->display_info.vics, but
+	 * ext_conn->display_info.vics still holds the same address. On the
+	 * next connect drm_add_edid_modes() calls drm_reset_display_info()
+	 * on ext_conn and tries to kfree that already-freed pointer, causing
+	 * a double-free kernel panic.
+	 *
+	 * Instead, use drm_connector_update_edid_property() so the DRM core
+	 * initialises the sde_connector's display_info independently from its
+	 * own EDID blob, giving each connector its own vics allocation.
+	 */
+	edid_blob = display->ext_conn->edid_blob_ptr;
+	drm_connector_update_edid_property(connector,
+		edid_blob ? (const struct edid *)edid_blob->data : NULL);
 
 	return count;
 }
@@ -7326,10 +7406,17 @@ static enum drm_mode_status dsi_display_drm_ext_mode_valid(
 	struct dsi_display *display = disp;
 	enum drm_mode_status status;
 
-	/* always do internal mode_valid check */
-	status = dsi_conn_mode_valid(connector, mode, disp, avail_res);
-	if (status != MODE_OK)
-		return status;
+	/*
+	 * Skip the internal mode_valid check for ext-bridge displays without
+	 * DT timing nodes — they have no panel modes to match against, so
+	 * dsi_display_find_mode() will always fail and return MODE_ERROR,
+	 * preventing the bridge's own mode_valid from ever being reached.
+	 */
+	if (display->panel->num_timing_nodes) {
+		status = dsi_conn_mode_valid(connector, mode, disp, avail_res);
+		if (status != MODE_OK)
+			return status;
+	}
 
 	return display->ext_conn->helper_private->mode_valid(
 			display->ext_conn, mode);
@@ -7395,6 +7482,7 @@ static int dsi_display_ext_get_mode_info(struct drm_connector *connector,
 	void *display, const struct msm_resource_caps_info *avail_res)
 {
 	struct msm_display_topology *topology;
+	struct dsi_display *ext_display = (struct dsi_display *)display;
 
 	if (!drm_mode || !mode_info ||
 			!avail_res || !avail_res->max_mixer_width)
@@ -7411,6 +7499,19 @@ static int dsi_display_ext_get_mode_info(struct drm_connector *connector,
 	topology->num_intf = topology->num_lm;
 
 	mode_info->comp_info.comp_type = MSM_DISPLAY_COMPRESSION_NONE;
+	if (ext_display->panel &&
+			ext_display->panel->host_config.ext_bridge_dyn_topology) {
+		u32 num_lm = topology->num_lm;
+		u32 ctrl_count = ext_display->ctrl_count;
+
+		topology->num_lm = (num_lm >= ctrl_count) ? num_lm : ctrl_count;
+		topology->num_enc = 0;
+		topology->num_intf = ctrl_count;
+	}
+
+	DSI_DEBUG("%dx%d : %d %d %d\n",
+		drm_mode->hdisplay, drm_mode->vdisplay,
+		topology->num_lm, topology->num_enc, topology->num_intf);
 
 	return 0;
 }
@@ -7682,6 +7783,16 @@ int dsi_display_drm_ext_bridge_init(struct dsi_display *display,
 			ext_bridge->funcs = &ext_bridge_info->bridge_funcs;
 		}
 
+		/*
+		 * Set get_info, get_mode_info, mode_valid and get_modes before
+		 * drm_bridge_attach so that mode enumeration callbacks fired
+		 * during attach use the ext-bridge paths.
+		 */
+		sde_conn->ops.get_info      = dsi_display_ext_get_info;
+		sde_conn->ops.get_mode_info = dsi_display_ext_get_mode_info;
+		sde_conn->ops.mode_valid    = dsi_display_drm_ext_mode_valid;
+		sde_conn->ops.get_modes     = dsi_display_drm_ext_get_modes;
+
 		rc = drm_bridge_attach(encoder, ext_bridge, prev_bridge,
 					DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 		if (rc) {
@@ -7742,22 +7853,9 @@ int dsi_display_drm_ext_bridge_init(struct dsi_display *display,
 		if (display->ext_conn->funcs->detect)
 			sde_conn->ops.detect = dsi_display_drm_ext_detect;
 
-		if (display->ext_conn->helper_private->get_modes)
-			sde_conn->ops.get_modes =
-				dsi_display_drm_ext_get_modes;
-
-		if (display->ext_conn->helper_private->mode_valid)
-			sde_conn->ops.mode_valid =
-				dsi_display_drm_ext_mode_valid;
-
 		if (display->ext_conn->helper_private->atomic_check)
 			sde_conn->ops.atomic_check =
 				dsi_display_drm_ext_atomic_check;
-
-		sde_conn->ops.get_info =
-				dsi_display_ext_get_info;
-		sde_conn->ops.get_mode_info =
-				dsi_display_ext_get_mode_info;
 
 		/* add support to attach/detach */
 		display->host.ops = &dsi_host_ext_ops;
@@ -8504,6 +8602,11 @@ int dsi_display_get_modes(struct dsi_display *display,
 
 	display_mode_count = display->panel->num_display_modes;
 
+	if (!display_mode_count) {
+		rc = 0;
+		goto exit;
+	}
+
 	display->modes = kcalloc(display_mode_count, sizeof(*display->modes),
 			GFP_KERNEL);
 	if (!display->modes) {
@@ -8559,8 +8662,15 @@ int dsi_display_get_panel_vfp(void *dsi_display,
 	struct dsi_display *display = (struct dsi_display *)dsi_display;
 	struct dsi_host_common_cfg *host;
 
-	if (!display || !display->panel)
+	if (!display)
 		return -EINVAL;
+
+	if (!display->panel)
+		return -EINVAL;
+
+	/* no DT timing nodes: caller uses drm mode's vsync gap as fallback */
+	if (!display->panel->num_timing_nodes)
+		return -ENODATA;
 
 	if (!display->modes) {
 		DSI_ERR("display modes not available\n");
@@ -8581,6 +8691,12 @@ int dsi_display_get_panel_vfp(void *dsi_display,
 	if (!refresh_rate) {
 		mutex_unlock(&display->display_lock);
 		DSI_ERR("Null Refresh Rate\n");
+		return -EINVAL;
+	}
+
+	if (!display->modes) {
+		mutex_unlock(&display->display_lock);
+		DSI_ERR("display modes not initialized\n");
 		return -EINVAL;
 	}
 

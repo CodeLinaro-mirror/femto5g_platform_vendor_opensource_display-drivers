@@ -17,6 +17,7 @@
 #define MAX_SWING_LEVELS 4
 #define MAX_PRE_EMP_LEVELS 4
 #define MAX_DP_SHALLOW_MODE_RETRIES	5
+#define DP_MAX_LANE_TUNING_PARAMS	16
 
 enum dp_pm_type {
 	DP_CORE_PM,
@@ -237,6 +238,54 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
 }
 
 /**
+ * struct dp_lane_tuning_param - lane tuning parameter <id, value> pair
+ *
+ * @id: lane tuning parameter id parsed from device tree range 1-16 (inclusive)
+ * @value: lane tuning parameter value parsed from device tree range 0x00-0xff
+ */
+struct dp_lane_tuning_param {
+	u8 id;
+	u8 value;
+};
+
+/*!
+ * @def DP_SPD_VENDOR_NAME_LEN
+ * @brief DisplayPort SPD (Source Product Descriptor) InfoFrame vendor name
+ * field length, in bytes, within the CTA InfoFrame payload.
+ */
+#define DP_SPD_VENDOR_NAME_LEN   8
+
+/*!
+ * @def DP_SPD_PRODUCT_DESC_LEN
+ * @brief DisplayPort SPD (Source Product Descriptor) InfoFrame product
+ * description field length, in bytes, within the CTA InfoFrame payload.
+ */
+#define DP_SPD_PRODUCT_DESC_LEN  16
+
+/*!
+ * @def DP_SDP_SPD_DEFAULT_ID
+ * @brief Default GENERICx SDP register block id (GENERIC1) used to transmit
+ * the SPD InfoFrame when no override is specified in the device tree.
+ */
+#define DP_SDP_SPD_DEFAULT_ID 1
+
+/**
+ * struct dp_spd_info - Source Product Descriptor (SPD) vendor and product
+ * identification information
+ *
+ * @vendor_name: 8-byte vendor name as defined in DPCD
+ * @product_desc: 16-byte product description as defined in DPCD
+ * @sdp_spd_id: which GENERICx SDP register block to use to transmit the SPD
+ *   InfoFrame (defaults to DP_SDP_SPD_DEFAULT_ID if not specified in
+ *   device tree)
+ */
+struct dp_spd_info {
+	u8 vendor_name[DP_SPD_VENDOR_NAME_LEN];
+	u8 product_desc[DP_SPD_PRODUCT_DESC_LEN];
+	u8 sdp_spd_id;
+};
+
+/**
  * struct dp_parser - DP parser's data exposed to clients
  *
  * @pdev: platform data of the client
@@ -269,13 +318,17 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @pre_emp_hbr2_3: Pre-emphasis for HBR2 and HBR3 rates
  * @swing_hbr_rbr: Voltage swing levels for HBR and RBR rates
  * @pre_emp_hbr_rbr: Pre-emphasis for HBR and RBR rates
+ * @vendor_info: pointer to parsed vendor and product identification info
  * @valid_lt_params: valid lt params
+ * @lane_tuning_params: Array of lane tuning parameter <id, value> pairs.
+ * @lane_tuning_count: number of entries in lane_tuning_params
  * @parse: function to be called by client to parse device tree.
  * @get_io: function to be called by client to get io data.
  * @get_io_buf: function to be called by client to get io buffers.
  * @clear_io_buf: function to be called by client to clear io buffers.
  * @mst_fixed_display_type: mst display_type reserved for fixed topology
  * @display_type: display type as defined in device tree.
+ * @dp_cec_feature: dp cec feature status.
  */
 struct dp_parser {
 	struct platform_device *pdev;
@@ -290,6 +343,7 @@ struct dp_parser {
 	struct dp_aux_cfg aux_cfg[AUX_CFG_LEN];
 	u32 max_pclk_khz;
 	u32 max_lclk_khz;
+	u32 max_lane_count;
 	struct dp_hw_cfg hw_cfg;
 	bool has_mst;
 	bool has_mst_sideband;
@@ -312,6 +366,8 @@ struct dp_parser {
 	unsigned long qos_cpu_latency;
 	u32 pixel_base_off[MAX_DP_MST_STREAMS];
 	const char *mst_fixed_display_type[MAX_DP_MST_STREAMS];
+	bool dp_cec_feature;
+
 	const char *display_type;
 
 	u8 *swing_hbr2_3;
@@ -320,6 +376,11 @@ struct dp_parser {
 	u8 *swing_hbr_rbr;
 	u8 *pre_emp_hbr_rbr;
 	bool valid_lt_params;
+
+	struct dp_lane_tuning_param *lane_tuning_params;
+	u32 lane_tuning_count;
+
+	struct dp_spd_info *vendor_info;
 
 	int (*parse)(struct dp_parser *parser);
 	struct dp_io_data *(*get_io)(struct dp_parser *parser, char *name);
@@ -343,6 +404,23 @@ enum dp_mainlink_lane_num {
 };
 
 /**
+ * dp_parse_vendor_info() - parse vendor name and product description
+ *
+ * @parser: pointer to the parser's data.
+ * return: 0 on success, negative error code on failure.
+ *
+ * On success, parser->vendor_info is allocated and populated.
+ */
+int dp_parse_vendor_info(struct dp_parser *parser);
+
+/**
+ * dp_parser_clear_vendor_info() - free vendor info allocated by dp_parse_vendor_info
+ *
+ * @parser: pointer to the parser's data.
+ */
+void dp_parser_clear_vendor_info(struct dp_parser *parser);
+
+/**
  * dp_parser_get() - get the DP's device tree parser module
  *
  * @pdev: platform data of the client
@@ -354,6 +432,72 @@ enum dp_mainlink_lane_num {
  * can be parsed using this module.
  */
 struct dp_parser *dp_parser_get(struct platform_device *pdev);
+
+/**
+ * dp_parser_aux() - parses the DP PHY AUX configuration from device tree
+ *
+ * @parser: pointer to the parser's data.
+ * return: 0 on success, negative error code on failure.
+ *
+ * This function reads the PHY AUX config register offsets and their
+ * corresponding LUT values from the device tree and populates the
+ * aux_cfg array in the dp_parser structure.
+ */
+int dp_parser_aux(struct dp_parser *parser);
+
+/**
+ * dp_parser_link_training_params() - parses voltage swing and pre-emphasis
+ *                                    tables from device tree
+ *
+ * @parser: pointer to the parser's data.
+ *
+ * This function reads the per-rate voltage swing and pre-emphasis LUT values
+ * (HBR/RBR and HBR2/HBR3) from the device tree and populates the
+ * swing_hbr_rbr, pre_emp_hbr_rbr, swing_hbr2_3 and pre_emp_hbr2_3 arrays
+ * in the dp_parser structure. Falls back to default values when the device
+ * tree properties are absent.
+ */
+void dp_parser_link_training_params(struct dp_parser *parser);
+
+/**
+ * dp_parser_max_link_rate() - get the DP's max link rate from the device tree
+ *
+ * @parser: platform supported maximum link clock for the client
+ * return: void; unsuccessfully parsing max-lclk-frequency-khz
+ * sets the parser->max_lclk_khz to 0 preventing the HFI property
+ * from being sent.
+ *
+ * This function provides client capability to parse the device tree and
+ * set the max_link_rate supported by the platform in the parser data structure.
+ */
+void dp_parser_max_link_rate(struct dp_parser *parser);
+
+/**
+ * dp_parser_max_lane_count() - get the DP's max lane count from the device tree
+ *
+ * @parser: platform supported maximum numer of lanes for the client
+ * return: void; unsuccessfully parsing max-lane-count sets the
+ * parser->max_lane_count to 0 preventing the HFI property
+ * from being sent.
+ *
+ * This function provides client capability to parse the device tree and
+ * set the max_lane_count supported by the platform in the parser data structure.
+ */
+void dp_parser_max_lane_count(struct dp_parser *parser);
+
+/**
+ * dp_parser_lane_tuning_params() - get optional lane tuning parameters from device tree
+ *
+ * @parser: pointer to the parser's data.
+ * return: void; unsuccessfully parsing any lane tuning parameter leaves
+ * parser->lane_tuning_count at 0.
+ *
+ * This function provides client capability to parse an optional list of
+ * <id, value> pairs from the device tree ("qcom,lane-tuning-params") and
+ * populate the lane_tuning_id / lane_tuning_value arrays and
+ * lane_tuning_count in the parser data structure.
+ */
+void dp_parser_lane_tuning_params(struct dp_parser *parser);
 
 /**
  * dp_parser_put() - cleans the dp_parser module

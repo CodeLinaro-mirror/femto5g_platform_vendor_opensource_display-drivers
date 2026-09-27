@@ -50,6 +50,7 @@
 #include <drm/drm_probe_helper.h>
 #include <linux/version.h>
 #include <linux/pm_wakeup.h>
+#include <linux/suspend.h>
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 #include <drm/drm_irq.h>
 #endif
@@ -100,6 +101,11 @@
 	} while (0)
 
 static DEFINE_MUTEX(msm_release_lock);
+
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
+static int msm_pm_freeze(struct device *dev);
+static int msm_pm_restore(struct device *dev);
+#endif
 
 #if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 static void msm_fb_output_poll_changed(struct drm_device *dev)
@@ -1311,6 +1317,7 @@ static void msm_lastclose(struct drm_device *dev)
 
 	msm_atomic_flush_display_threads(priv);
 
+#if (KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE)
 	if (priv->fbdev) {
 		rc = drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev);
 		if (rc)
@@ -1322,6 +1329,7 @@ static void msm_lastclose(struct drm_device *dev)
 			DRM_ERROR("client modeset commit failed: %d\n", rc);
 #endif /* (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE) */
 	}
+#endif /* KERNEL_VERSION(7, 1, 0) > LINUX_VERSION_CODE */
 
 	/* wait again, before kms driver does it's lastclose commit */
 	msm_wait_event_timeout(priv->pending_crtcs_event, !priv->pending_crtcs,
@@ -2111,6 +2119,11 @@ static int msm_pm_suspend(struct device *dev)
 	struct msm_drm_private *priv;
 	struct msm_kms *kms;
 
+#if IS_ENABLED(CONFIG_DEEPSLEEP)
+	if (pm_suspend_target_state == PM_SUSPEND_MEM) {
+		return msm_pm_freeze(dev);
+	}
+#endif
 	if (!dev)
 		return -EINVAL;
 
@@ -2136,6 +2149,11 @@ static int msm_pm_resume(struct device *dev)
 	struct msm_drm_private *priv;
 	struct msm_kms *kms;
 
+#if IS_ENABLED(CONFIG_DEEPSLEEP)
+	if (pm_suspend_target_state == PM_SUSPEND_MEM) {
+		return msm_pm_restore(dev);
+	}
+#endif
 	if (!dev)
 		return -EINVAL;
 
@@ -2156,7 +2174,7 @@ static int msm_pm_resume(struct device *dev)
 }
 #endif /* CONFIG_PM_SLEEP */
 
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
 static int msm_pm_freeze(struct device *dev)
 {
 	struct drm_device *ddev;
@@ -2200,7 +2218,7 @@ static int msm_pm_restore(struct device *dev)
 
 	return 0;
 }
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION || CONFIG_DEEPSLEEP */
 
 #if IS_ENABLED(CONFIG_PM)
 static int msm_runtime_suspend(struct device *dev)
@@ -2250,10 +2268,10 @@ static const struct dev_pm_ops msm_pm_ops = {
 	.suspend = msm_pm_suspend,
 	.resume = msm_pm_resume,
 #endif /* CONFIG_PM_SLEEP */
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION) || IS_ENABLED(CONFIG_DEEPSLEEP)
 	.freeze = msm_pm_freeze,
 	.restore = msm_pm_restore,
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION || CONFIG_DEEPSLEEP */
 	SET_RUNTIME_PM_OPS(msm_runtime_suspend, msm_runtime_resume, NULL)
 };
 
@@ -2474,11 +2492,11 @@ msm_gem_smmu_address_space_get(struct drm_device *dev,
 	const struct msm_kms_funcs *funcs;
 	struct msm_gem_address_space *aspace;
 
-	if (!mdss_iommu_present(dev))
-		return ERR_PTR(-ENODEV);
-
 	if ((!dev) || (!dev->dev_private))
 		return ERR_PTR(-EINVAL);
+
+	if (!mdss_iommu_present(dev))
+		return ERR_PTR(-ENODEV);
 
 	priv = dev->dev_private;
 	kms = priv->kms;
@@ -2694,15 +2712,26 @@ static struct platform_driver msm_platform_driver = {
 
 static int __init msm_drm_register(void)
 {
+	struct device_node *node;
+
 	if (!modeset)
 		return -EINVAL;
 
+	/* Skips init when display node is either not available or disabled. */
+	node = of_find_matching_node(NULL, dt_match);
+	if (!of_device_is_available(node)) {
+		of_node_put(node);
+		SDE_INFO("Display device node not found\n");
+		return -ENODEV;
+	}
+	of_node_put(node);
+
 	DBG("init");
-	msm_lsr_init();
 	sde_rsc_rpmh_register();
 	sde_rsc_register();
 	sde_cesta_register();
 	msm_smmu_driver_init();
+	msm_lsr_init();
 	sde_wb_register();
 	platform_driver_register(&msm_platform_driver);
 	dsi_display_register();

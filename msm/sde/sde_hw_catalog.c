@@ -104,6 +104,7 @@
 #define LINE_MODE_WB_OFFSET		2
 
 #define QULTIV_DISP_GDSC2_DISABLED	0x7
+#define QULTIV_DISP_GDSC2_DISABLED_1	0x2
 #define SDE_PERF_MAX_CORE_CLK_RATE      650000000
 #define SDE_PERF_SYS_CACHE_ENABLE       0xffffffff
 
@@ -240,6 +241,7 @@ enum sde_prop {
 	SMART_DMA_REV,
 	IDLE_PC,
 	DDR_TYPE,
+	ENABLE_HIBERNATION,
 	WAKEUP_WITH_TOUCH,
 	DEST_SCALER,
 	SMART_PANEL_ALIGN_MODE,
@@ -700,6 +702,7 @@ static struct sde_prop_type sde_prop[] = {
 	{SMART_DMA_REV, "qcom,sde-smart-dma-rev", false, PROP_TYPE_STRING},
 	{IDLE_PC, "qcom,sde-has-idle-pc", false, PROP_TYPE_BOOL},
 	{DDR_TYPE, "qcom,sde-ddr-type", false, PROP_TYPE_U32_ARRAY},
+	{ENABLE_HIBERNATION, "qcom,sde-enable-hibernation", false, PROP_TYPE_BOOL},
 	{WAKEUP_WITH_TOUCH, "qcom,sde-wakeup-with-touch", false,
 			PROP_TYPE_BOOL},
 	{DEST_SCALER, "qcom,sde-has-dest-scaler", false, PROP_TYPE_BOOL},
@@ -1686,14 +1689,11 @@ static int _sde_sspp_setup_vigs(struct device_node *np,
 	struct device_node *snp = NULL;
 	int vig_count = 0, vcm_count = 0;
 	const char *type;
-	struct sde_qultivate_config_v1 *config_v1 = NULL;
+	struct sde_qultivate_config *qultiv_cfg = sde_cfg->qultivate_cfg;
 
 	snp = of_get_child_by_name(np, sspp_prop[SSPP_VIG_BLOCKS].prop_name);
 	if (!snp)
 		return 0;
-
-	if (sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV1)
-		config_v1 = sde_cfg->qultivate_cfg;
 
 	/* Assume sub nodes are in rect order */
 	vcm_count = of_get_child_count(snp);
@@ -1744,7 +1744,7 @@ static int _sde_sspp_setup_vigs(struct device_node *np,
 		of_property_read_string_index(np,
 				sspp_prop[SSPP_TYPE].prop_name, i, &type);
 		if (strcmp(type, "vig") ||
-			(config_v1 && config_v1->enabled && (vig_count >= config_v1->vig_count)))
+			(qultiv_cfg && qultiv_cfg->enabled && (vig_count >= qultiv_cfg->vig_count)))
 			continue;
 
 		sblk->maxlinewidth = sde_cfg->vig_sspp_linewidth;
@@ -1927,14 +1927,11 @@ static int _sde_sspp_setup_dmas(struct device_node *np,
 {
 	int i = 0, j;
 	int rc = 0, dma_count = 0, dgm_count = 0;
-	struct sde_qultivate_config_v1 *config_v1 = NULL;
+	struct sde_qultivate_config *qultiv_cfg = sde_cfg->qultivate_cfg;
 	struct sde_dt_props *props[SSPP_SUBBLK_COUNT_MAX] = {NULL, NULL};
 	struct sde_dt_props *props_tmp = NULL;
 	struct device_node *snp = NULL;
 	const char *type;
-
-	if (sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV1)
-		config_v1 = sde_cfg->qultivate_cfg;
 
 	snp = of_get_child_by_name(np, sspp_prop[SSPP_DMA_BLOCKS].prop_name);
 	if (snp) {
@@ -1982,7 +1979,7 @@ static int _sde_sspp_setup_dmas(struct device_node *np,
 		of_property_read_string_index(np,
 				sspp_prop[SSPP_TYPE].prop_name, i, &type);
 		if (strcmp(type, "dma") ||
-			(config_v1 && config_v1->enabled && (dma_count >= config_v1->dma_count)))
+			(qultiv_cfg && qultiv_cfg->enabled && (dma_count >= qultiv_cfg->dma_count)))
 			continue;
 
 		sblk->maxupscale = SSPP_UNITY_SCALE;
@@ -2190,7 +2187,8 @@ static void sde_sspp_set_features(struct sde_mdss_cfg *sde_cfg,
 
 	if (props->exists[SSPP_MAX_PER_PIPE_BW])
 		sblk->max_per_pipe_bw = PROP_VALUE_ACCESS(props->values,
-				SSPP_MAX_PER_PIPE_BW, sspp_index);
+				SSPP_MAX_PER_PIPE_BW,
+				sde_cfg->ddr_list_index * sde_cfg->sspp_count + sspp_index);
 	else
 		sblk->max_per_pipe_bw = DEFAULT_MAX_PER_PIPE_BW;
 
@@ -2225,10 +2223,7 @@ static int _sde_sspp_setup_cmn(struct device_node *np,
 	struct sde_dt_props *props;
 	struct sde_sspp_cfg *sspp;
 	struct sde_sspp_sub_blks *sblk;
-	struct sde_qultivate_config_v1 *config_v1 = NULL;
-
-	if (sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV1)
-		config_v1 = sde_cfg->qultivate_cfg;
+	struct sde_qultivate_config *qultiv_cfg = sde_cfg->qultivate_cfg;
 
 	props = sde_get_dt_props(np, SSPP_PROP_MAX, sspp_prop,
 			ARRAY_SIZE(sspp_prop), &off_count);
@@ -2260,12 +2255,14 @@ static int _sde_sspp_setup_cmn(struct device_node *np,
 		of_property_read_string_index(np,
 				sspp_prop[SSPP_TYPE].prop_name, i, &type);
 		if (!strcmp(type, "vig")) {
-			if (config_v1 && config_v1->enabled && (vig_count >= config_v1->vig_count))
+			if (qultiv_cfg && qultiv_cfg->enabled &&
+					(vig_count >= qultiv_cfg->vig_count))
 				continue;
 			else
 				vig_count++;
 		} else if (!strcmp(type, "dma")) {
-			if (config_v1 && config_v1->enabled && (dma_count >= config_v1->dma_count))
+			if (qultiv_cfg && qultiv_cfg->enabled &&
+					(dma_count >= qultiv_cfg->dma_count))
 				continue;
 			else
 				dma_count++;
@@ -2542,11 +2539,13 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 	u32 mixer_base, mixer_id, parent_lm;
 	struct device_node *snp = NULL;
 	struct sde_dt_props *props, *blend_props, *blocks_props = NULL;
+	struct sde_qultivate_config *qultiv_cfg;
 
 	if (!sde_cfg) {
 		SDE_ERROR("invalid argument input param\n");
 		return -EINVAL;
 	}
+	qultiv_cfg = sde_cfg->qultivate_cfg;
 	max_blendstages = sde_cfg->max_mixer_blendstages;
 
 	props = sde_get_dt_props(np, MIXER_PROP_MAX, mixer_prop,
@@ -2588,6 +2587,28 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 		mixer_base = PROP_VALUE_ACCESS(props->values, MIXER_OFF, i);
 		if (!mixer_base)
 			continue;
+
+		/* only parse limited mixers when qultiv fuse enabled,
+		 * exempt dummy (DCWB) mixers. advance pp_idx (without
+		 * consuming pp_count) and dspp/ds idx for skipped real
+		 * mixers to maintain correct DTS positional mapping for
+		 * all subsequent mixers including DCWB.
+		 */
+		if (qultiv_cfg && qultiv_cfg->enabled &&
+				(sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV2) &&
+				(mixer_base != DUMMY_SDE_BLOCK_BASE) &&
+				(mixer_count >= qultiv_cfg->mixer_count)) {
+			pp_idx++;
+			if (dspp_count > 0) {
+				dspp_count--;
+				dspp_idx++;
+			}
+			if (ds_count > 0) {
+				ds_count--;
+				ds_idx++;
+			}
+			continue;
+		}
 
 		mixer = sde_cfg->mixer + mixer_count;
 
@@ -2673,6 +2694,7 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 		ds_idx++;
 
 		mixer_count++;
+		sde_cfg->mixer_count = mixer_count;
 		/*
 		 * Since each 3dmux is assigned to a pair of LM,
 		 * increment this idx only at even LM counts
@@ -2709,7 +2731,6 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 		}
 	}
 
-	sde_cfg->mixer_count = mixer_count;
 	_sde_lm_noise_parse_dt(np, sde_cfg);
 
 end:
@@ -3935,11 +3956,13 @@ static int sde_dsc_parse_dt(struct device_node *np,
 	const char *rev;
 	struct sde_dsc_cfg *dsc;
 	struct sde_dsc_sub_blks *sblk;
+	struct sde_qultivate_config *qultiv_cfg;
 
 	if (!sde_cfg) {
 		SDE_ERROR("invalid argument\n");
 		return -EINVAL;
 	}
+	qultiv_cfg = sde_cfg->qultivate_cfg;
 
 	prop_value = kvzalloc(DSC_PROP_MAX *
 			sizeof(struct sde_prop_value), GFP_KERNEL);
@@ -3950,6 +3973,13 @@ static int sde_dsc_parse_dt(struct device_node *np,
 		&off_count);
 	if (rc)
 		goto end;
+
+	/* only parse limited dsc blocks when qultiv fuse enabled */
+	if (qultiv_cfg && qultiv_cfg->enabled &&
+			(sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV2) &&
+			(off_count > qultiv_cfg->dsc_count)) {
+		off_count = qultiv_cfg->dsc_count;
+	}
 
 	sde_cfg->dsc_count = off_count;
 
@@ -4670,6 +4700,8 @@ static int sde_pp_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 	struct sde_prop_value *prop_value = NULL;
 	bool prop_exists[PP_PROP_MAX];
 	u32 off_count, major_version;
+	int pp_count = 0;
+	struct sde_qultivate_config *qultiv_cfg;
 	struct sde_pingpong_cfg *pp;
 	struct sde_pingpong_sub_blks *sblk;
 
@@ -4691,8 +4723,6 @@ static int sde_pp_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 	if (rc)
 		goto end;
 
-	sde_cfg->pingpong_count = off_count;
-
 	if (off_count > MAX_BLOCKS) {
 		SDE_ERROR("invalid pingpong count %d\n", off_count);
 		rc = -EINVAL;
@@ -4704,9 +4734,17 @@ static int sde_pp_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 	if (rc)
 		goto end;
 
+	qultiv_cfg = sde_cfg->qultivate_cfg;
 	major_version = SDE_HW_MAJOR(sde_cfg->hw_rev);
 	for (i = 0; i < off_count; i++) {
-		pp = sde_cfg->pingpong + i;
+		/* skip non-cwb pp blocks beyond mixer limit when qultiv fuse enabled */
+		if (qultiv_cfg && qultiv_cfg->enabled &&
+				(sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV2) &&
+				!PROP_VALUE_ACCESS(prop_value, PP_CWB, i) &&
+				(pp_count >= qultiv_cfg->mixer_count))
+			continue;
+
+		pp = sde_cfg->pingpong + sde_cfg->pingpong_count;
 		sblk = kvzalloc(sizeof(*sblk), GFP_KERNEL);
 		if (!sblk) {
 			rc = -ENOMEM;
@@ -4745,6 +4783,8 @@ static int sde_pp_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 			set_bit(SDE_PINGPONG_CWB, &pp->features);
 			if (test_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features))
 				sde_cfg->dcwb_count++;
+		} else {
+			pp_count++;
 		}
 		pp->dcwb_id = (sde_cfg->dcwb_count > 0) ? sde_cfg->dcwb_count : DCWB_MAX;
 
@@ -4794,6 +4834,7 @@ static int sde_pp_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 			sblk->dither.base = 0x0;
 			sblk->dither.len = 0;
 		}
+		sde_cfg->pingpong_count++;
 	}
 
 end:
@@ -4915,6 +4956,7 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 		set_bit(SDE_FEATURE_DIM_LAYER, cfg->features);
 	if (PROP_VALUE_ACCESS(props->values, IDLE_PC, 0))
 		set_bit(SDE_FEATURE_IDLE_PC, cfg->features);
+	cfg->enable_hibernation = PROP_VALUE_ACCESS(props->values,ENABLE_HIBERNATION, 0);
 	if (PROP_VALUE_ACCESS(props->values, WAKEUP_WITH_TOUCH, 0))
 		set_bit(SDE_FEATURE_TOUCH_WAKEUP, cfg->features);
 	cfg->pipe_order_type = PROP_VALUE_ACCESS(props->values,
@@ -6581,6 +6623,7 @@ static void _sde_get_hw_caps_for_malabar(struct sde_mdss_cfg *sde_cfg, uint32_t 
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
 	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
+	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 }
 
 
@@ -6920,6 +6963,53 @@ static void _sde_get_hw_caps_for_art(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	sde_cfg->has_demura_single_rect_support = true;
 }
 
+static void _sde_get_hw_caps_for_coast(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
+	set_bit(SDE_FEATURE_DUAL_DEDICATED_CWB, sde_cfg->features);
+	set_bit(SDE_FEATURE_CWB_DITHER, sde_cfg->features);
+	set_bit(SDE_FEATURE_CWB_CROP, sde_cfg->features);
+	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
+	set_bit(SDE_FEATURE_HDR_PLUS, sde_cfg->features);
+	set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+	set_bit(SDE_MDP_DHDR_MEMPOOL_4K_EXT, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_VIG_P010, sde_cfg->features);
+	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
+	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+	set_bit(SDE_FEATURE_FP16, sde_cfg->features);
+	set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
+	set_bit(SDE_FEATURE_A10_Y10, sde_cfg->features);
+	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
+	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
+	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
+	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
+	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
+	set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);
+	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
+	set_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features);
+	set_bit(SDE_FEATURE_DS_PU_SUPPORTED, sde_cfg->features);
+	sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
+	sde_cfg->autorefresh_disable_seq = AUTOREFRESH_DISABLE_SEQ2;
+	sde_cfg->ppb_sz_program = SDE_PPB_SIZE_THRU_PINGPONG;
+	sde_cfg->perf.min_prefill_lines = 40;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->qos_target_time_ns = 11160;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_2;
+	sde_cfg->uidle_cfg.uidle_rev = SDE_UIDLE_VERSION_1_0_4;
+	sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
+	sde_cfg->mdss_hw_block_size = 0x15c;
+	sde_cfg->max_bw_upvote_threshold_ns = DEFAULT_BW_UPVOTE_THRESHOLD_NS;
+	sde_cfg->demura_supported[SSPP_DMA1][0] = BIT(DEMURA_0);
+	sde_cfg->has_line_insertion = true;
+	sde_cfg->osc_clk_rate = 38400000;
+}
+
 static void _sde_get_hw_caps_for_pebble(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
@@ -6947,6 +7037,10 @@ static void _sde_get_hw_caps_for_pebble(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
+	set_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map);
+	set_bit(SDE_SYS_CACHE_DISP_WB, sde_cfg->sde_sys_cache_type_map);
+	set_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_cfg->features);
+	set_bit(SDE_FEATURE_SYS_CACHE_STALING, sde_cfg->features);
 	set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);
 	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 	set_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features);
@@ -7125,6 +7219,7 @@ static void _sde_get_hw_caps_for_seraph(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
+	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 	set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
 	set_bit(SDE_FEATURE_LSR, sde_cfg->features);
 	set_bit(SDE_SYS_CACHE_LSR_MODE, sde_cfg->sde_sys_cache_type_map);
@@ -7162,7 +7257,9 @@ static void _sde_get_hw_caps_for_pikachu(struct sde_mdss_cfg *sde_cfg, uint32_t 
 	set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
 	set_bit(SDE_FEATURE_BATCH_COMMIT, sde_cfg->features);
 	set_bit(SDE_FEATURE_GMU_REPROJ, sde_cfg->features);
+	set_bit(SDE_FEATURE_FRAME_SEQ_CHECK, sde_cfg->features);
 	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
+	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;
 	sde_cfg->vbif_qos_nlvl = 8;
 	sde_cfg->ts_prefill_rev = 2;
@@ -7324,6 +7421,7 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_830, _sde_get_hw_caps_for_parrot},
 	{SDE_HW_VER_E00, _sde_get_hw_caps_for_art},
 	{SDE_HW_VER_E30, _sde_get_hw_caps_for_pebble},
+	{SDE_HW_VER_E40, _sde_get_hw_caps_for_coast},
 };
 
 static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
@@ -7558,6 +7656,8 @@ void sde_hw_catalog_deinit(struct sde_mdss_cfg *sde_cfg)
 
 	kvfree(sde_cfg->dnsc_blur_filters);
 
+	kfree(sde_cfg->qultivate_cfg);
+
 	kvfree(sde_cfg);
 }
 
@@ -7611,7 +7711,7 @@ static int sde_hw_ver_parse_dt(struct drm_device *dev, struct device_node *np,
 	if (prop_exists[SDE_HW_QULTIVATE_VERSION])
 		cfg->qultivate_rev = PROP_VALUE_ACCESS(prop_value, SDE_HW_QULTIVATE_VERSION, 0);
 	else
-		cfg->qultivate_rev = 0;
+		cfg->qultivate_rev = SDE_QULTIVATE_SW_NONE;
 
 end:
 	kvfree(prop_value);
@@ -7695,22 +7795,25 @@ static int sde_hw_check_ssip_fuse(struct drm_device *dev, struct sde_mdss_cfg *s
 static int sde_hw_check_qultivate_fuse(struct drm_device *dev, struct sde_mdss_cfg *sde_cfg)
 {
 	struct platform_device *pdev;
-	struct sde_qultivate_config_v1 *config_v1;
-	int rc = -EINVAL;
+	struct sde_qultivate_config *qultiv_cfg = NULL;
+	int rc = 0;
 	uint32_t fuse = 0;
-	bool enable = false;
 	int disp_part_count = 0;
 	u32 *part_info = NULL;
+	bool qultiv_enabled = false;
 
 	if (!dev || !dev->dev || !sde_cfg) {
 		SDE_ERROR("invalid input\n");
-		return rc;
+		return -EINVAL;
 	}
+
+	if (sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_NONE)
+		return 0;
 
 	pdev = to_platform_device(dev->dev);
 	rc = sde_hw_parse_fuse_configuration(pdev, "disp_qultiv_fuse", &fuse);
 	if (rc) {
-		SDE_INFO("disp_qultiv_fuse config is not present\n");
+		SDE_DEBUG("disp_qultiv_fuse config is not present\n");
 		return 0;
 	}
 
@@ -7726,25 +7829,50 @@ static int sde_hw_check_qultivate_fuse(struct drm_device *dev, struct sde_mdss_c
 		}
 	}
 
-	if (sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV1) {
-		config_v1 = kzalloc(sizeof(struct sde_qultivate_config_v1), GFP_KERNEL);
-		if (!config_v1) {
-			kfree(part_info);
-			return -ENOMEM;
-		}
-		config_v1->enabled = (fuse & BIT(29) ||
-			(part_info != NULL && part_info[0] == QULTIV_DISP_GDSC2_DISABLED));
-		config_v1->vig_count = 2;
-		config_v1->dma_count = 4;
-		config_v1->gdsc2_blocked = true;
-		sde_cfg->qultivate_cfg = (void *)config_v1;
-		SDE_INFO("qultivate_enable:%d ,SW version:%d\n",
-				config_v1->enabled, sde_cfg->qultivate_rev);
-	} else if (enable)
-		SDE_ERROR("display_qualtivate fuse is enabled, but sw version is not correct");
+	qultiv_enabled = (fuse & BIT(29) ||
+			(part_info && (part_info[0] == QULTIV_DISP_GDSC2_DISABLED ||
+			 part_info[0] == QULTIV_DISP_GDSC2_DISABLED_1)));
+	if (!qultiv_enabled) {
+		rc = 0;
+		SDE_INFO("disp qultiv disabled\n");
+		goto end;
+	}
 
+	qultiv_cfg = kzalloc(sizeof(struct sde_qultivate_config), GFP_KERNEL);
+	if (!qultiv_cfg) {
+		rc = -ENOMEM;
+		goto end;
+	}
+	qultiv_cfg->enabled = qultiv_enabled;
+
+	switch (sde_cfg->qultivate_rev) {
+	case SDE_QULTIVATE_SW_REV1:
+		qultiv_cfg->vig_count = 2;
+		qultiv_cfg->dma_count = 5;
+		qultiv_cfg->gdsc2_blocked = true;
+		break;
+	case SDE_QULTIVATE_SW_REV2:
+		qultiv_cfg->vig_count = 2;
+		qultiv_cfg->dma_count = 5;
+		qultiv_cfg->mixer_count = 4;
+		qultiv_cfg->dsc_count = 4;
+		qultiv_cfg->gdsc2_blocked = true;
+		break;
+	default:
+		rc = -EINVAL;
+		SDE_ERROR("invalid SDE qultiv version\n");
+		break;
+	}
+
+	if (!rc) {
+		sde_cfg->qultivate_cfg = qultiv_cfg;
+		SDE_INFO("disp qultiv enabled, SW version:%d\n", sde_cfg->qultivate_rev);
+	}
+
+end:
+	if (rc)
+		kfree(qultiv_cfg);
 	kfree(part_info);
-
 	return rc;
 }
 

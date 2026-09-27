@@ -75,6 +75,7 @@ struct hdmi_panel {
 	int (*enable)(struct hdmi_panel *hdmi_panel);
 	int (*disable)(struct hdmi_panel *hdmi_panel);
 	int (*get_panel_on)(struct hdmi_panel *hdmi_panel);
+	int (*hdr_supported)(struct hdmi_panel *hdmi_panel);
 	int (*setup_hdr)(struct hdmi_panel *hdmi_panel,
 		struct drm_msm_ext_hdr_metadata *hdr_meta,
 		bool dhdr_update, u64 core_clk_rate, bool flush);

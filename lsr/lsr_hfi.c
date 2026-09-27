@@ -44,8 +44,11 @@
 
 #define CSC_SCRATCH_BUF_SIZE 0x1000
 /* GCX needs 16K of scratch memory to accommodate up to 16 UI layers*/
-#define GCX_SCRATCH_BUF_SIZE 0x4000
+#define GCX_SCRATCH_BUF_SIZE 0x6000
 #define ARP_BUF_SIZE     0x800000
+
+#define LSR_SSR_POLL_INTERVAL_US  50
+#define LSR_SSR_POLL_MAX_US       400000
 
 /* Poll interval in uS */
 #define POLL_INTERVAL_US 100
@@ -151,7 +154,13 @@ static inline void __set_state(struct lsr_device *device,
 
 static inline bool __core_in_valid_state(struct lsr_device *device)
 {
-	return device->state != IRIS_STATE_DEINIT;
+	/*
+	 * A freshly kzalloc'd lsr_device has state == 0, which is neither
+	 * IRIS_STATE_INIT nor IRIS_STATE_DEINIT. Such a core never completed
+	 * iris_hfi_core_init() (power domains/bus locks not set up), so it must
+	 * not be treated as valid - require an explicit INIT state.
+	 */
+	return device->state == IRIS_STATE_INIT;
 }
 
 static inline bool is_sys_cache_present(struct lsr_device *device)
@@ -1494,6 +1503,20 @@ static int iris_hfi_core_release(void *dev)
 	}
 
 	mutex_lock(&device->lock);
+	/*
+	 * If the core never completed init (e.g. FW load failed at boot),
+	 * its resources (power domains, bus locks) were never set up. Running
+	 * the resume/power-on path here would dereference NULL pd_dev/bus and
+	 * crash, so skip recovery for a core that never booted.
+	 */
+	if (!__core_in_valid_state(device)) {
+		dprintk(LSR_WARN,
+			"Core not initialized (state:%d), skip release\n",
+			device->state);
+		mutex_unlock(&device->lock);
+		return -EINVAL;
+	}
+
 	dprintk(LSR_WARN, "Core releasing\n");
 	if (device->res->pm_qos.latency_us &&
 		device->res->pm_qos.pm_qos_hdls) {
@@ -1763,7 +1786,7 @@ static void __dump_sfr_log(struct lsr_device *device)
 static int lsr_ssr_handler(struct lsr_device *device,
 		enum lsr_subsytem_error_type ssr_error_type)
 {
-	int rc = 0, ref_count, wait_count = 0;
+	int rc = 0, ref_count, wait_count = 0, poll_us = 0;
 
 	if (!device || !lsr_driver || !lsr_driver->drm_dev) {
 		dprintk(LSR_ERR, "Invalid params\n");
@@ -1773,7 +1796,20 @@ static int lsr_ssr_handler(struct lsr_device *device,
 	mutex_lock(&device->lock);
 	if (atomic_read(&device->lsr_ssr_in_progress)) {
 		mutex_unlock(&device->lock);
-		dprintk(LSR_WARN, "LSR_SRR is already in progress\n");
+		dprintk(LSR_WARN, "LSR_SRR is already in progress, waiting\n");
+		while (atomic_read(&device->lsr_ssr_in_progress) &&
+					poll_us < LSR_SSR_POLL_MAX_US) {
+			usleep_range(LSR_SSR_POLL_INTERVAL_US, LSR_SSR_POLL_INTERVAL_US + 10);
+			poll_us += LSR_SSR_POLL_INTERVAL_US;
+		}
+
+		mutex_lock(&device->lock);
+		if (atomic_read(&device->lsr_ssr_in_progress)) {
+			dprintk(LSR_WARN, "LSR_SSR is still in progress after %d us\n",
+					LSR_SSR_POLL_MAX_US);
+		} else
+			dprintk(LSR_INFO, "LSR_SSR is done, returning\n");
+		mutex_unlock(&device->lock);
 		return rc;
 	}
 
@@ -1793,19 +1829,7 @@ static int lsr_ssr_handler(struct lsr_device *device,
 	rc = hfi_lsr_wait_for_display_off(lsr_driver->drm_dev);
 	if (rc) {
 		dprintk(LSR_ERR, "LSR display wait for turn off failed rc:%d\n", rc);
-		return rc;
-	}
-
-	rc = lsr_fw_reset();
-	if (rc) {
-		dprintk(LSR_ERR, "Failed to reset LSR FW:%d\n", rc);
-		return rc;
-	}
-
-	rc = hfi_reset_hwfence(lsr_driver->drm_dev);
-	if (rc) {
-		dprintk(LSR_ERR, "failed to reset hwfence for DCP:%d\n", rc);
-		return rc;
+		//return rc;
 	}
 
 	do {
@@ -1820,16 +1844,28 @@ static int lsr_ssr_handler(struct lsr_device *device,
 			break;
 	} while (ref_count);
 
-	if (atomic_read(&device->lsr_ssr_in_progress)) {
-		mutex_lock(&device->lock);
-		atomic_set(&device->lsr_ssr_in_progress, 0);
-		mutex_unlock(&device->lock);
+	rc = lsr_fw_reset();
+	if (rc) {
+		dprintk(LSR_ERR, "Failed to reset LSR FW:%d\n", rc);
+		return rc;
+	}
+
+	rc = hfi_reset_hwfence(lsr_driver->drm_dev);
+	if (rc) {
+		dprintk(LSR_ERR, "failed to reset hwfence for DCP:%d\n", rc);
+		return rc;
 	}
 
 	rc = hfi_lsr_notify_ssr_event(HFI_DEVICE_SSR_EVENT_END, lsr_driver->drm_dev);
 	if (rc) {
 		dprintk(LSR_ERR, "Failed to notify SSR event rc:%d\n", rc);
 		return rc;
+	}
+
+	if (atomic_read(&device->lsr_ssr_in_progress)) {
+		mutex_lock(&device->lock);
+		atomic_set(&device->lsr_ssr_in_progress, 0);
+		mutex_unlock(&device->lock);
 	}
 
 	dprintk(LSR_INFO, "LSR_SSR end\n");
@@ -3791,6 +3827,21 @@ int lsr_fw_reset(void)
 		return -EINVAL;
 	}
 
+	/*
+	 * Do not run FW-reset recovery on a core that never fully booted.
+	 * Without a completed init the power domains, bus locks and hw fence
+	 * handle are not set up, and the release/resume path below would
+	 * dereference NULL (crash). This guards the DCP-SSR recovery path when
+	 * LSR itself failed to come up (e.g. FW load failure at boot).
+	 */
+	if (!device || !__core_in_valid_state(device) ||
+			!device->hwfence_data.hw_fence_handle) {
+		dprintk(LSR_WARN,
+			"LSR core not ready, skip FW reset (dev:%pK state:%d)\n",
+			device, device ? device->state : -1);
+		return -EINVAL;
+	}
+
 	ops_tbl = core->dev_ops;
 
 	rc = call_hfi_op(ops_tbl, core_release, ops_tbl->hfi_device_data);
@@ -3818,7 +3869,7 @@ int hfi_lsr_reset(void)
 {
 	struct msm_lsr_core *core;
 	struct lsr_device *device;
-	int rc = 0;
+	int rc = 0, poll_us = 0;
 
 	core = lsr_driver->lsr_core;
 	if (core) {
@@ -3828,10 +3879,34 @@ int hfi_lsr_reset(void)
 		return -EINVAL;
 	}
 
+	/*
+	 * Skip FW reset if the LSR core never fully booted. Driving the
+	 * reset/recovery path on a core that failed init (e.g. FW load
+	 * failure at boot) would dereference resources that were never set
+	 * up. This guards the DCP-SSR recovery path when LSR itself is down.
+	 */
+	if (!lsr_core_is_ready()) {
+		dprintk(LSR_WARN, "LSR core not ready, skip lsr fw reset\n");
+		return -EINVAL;
+	}
+
 	mutex_lock(&device->lock);
 	if (atomic_read(&device->lsr_ssr_in_progress)) {
 		mutex_unlock(&device->lock);
-		dprintk(LSR_WARN, "LSR_SRR is already in progress, cannot reset LSR FW\n");
+		dprintk(LSR_WARN, "LSR_SRR is already in progress, waiting\n");
+		while (atomic_read(&device->lsr_ssr_in_progress) &&
+					poll_us < LSR_SSR_POLL_MAX_US) {
+			usleep_range(LSR_SSR_POLL_INTERVAL_US, LSR_SSR_POLL_INTERVAL_US + 10);
+			poll_us += LSR_SSR_POLL_INTERVAL_US;
+		}
+
+		mutex_lock(&device->lock);
+		if (atomic_read(&device->lsr_ssr_in_progress)) {
+			dprintk(LSR_WARN, "LSR_SSR is still in progress after %d us\n",
+					LSR_SSR_POLL_MAX_US);
+		} else
+			dprintk(LSR_INFO, "LSR_SSR is done, returning\n");
+		mutex_unlock(&device->lock);
 		return rc;
 	}
 
@@ -3857,4 +3932,30 @@ int hfi_lsr_reset(void)
 	}
 	dprintk(LSR_INFO, "HFI LSR FW reset end\n");
 	return rc;
+}
+
+bool lsr_core_is_ready(void)
+{
+	struct msm_lsr_core *core;
+	struct lsr_device *device;
+
+	if (!lsr_driver)
+		return false;
+
+	core = lsr_driver->lsr_core;
+	if (!core || !core->dev_ops)
+		return false;
+
+	device = core->dev_ops->hfi_device_data;
+	if (!device)
+		return false;
+
+	/*
+	 * The core is only usable once iris_hfi_core_init() completed
+	 * (state == IRIS_STATE_INIT) and the hw fence handle is set up.
+	 * Callers use this to avoid driving FW-reset/recovery on a core that
+	 * never booted.
+	 */
+	return __core_in_valid_state(device) &&
+		device->hwfence_data.hw_fence_handle != NULL;
 }

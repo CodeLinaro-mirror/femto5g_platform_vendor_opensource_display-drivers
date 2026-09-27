@@ -1133,13 +1133,23 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
 	return 0;
 }
 
-void hfi_lsr_display_disable_handler(u32 obj_id, u32 cmd_id,
-		void *payload, u32 size, struct hfi_prop_listener *listener)
+void hfi_lsr_display_disable_handler(struct hfi_packet_info *packet_info,
+		struct hfi_prop_listener *listener)
 {
 	struct drm_connector *conn;
 	struct hfi_connector *hfi_conn;
 	struct sde_connector *sde_conn;
+	u32 obj_id;
+	u32 cmd_id;
 	int ret = 0;
+
+	if (!packet_info) {
+		SDE_ERROR("Invalid packet_info\n");
+		return;
+	}
+
+	obj_id = packet_info->id;
+	cmd_id = packet_info->cmd;
 
 	hfi_conn = container_of(listener, struct hfi_connector, disable_listener);
 	if (!hfi_conn) {

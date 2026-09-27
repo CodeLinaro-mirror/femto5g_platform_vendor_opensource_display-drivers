@@ -507,6 +507,19 @@
  */
 #define HFI_COMMAND_DISPLAY_EVENT_PROG_LINE                                     0x04000019
 
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_DCS_CMD_ERROR - This is a DCP event command sent to Host to
+ *                                           notify that a DCS command transfer has failed.
+ *
+ * Hfi packet layout                : Value
+ * hfi_packet.payload_info (type)   : HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                   : HFI_COMMAND_DISPLAY_EVENT_DCS_CMD_ERROR
+ * hfi_packet.flags                 : HFI_RX_FLAGS_NONE
+ * hfi_packet.id                    : BITS 0:15 carry the display id
+ * hfi_packet.payload               : struct hfi_display_dcs_cmd_error_data
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_DCS_CMD_ERROR                                 0x0400001A
+
 #define HFI_COMMAND_DISPLAY_EVENT_END                                           0x04FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_EVENTS_H

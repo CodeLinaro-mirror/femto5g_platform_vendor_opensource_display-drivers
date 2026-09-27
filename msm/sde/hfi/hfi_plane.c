@@ -714,8 +714,8 @@ static int hfi_plane_populate_custom_kv_setter_props(struct sde_plane *plane, u3
 			disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
 			hfi_util_kv_helper_get_payload_addr(phfi->kv_props),
-			kv_count * sizeof(struct hfi_kv_pairs),
-			kv_count);
+			kv_count,
+			kv_count * sizeof(struct hfi_kv_pairs));
 	if (ret) {
 		HFI_ERROR_PLANE(phfi, "failed to send HFI commands\n");
 		goto end;
@@ -1009,12 +1009,12 @@ struct hfi_cmdbuf_t *hfi_plane_get_cmd_buf(struct drm_plane *plane)
 		return NULL;
 	}
 
-	if (plane->state && plane->state->crtc) {
+	if (plane->state && plane->state->crtc)
 		drm_crtc = plane->state->crtc;
-		if (!drm_crtc) {
-			SDE_ERROR("invalid drm_crtc\n");
-			return NULL;
-		}
+
+	if (!drm_crtc) {
+		SDE_ERROR("invalid drm_crtc\n");
+		return NULL;
 	}
 	disp_id = hfi_crtc_get_display_id(drm_crtc, drm_crtc->state);
 	if (disp_id == U32_MAX) {

@@ -482,7 +482,7 @@ struct sde_crtc_hal_funcs {
  * @ad_active     : list containing ad properties that are active
  * @crtc_lock     : crtc lock around create, destroy and access.
  * @frame_pending : Whether or not an update is pending
- * @kickoff_in_progress : boolean entry to check if kickoff is in progress
+ * @kickoff_in_progress : atomic entry to check if kickoff is in progress
  * @frame_events  : static allocation of in-flight frame events
  * @frame_event_list : available frame event list
  * @vblank_events  : static allocation of in-flight vblank events
@@ -561,6 +561,7 @@ struct sde_crtc_hal_funcs {
  * @rgb_hist_buffers: Array of pointers to RGB histogram buffer structures
  * @rgb_hist_buffer_lock: Mutex to protect access to RGB histogram buffers
  * @qrtc_buffer     : struct stores qrtc buffer related data
+ * @vblank_pm_disable: vblank has been disabled by pm runtime suspend
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -613,7 +614,7 @@ struct sde_crtc {
 	struct list_head vblank_event_list;
 	spinlock_t spin_lock;
 	spinlock_t event_spin_lock;
-	bool kickoff_in_progress;
+	atomic_t kickoff_in_progress;
 	unsigned long revalidate_mask;
 
 	/* for handling internal event thread */
@@ -704,8 +705,12 @@ struct sde_crtc {
 	struct sde_rgb_hist_buffer *rgb_hist_buffers[RGB_HISTOGRAM_BUFFER_SIZE];
 	struct mutex rgb_hist_buffer_lock;
 	struct sde_pa_hist_buffer pa_hist_buffers[PA_HIST_BUFFER_NUM];
+	bool cp_ssr_recovery_pending;
+	bool hw_events_ssr_recovery_pending;
 
 	struct sde_qrtc_buffer qrtc_buffer;
+
+	bool vblank_pm_disable;
 };
 
 enum sde_crtc_dirty_flags {
@@ -770,6 +775,7 @@ struct sde_line_insertion_param {
 				of loopback mode
  * @cac_mixer_roi: stores the mixer width and height for loopback mixers in crtc
  * @num_prim_mixers: number of mixers driving the primary display in loopback usecase
+ * @dnsc_res_changed: set when there is a request for cwb capture with dnsc enable
  */
 struct sde_crtc_state {
 	struct drm_crtc_state base;
@@ -813,6 +819,7 @@ struct sde_crtc_state {
 	struct sde_line_insertion_param line_insertion;
 	bool is_loopback_mode;
 	bool in_loopback_transition;
+	bool dnsc_res_changed;
 	struct sde_io_res cac_mixer_roi[MAX_MIXERS_PER_CRTC];
 	uint32_t num_prim_mixers;
 };
@@ -1270,7 +1277,8 @@ static inline bool sde_crtc_no_frame_in_progress(struct drm_crtc *crtc)
 	struct sde_crtc *sde_crtc = NULL;
 
 	sde_crtc = to_sde_crtc(crtc);
-	if (sde_crtc && !sde_crtc_frame_pending(crtc) && !sde_crtc->kickoff_in_progress)
+	if (sde_crtc && !sde_crtc_frame_pending(crtc) &&
+			!atomic_read(&sde_crtc->kickoff_in_progress))
 		return true;
 
 	return false;
@@ -1571,5 +1579,13 @@ void sde_crtc_cp_unmap_ltm_buffers(struct sde_crtc *sde_crtc, int num);
  */
 void sde_crtc_cp_unmap_rgb_hist_buffers(struct sde_crtc *sde_crtc);
 
+
+/**
+ * sde_crtc_register_power_event_cb - register or deregister the display
+ *	power event callback for all encoders attached to a CRTC.
+ * @crtc:   pointer to drm_crtc
+ * @enable: true to register, false to deregister
+ */
+void sde_crtc_register_power_event_cb(struct drm_crtc *crtc, bool enable);
 
 #endif /* _SDE_CRTC_H_ */

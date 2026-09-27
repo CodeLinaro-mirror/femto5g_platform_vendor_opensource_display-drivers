@@ -237,11 +237,15 @@ struct dsi_panel_timing_caps {
  * @cphy_enabled:                   HFI_PROPERTY_PANEL_CPHY_MODE
  * @esd_config:                     HFI_PROPERTY_PANEL_ESD_CONFIG
  * @esync_caps:                     HFI_PROPERTY_PANEL_ESYNC_CAPS
+ * @qsync_config:                   HFI_PROPERTY_PANEL_QSYNC_PARAMS
  * @dfps_caps:                      HFI_PROPERTY_PANEL_DFPS_CAPS
  * @lp11_init:                      HFI_PROPERTY_PANEL_LP11_INIT
  * @poms_caps:                      HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY
  * @custom_cmd_set_info:            HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO
  * @ulps_supported:                 HFI_PROPERTY_PANEL_ULPS_SUPPORTED
+ * @phy_tuning_config:              HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG
+ * @phy_tuning_config_valid:        true if phy_tuning_config has been populated
+ * @pll_config:                     HFI_PROPERTY_PANEL_PLL_CONFIG
  */
 struct dsi_panel_generic_caps {
 	u32 panel_name;
@@ -277,11 +281,15 @@ struct dsi_panel_generic_caps {
 	bool cphy_enabled;
 	struct hfi_panel_esd_config esd_config;
 	struct hfi_panel_esync_caps esync_caps;
+	struct hfi_qsync_params qsync_config;
 	struct hfi_panel_dfps_caps dfps_caps;
 	u32 lp11_init;
 	struct hfi_panel_operating_mode_caps poms_caps;
 	u32 custom_cmd_set_info[2]; /* [0]=start_index, [1]=count */
 	u32 ulps_supported;
+	struct hfi_panel_phy_tuning_config phy_tuning_config;
+	bool phy_tuning_config_valid;
+	struct hfi_panel_pll_config pll_config;
 };
 
 /**
@@ -316,13 +324,10 @@ int dsi_hfi_process_cmd_buf(struct hfi_client_t *hfi_client, struct hfi_cmdbuf_t
 
 /**
  * dsi_hfi_prop_handler() - handle/parse hfi properties
- * @UNIQUE_DISP_OR_OBJ_ID:	display/object ID
- * @CMD_ID: command ID
- * @payload: handle to payload
- * @size: size of payload
+ * @packet_info: handle to hfi packet info
  * @listener: handle to hfi property listener
  */
-void dsi_hfi_prop_handler(u32 UNIQUE_DISP_OR_OBJ_ID, u32 CMD_ID, void *payload, u32 size,
+void dsi_hfi_prop_handler(struct hfi_packet_info *packet_info,
 						struct hfi_prop_listener *listener);
 
 /**
@@ -492,5 +497,20 @@ int dsi_hfi_send_dcs_cmd_set_replace_cmd(struct dsi_display *display, bool resp_
  *         -EINVAL  if params are invalid or cmd_type is out of range
  */
 int dsi_hfi_exec_dcs_cmd_type(struct dsi_display *display, u32 cmd_type, bool resp_req);
+
+/**
+ * dsi_hfi_tx_cmd_set() - transfers a set of DSI write commands from host to DCP
+ *                        in a single HFI operation
+ * @display:              pointer to the DSI display structure
+ * @cmd_set:              pointer to the panel command set containing an array of DSI commands
+ *
+ * Packs all commands in @cmd_set into a single HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET
+ * packet, copying all TX payloads into one contiguous DCP-mapped shared memory region.
+ * This avoids the per-command HFI round-trip overhead of dsi_hfi_host_transfer_sub().
+ * Only write (TX) commands are supported; read commands are not handled by this function.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dsi_hfi_tx_cmd_set(struct dsi_display *display, struct dsi_panel_cmd_set *cmd_set);
 
 #endif

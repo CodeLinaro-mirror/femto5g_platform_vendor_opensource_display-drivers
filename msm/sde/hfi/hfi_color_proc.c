@@ -11,7 +11,9 @@
 #include "hfi_properties_display.h"
 #include "sde_kms.h"
 #include "sde_hw_dspp.h"
+#include "sde_color_processing.h"
 #include "hfi_kms.h"
+#include "hfi_crtc.h"
 
 static struct hfi_display_pa_dither hfi_pa_dither_cached[DPU_MAX][DSPP_MAX] = {};
 static u32 hfi_demura_backlight_cached[DPU_MAX][DSPP_MAX] = {};
@@ -25,6 +27,48 @@ static u32 hfi_pa_hist_ctrl_cached[DPU_MAX][DSPP_MAX] = {};
 #define U32_MASK_LOW 0xFFFFFFFFU
 #define U32_SHIFT_BITS 32
 #define HFI_PA_HIST_BUFFER_SIZE 2048
+
+static bool _hfi_cp_crtc_is_ltm_hist_requested(struct sde_crtc *sde_crtc)
+{
+	struct sde_cp_node *prop_node;
+	bool requested = false;
+
+	if (!sde_crtc)
+		return false;
+
+	mutex_lock(&sde_crtc->crtc_cp_lock);
+	list_for_each_entry(prop_node, &sde_crtc->cp_feature_list, cp_feature_list) {
+		if (prop_node->feature != SDE_CP_CRTC_DSPP_LTM_HIST_CTL)
+			continue;
+
+		requested = (prop_node->prop_val == LTM_HIST_ENABLED);
+		break;
+	}
+	mutex_unlock(&sde_crtc->crtc_cp_lock);
+
+	return requested;
+}
+
+static bool _hfi_cp_crtc_is_pa_hist_requested(struct sde_crtc *sde_crtc)
+{
+	struct sde_cp_node *prop_node;
+	bool requested = false;
+
+	if (!sde_crtc)
+		return false;
+
+	mutex_lock(&sde_crtc->crtc_cp_lock);
+	list_for_each_entry(prop_node, &sde_crtc->cp_feature_list, cp_feature_list) {
+		if (prop_node->feature != SDE_CP_CRTC_DSPP_HIST_CTRL)
+			continue;
+
+		requested = (prop_node->prop_val == HIST_ENABLED);
+		break;
+	}
+	mutex_unlock(&sde_crtc->crtc_cp_lock);
+
+	return requested;
+}
 
 void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data, enum msm_disp_op disp_op)
 {
@@ -344,6 +388,12 @@ void hfi_setup_dspp_pa_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 		return;
 	}
 
+	if (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers > DSPP_MAX) {
+		SDE_ERROR("Invalid dspp_start_idx %d or num_of_mixers %d\n",
+			hw_cfg->dspp_start_idx, hw_cfg->num_of_mixers);
+		return;
+	}
+
 	hfi_cfg = &hfi_pa_dither_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
 
 	if (!hw_cfg->payload) {
@@ -370,9 +420,10 @@ void hfi_setup_dspp_pa_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 				prop_id, ret);
 		else
 			SDE_DEBUG("non-broadcast feature: submitted to prop_helper\n");
-		/* reset the cached struct for current dpu_idx after submitting to FW */
-		memset(&hfi_pa_dither_cached[ctx->dpu_idx], 0,
-			   sizeof(hfi_pa_dither_cached[ctx->dpu_idx]));
+		/* reset only the current display's DSPP entries */
+		memset(&hfi_pa_dither_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx], 0,
+			   sizeof(hfi_pa_dither_cached[ctx->dpu_idx][0]) *
+			   hw_cfg->num_of_mixers);
 	}
 }
 
@@ -492,6 +543,12 @@ void hfi_setup_ltm_initv1_4(struct sde_hw_dspp *ctx, void *cfg)
 		return;
 	}
 
+	if (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers > DSPP_MAX) {
+		SDE_ERROR("Invalid dspp_start_idx %d or num_of_mixers %d\n",
+			hw_cfg->dspp_start_idx, hw_cfg->num_of_mixers);
+		return;
+	}
+
 	hfi_cfg = &hfi_ltm_init_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 4, hw_cfg->prop_id);
 
@@ -522,9 +579,10 @@ void hfi_setup_ltm_initv1_4(struct sde_hw_dspp *ctx, void *cfg)
 		else
 			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
 				hw_cfg->prop_id);
-		/* reset the cached struct for current dpu_idx after submitting to FW */
-		memset(&hfi_ltm_init_cached[ctx->dpu_idx], 0,
-			   sizeof(hfi_ltm_init_cached[ctx->dpu_idx]));
+		/* reset only the current display's DSPP entries */
+		memset(&hfi_ltm_init_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx], 0,
+			   sizeof(hfi_ltm_init_cached[ctx->dpu_idx][0]) *
+			   hw_cfg->num_of_mixers);
 	}
 }
 
@@ -547,6 +605,12 @@ void hfi_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg)
 
 	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
 		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	if (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers > DSPP_MAX) {
+		SDE_ERROR("Invalid dspp_start_idx %d or num_of_mixers %d\n",
+			hw_cfg->dspp_start_idx, hw_cfg->num_of_mixers);
 		return;
 	}
 
@@ -582,9 +646,9 @@ void hfi_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg)
 			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
 				hw_cfg->prop_id);
 
-		/* reset the cached struct for current dpu_idx after submitting to FW */
-		memset(&hfi_ltm_roi_cached[ctx->dpu_idx], 0,
-			   sizeof(hfi_ltm_roi_cached[ctx->dpu_idx]));
+		/* reset only the current display's DSPP entries */
+		memset(&hfi_ltm_roi_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx], 0,
+			   sizeof(hfi_ltm_roi_cached[ctx->dpu_idx][0]) * hw_cfg->num_of_mixers);
 	}
 }
 
@@ -607,6 +671,12 @@ void hfi_setup_dspp_ltm_hist_ctrlv1_2(struct sde_hw_dspp *ctx, void *cfg,
 	}
 
 
+	if (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers > DSPP_MAX) {
+		SDE_ERROR("Invalid dspp_start_idx %d or num_of_mixers %d\n",
+			hw_cfg->dspp_start_idx, hw_cfg->num_of_mixers);
+		return;
+	}
+
 	hfi_cfg = &hfi_ltm_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 2, hw_cfg->prop_id);
 
@@ -624,9 +694,10 @@ void hfi_setup_dspp_ltm_hist_ctrlv1_2(struct sde_hw_dspp *ctx, void *cfg,
 			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
 				hw_cfg->prop_id);
 
-		/* reset the cached struct for current dpu_idx after submitting to FW */
-		memset(&hfi_ltm_hist_ctrl_cached[ctx->dpu_idx], 0,
-			   sizeof(hfi_ltm_hist_ctrl_cached[ctx->dpu_idx]));
+		/* reset only the current display's DSPP entries */
+		memset(&hfi_ltm_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx], 0,
+			   sizeof(hfi_ltm_hist_ctrl_cached[ctx->dpu_idx][0]) *
+			   hw_cfg->num_of_mixers);
 	}
 }
 
@@ -644,6 +715,12 @@ void hfi_setup_dspp_ltm_threshv1(struct sde_hw_dspp *ctx, void *cfg)
 
 	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
 		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	if (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers > DSPP_MAX) {
+		SDE_ERROR("Invalid dspp_start_idx %d or num_of_mixers %d\n",
+			hw_cfg->dspp_start_idx, hw_cfg->num_of_mixers);
 		return;
 	}
 
@@ -670,9 +747,10 @@ void hfi_setup_dspp_ltm_threshv1(struct sde_hw_dspp *ctx, void *cfg)
 			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
 				hw_cfg->prop_id);
 
-		/* reset the cached struct for current dpu_idx after submitting to FW */
-		memset(&hfi_ltm_thresh_cached[ctx->dpu_idx], 0,
-			   sizeof(hfi_ltm_thresh_cached[ctx->dpu_idx]));
+		/* reset only the current display's DSPP entries */
+		memset(&hfi_ltm_thresh_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx], 0,
+			   sizeof(hfi_ltm_thresh_cached[ctx->dpu_idx][0]) *
+			   hw_cfg->num_of_mixers);
 	}
 
 }
@@ -710,8 +788,33 @@ void hfi_cp_crtc_set_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg)
 	}
 
 	if (sde_crtc->ltm_buffer_cnt) {
-		SDE_DEBUG("%d ltm_buffers already allocated\n",
-			sde_crtc->ltm_buffer_cnt);
+		if (!sde_crtc->cp_ssr_recovery_pending) {
+			SDE_DEBUG("%d ltm_buffers already allocated\n",
+				sde_crtc->ltm_buffer_cnt);
+			return;
+		}
+
+		if (sde_crtc->ltm_buffer_cnt != num) {
+			SDE_ERROR("ltm buffer count mismatch allocated:%u requested:%u\n",
+				sde_crtc->ltm_buffer_cnt, num);
+			return;
+		}
+
+		for (i = 0; i < num; i++) {
+			if (!sde_crtc->ltm_buffers[i] ||
+					!sde_crtc->ltm_buffers[i]->dcp_iova) {
+				SDE_ERROR("invalid mapped ltm buffer %u for reuse\n", i);
+				return;
+			}
+
+			ret = hfi_cp_crtc_queue_ltm_buffer(sde_crtc->ltm_buffers[i], cfg);
+			if (ret) {
+				SDE_ERROR("Failed to re-queue ltm buffer %d\n", i);
+				return;
+			}
+		}
+
+		SDE_DEBUG("reused %u mapped ltm buffers and re-queued to FW\n", num);
 		return;
 	}
 
@@ -822,6 +925,183 @@ void hfi_cp_crtc_free_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg)
 	}
 }
 
+static int _hfi_cp_crtc_ltm_ssr_start(struct sde_crtc *sde_crtc,
+		bool *need_recovery)
+{
+	bool was_hist_en;
+	bool req_hist_en;
+
+	if (!sde_crtc || !need_recovery)
+		return -EINVAL;
+
+	req_hist_en = _hfi_cp_crtc_is_ltm_hist_requested(sde_crtc);
+	SDE_DEBUG("crtc:%d LTM SSR start snapshot: ltm_hist_en:%d req_hist_en:%d ltm_buf_cnt:%u\n",
+		 DRMID(&sde_crtc->base), sde_crtc->ltm_hist_en, req_hist_en,
+		 sde_crtc->ltm_buffer_cnt);
+
+	mutex_lock(&sde_crtc->ltm_buffer_lock);
+
+	was_hist_en = sde_crtc->ltm_hist_en || req_hist_en;
+	sde_crtc->ltm_hist_en = false;
+
+	if (!was_hist_en && !sde_crtc->ltm_buffer_cnt) {
+		SDE_DEBUG("crtc:%d LTM SSR start cleanup skipped: hist:%d ltm_buf_cnt:%u\n",
+				 DRMID(&sde_crtc->base), was_hist_en, sde_crtc->ltm_buffer_cnt);
+		mutex_unlock(&sde_crtc->ltm_buffer_lock);
+		return 0;
+	}
+
+	*need_recovery = true;
+	SDE_DEBUG("crtc:%d LTM SSR start cleanup: hist:%d ltm_buf_cnt:%u\n",
+		 DRMID(&sde_crtc->base), was_hist_en, sde_crtc->ltm_buffer_cnt);
+
+	/* Keep mapped LTM buffers across SSR and reuse them after FW recovery. */
+	INIT_LIST_HEAD(&sde_crtc->ltm_buf_free);
+	INIT_LIST_HEAD(&sde_crtc->ltm_buf_busy);
+
+	mutex_unlock(&sde_crtc->ltm_buffer_lock);
+
+	sde_cp_crtc_mark_feature_dirty(&sde_crtc->base, SDE_CP_CRTC_DSPP_LTM_SET_BUF);
+
+	return 0;
+}
+
+static int _hfi_cp_crtc_pa_hist_ssr_start(struct sde_crtc *sde_crtc,
+		bool *need_recovery)
+{
+	u32 i;
+	bool pa_hist_en = false;
+	bool req_pa_hist_en = false;
+
+	if (!sde_crtc || !need_recovery)
+		return -EINVAL;
+
+	req_pa_hist_en = _hfi_cp_crtc_is_pa_hist_requested(sde_crtc);
+	for (i = 0; i < PA_HIST_BUFFER_NUM; i++) {
+		if (!sde_crtc->pa_hist_buffers[i].is_available) {
+			pa_hist_en = true;
+			break;
+		}
+	}
+	pa_hist_en = pa_hist_en || req_pa_hist_en;
+
+	if (pa_hist_en)
+		*need_recovery = true;
+	SDE_DEBUG("crtc:%d PA hist SSR start snapshot: pa_hist_en:%d req_pa_hist_en:%d\n",
+		 DRMID(&sde_crtc->base), pa_hist_en, req_pa_hist_en);
+
+	for (i = 0; i < PA_HIST_BUFFER_NUM; i++)
+		sde_crtc->pa_hist_buffers[i].is_available = true;
+
+	return 0;
+}
+
+static int _hfi_cp_crtc_rgb_hist_ssr_start(struct sde_crtc *sde_crtc,
+		bool *need_recovery)
+{
+	bool buf_allocated = false;
+
+	if (!sde_crtc || !need_recovery)
+		return -EINVAL;
+
+	mutex_lock(&sde_crtc->rgb_hist_buffer_lock);
+	buf_allocated = (sde_crtc->rgb_hist_buffers[0] != NULL);
+	mutex_unlock(&sde_crtc->rgb_hist_buffer_lock);
+
+	SDE_DEBUG("crtc:%d RGB hist SSR start snapshot: buf_allocated:%d rgb_hist_en:%d\n",
+		 DRMID(&sde_crtc->base), buf_allocated, sde_crtc->rgb_hist_en);
+
+	if (!buf_allocated)
+		return 0;
+
+	*need_recovery = true;
+
+	// Re-send the already mapped buffer addresses
+	sde_cp_crtc_mark_feature_dirty(&sde_crtc->base, SDE_CP_CRTC_DSPP_RGB_HIST_SET_BUF);
+	return 0;
+}
+
+struct hfi_cp_ssr_feature_ops {
+	const char *name;
+	int (*start)(struct sde_crtc *sde_crtc, bool *need_recovery);
+	int (*end)(struct sde_crtc *sde_crtc, bool *need_recovery);
+};
+
+static const struct hfi_cp_ssr_feature_ops hfi_cp_ssr_features[] = {
+	{
+		.name = "ltm",
+		.start = _hfi_cp_crtc_ltm_ssr_start,
+		.end = NULL,
+	},
+	{
+		.name = "pa_hist",
+		.start = _hfi_cp_crtc_pa_hist_ssr_start,
+		.end = NULL,
+	},
+	{
+		.name = "rgb_hist",
+		.start = _hfi_cp_crtc_rgb_hist_ssr_start,
+		.end = NULL,
+	},
+};
+
+int hfi_cp_crtc_handle_ssr_start(struct sde_crtc *sde_crtc)
+{
+	int rc, i;
+	int first_error = 0;
+	bool need_recovery = false;
+
+	if (!sde_crtc)
+		return -EINVAL;
+
+	for (i = 0; i < ARRAY_SIZE(hfi_cp_ssr_features); i++) {
+		if (!hfi_cp_ssr_features[i].start)
+			continue;
+
+		rc = hfi_cp_ssr_features[i].start(sde_crtc, &need_recovery);
+		if (rc) {
+			SDE_ERROR("crtc:%d feature:%s ssr start failed rc:%d\n",
+				DRMID(&sde_crtc->base), hfi_cp_ssr_features[i].name, rc);
+			if (!first_error)
+				first_error = rc;
+		}
+	}
+
+	sde_crtc->cp_ssr_recovery_pending = need_recovery;
+
+	return 0;
+}
+
+int hfi_cp_crtc_handle_ssr_end(struct sde_crtc *sde_crtc)
+{
+	int rc, i;
+	bool need_recovery = false;
+
+	if (!sde_crtc)
+		return -EINVAL;
+
+	sde_crtc->hw_events_ssr_recovery_pending = true;
+
+	if (!sde_crtc->cp_ssr_recovery_pending)
+		return 0;
+
+	for (i = 0; i < ARRAY_SIZE(hfi_cp_ssr_features); i++) {
+		if (!hfi_cp_ssr_features[i].end)
+			continue;
+
+		rc = hfi_cp_ssr_features[i].end(sde_crtc, &need_recovery);
+		if (rc) {
+			SDE_ERROR("crtc:%d feature:%s ssr end failed rc:%d\n",
+				DRMID(&sde_crtc->base), hfi_cp_ssr_features[i].name, rc);
+			return rc;
+		}
+	}
+
+	SDE_DEBUG("crtc:%d handle ssr end complete\n", DRMID(&sde_crtc->base));
+
+	return 0;
+}
+
 void hfi_cp_crtc_reset_color_props(struct hfi_util_u32_prop_helper *color_props)
 {
 	if (!color_props) {
@@ -854,6 +1134,41 @@ void hfi_cp_crtc_unmap_sg_table(struct hfi_shared_addr_map *addr_map, struct hfi
 		hfi_adapter_unmap_sg_table(client, *mapped_iova,
 			addr_map->aligned_size);
 		*mapped_iova = 0;
+	}
+}
+
+static void _hfi_cp_crtc_pack_send_rgb_hist_buffers(struct sde_crtc *sde_crtc,
+		struct sde_hw_cp_cfg *hw_cfg)
+{
+	struct hfi_display_rgb_hist_buffer hfi_cfg[RGB_HISTOGRAM_BUFFER_SIZE];
+	struct sde_rgb_hist_buffer *hist_buf = NULL;
+	struct hfi_display_rgb_hist_buffer *hfi_buf = NULL;
+	int ret = 0;
+
+	for (int i = 0; i < RGB_HISTOGRAM_BUFFER_SIZE; i++) {
+		hist_buf = sde_crtc->rgb_hist_buffers[i];
+		if (!hist_buf) {
+			SDE_ERROR("rgb hist buffer[%d] is NULL during SSR recovery\n", i);
+			return;
+		}
+		hfi_buf = &hfi_cfg[i];
+
+		for (int j = 0; j < RGB_COMPONENT_SIZE; j++) {
+			hfi_buf->dpu_iova_lo[j] = (u32)(hist_buf->dpu_iova[j] & U32_MASK_LOW);
+			hfi_buf->dpu_iova_hi[j] = (u32)(hist_buf->dpu_iova[j] >> U32_SHIFT_BITS);
+			hfi_buf->dcp_addr_lo[j] = (u32)(hist_buf->dcp_iova[j] & U32_MASK_LOW);
+			hfi_buf->dcp_addr_hi[j] = (u32)(hist_buf->dcp_iova[j] >> U32_SHIFT_BITS);
+		}
+		hfi_buf->flags = HFI_DISPLAY_COLOR_FLAGS_FEATURE_ENABLE;
+		hfi_buf->size = sizeof(struct hfi_display_rgb_hist_buffer);
+	}
+
+	for (int i = 0; i < RGB_HISTOGRAM_BUFFER_SIZE; i++) {
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+				hw_cfg->prop_id, HFI_VAL_U32_ARRAY, &hfi_cfg[i],
+				sizeof(struct hfi_display_rgb_hist_buffer));
+		if (ret)
+			SDE_ERROR("failed to add HFI prop: %d ret: %d\n", hw_cfg->prop_id, ret);
 	}
 }
 
@@ -896,6 +1211,14 @@ void hfi_cp_crtc_set_rgb_hist_buffers(struct sde_crtc *sde_crtc,
 		SDE_DEBUG("Disable case\n");
 		for (int i = 0; i < RGB_HISTOGRAM_BUFFER_SIZE; i++)
 			hfi_cfg[i].flags = 0;
+	} else if (sde_crtc->cp_ssr_recovery_pending && sde_crtc->rgb_hist_buffers[0] != NULL) {
+		SDE_DEBUG("SSR recovery: reusing mapped rgb hist buffers, crtc:%d\n",
+			 DRMID(&sde_crtc->base));
+		_hfi_cp_crtc_pack_send_rgb_hist_buffers(sde_crtc, hw_cfg);
+		return;
+	} else if (sde_crtc->rgb_hist_buffers[0] != NULL) {
+		SDE_DEBUG("rgb hist buffers already allocated\n");
+		return;
 	} else {
 		if (hw_cfg->len != sizeof(struct drm_msm_rgb_hist_buffers_ctrl)) {
 			SDE_ERROR("Invalid len: %d\n", hw_cfg->len);
@@ -1441,6 +1764,12 @@ void hfi_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *data, bool enable)
 		return;
 	}
 
+	if (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers > DSPP_MAX) {
+		SDE_ERROR("Invalid dspp_start_idx %d or num_of_mixers %d\n",
+			hw_cfg->dspp_start_idx, hw_cfg->num_of_mixers);
+		return;
+	}
+
 	hfi_cfg = &hfi_pa_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 7, hw_cfg->prop_id);
 	*hfi_cfg = enable;
@@ -1457,8 +1786,9 @@ void hfi_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *data, bool enable)
 			return;
 		}
 
-		/* reset the cached struct for current dpu_idx after submitting to FW */
-		memset(&hfi_pa_hist_ctrl_cached[ctx->dpu_idx], 0,
-			   sizeof(hfi_pa_hist_ctrl_cached[ctx->dpu_idx]));
+		/* reset only the current display's DSPP entries */
+		memset(&hfi_pa_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx], 0,
+			   sizeof(hfi_pa_hist_ctrl_cached[ctx->dpu_idx][0]) *
+			   hw_cfg->num_of_mixers);
 	}
 }

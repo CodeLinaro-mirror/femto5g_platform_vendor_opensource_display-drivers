@@ -205,6 +205,7 @@ enum frame_trigger_mode_type {
  * @prev_secure_level: previous secure level
  * @transition_type: transition request type
  * @transition_error: whether there is error while transitioning the state
+ * @crtc_id: DRMID of the CRTC that owns the current secure session
  */
 struct sde_kms_smmu_state_data {
 	uint32_t state;
@@ -214,6 +215,7 @@ struct sde_kms_smmu_state_data {
 	uint32_t transition_type;
 	uint32_t transition_error;
 	uint32_t sui_misr_state;
+	uint32_t crtc_id;
 };
 
 /*
@@ -530,6 +532,9 @@ struct sde_kms {
 	enum msm_disp_op debugfs_display_op;
 	enum msm_disp_op frame_trigger_state;
 	bool hfi_tvm_start;
+
+	u32 lpai_buf_size;
+	unsigned long lpai_buf_base;
 };
 
 struct vsync_info {
