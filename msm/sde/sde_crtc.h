@@ -604,6 +604,9 @@ struct sde_crtc {
 	struct list_head ad_active;
 	struct list_head user_event_list;
 
+	/* early wakeup sysfs: last written hint value */
+	uint32_t early_wakeup_hint;
+
 	struct mutex crtc_lock;
 	struct mutex crtc_cp_lock;
 
