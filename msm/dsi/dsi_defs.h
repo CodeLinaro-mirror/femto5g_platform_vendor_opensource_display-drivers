@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023, 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -82,6 +82,7 @@ enum dsi_op_mode {
  * @DSI_MODE_FLAG_POMS_TO_CMD:
  *         Seamless transition is dynamic panel operating mode switch to cmd
  * @DSI_MODE_FLAG_NONDSC_BPP_SWITCH:  Transition is bpp mode switch without DSC.
+ * @DSI_MODE_FLAG_AUTOREFRESH: Seamless transition is autorefresh frame count change.
  */
 enum dsi_mode_flags {
 	DSI_MODE_FLAG_SEAMLESS			= BIT(0),
@@ -93,7 +94,8 @@ enum dsi_mode_flags {
 	DSI_MODE_FLAG_DMS_FPS                   = BIT(6),
 	DSI_MODE_FLAG_POMS_TO_VID		= BIT(7),
 	DSI_MODE_FLAG_POMS_TO_CMD		= BIT(8),
-	DSI_MODE_FLAG_NONDSC_BPP_SWITCH		= BIT(9)
+	DSI_MODE_FLAG_NONDSC_BPP_SWITCH		= BIT(9),
+	DSI_MODE_FLAG_AUTOREFRESH		= BIT(10)
 };
 
 /**
@@ -175,18 +177,22 @@ struct dsi_lane_map {
  * enum dsi_trigger_type - dsi trigger type
  * @DSI_TRIGGER_NONE:     No trigger.
  * @DSI_TRIGGER_TE:       TE trigger.
- * @DSI_TRIGGER_SEOF:     Start or End of frame.
+ * @DSI_TRIGGER_SOF:      Start of frame trigger.
+ * @DSI_TRIGGER_EOF:      End of frame trigger.
  * @DSI_TRIGGER_SW:       Software trigger.
- * @DSI_TRIGGER_SW_SEOF:  Software trigger and start/end of frame.
+ * @DSI_TRIGGER_SW_SOF:   Software trigger and start of frame trigger.
+ * @DSI_TRIGGER_SW_EOF:   Software trigger and end of frame trigger.
  * @DSI_TRIGGER_SW_TE:    Software and TE triggers.
  * @DSI_TRIGGER_MAX:      Max trigger values.
  */
 enum dsi_trigger_type {
 	DSI_TRIGGER_NONE = 0,
 	DSI_TRIGGER_TE,
-	DSI_TRIGGER_SEOF,
+	DSI_TRIGGER_SOF,
+	DSI_TRIGGER_EOF,
 	DSI_TRIGGER_SW,
-	DSI_TRIGGER_SW_SEOF,
+	DSI_TRIGGER_SW_SOF,
+	DSI_TRIGGER_SW_EOF,
 	DSI_TRIGGER_SW_TE,
 	DSI_TRIGGER_MAX
 };
@@ -370,6 +376,7 @@ enum dsi_video_traffic_mode {
  * @post_wait_ms:        post wait duration
  * @ctrl:                index of DSI controller
  * @ctrl_flags:          controller flags
+ * @trigger_type:        trigger type for command mode DMA
  * @ts:                  dsi command time stamp in nano-seconds.
  */
 struct dsi_cmd_desc {
@@ -378,6 +385,7 @@ struct dsi_cmd_desc {
 	u32  post_wait_ms;
 	u32 ctrl;
 	u32 ctrl_flags;
+	enum dsi_trigger_type trigger_type;
 	ktime_t ts;
 };
 
@@ -648,6 +656,7 @@ struct dsi_host_config {
  * @widebus_support       48 bit wide data bus is supported by hw
  * @allowed_mode_switch: BIT mask to mark allowed mode switches
  * @disable_rsc_solver: Dynamically disable RSC solver for the timing mode.
+ * @panel_self_refresh_rate: Panel self refresh rate per timing node.
  */
 struct dsi_display_mode_priv_info {
 	struct dsi_panel_cmd_set cmd_sets[DSI_CMD_SET_MAX];
@@ -679,6 +688,7 @@ struct dsi_display_mode_priv_info {
 	bool widebus_support;
 	u32 allowed_mode_switch;
 	bool disable_rsc_solver;
+	u32 panel_self_refresh_rate;
 };
 
 /**

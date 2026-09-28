@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -49,6 +49,8 @@
 #define MSM_MODE_FLAG_SEAMLESS_POMS_CMD			(1<<7)
 /* Request to switch bpp without DSC */
 #define MSM_MODE_FLAG_NONDSC_BPP_SWITCH			(1<<8)
+/* Request to switch autorefresh frame count */
+#define MSM_MODE_FLAG_SEAMLESS_AUTOREFRESH		(1<<9)
 
 /* As there are different display controller blocks depending on the
  * snapdragon version, the kms support is split out and the appropriate
@@ -238,6 +240,11 @@ static inline bool msm_is_mode_dynamic_fps(const struct msm_display_mode *mode)
 static inline bool msm_is_mode_seamless_vrr(const struct msm_display_mode *mode)
 {
 	return mode ? (mode->private_flags & MSM_MODE_FLAG_SEAMLESS_VRR) : false;
+}
+
+static inline bool msm_is_mode_seamless_autorefresh(const struct msm_display_mode *mode)
+{
+	return mode ? (mode->private_flags & MSM_MODE_FLAG_SEAMLESS_AUTOREFRESH) : false;
 }
 
 static inline bool msm_is_mode_seamless_poms_to_vid(const struct msm_display_mode *mode)

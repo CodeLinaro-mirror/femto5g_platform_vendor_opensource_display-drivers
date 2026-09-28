@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1373,8 +1373,16 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 	u32 hw_flags = 0;
 	struct dsi_ctrl_hw_ops dsi_hw_ops = dsi_ctrl->hw.ops;
 	struct dsi_split_link_config *split_link;
+	enum dsi_trigger_type trigger_type;
 
 	split_link = &(dsi_ctrl->host_config.common_config.split_link);
+
+	if (cmd_mem && cmd_mem->trigger_type != DSI_TRIGGER_NONE) {
+		trigger_type = cmd_mem->trigger_type;
+	} else {
+		/* Fall back to the host configured default DMA trigger. */
+		trigger_type = dsi_ctrl->host_config.common_config.dma_cmd_trigger;
+	}
 
 	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY, flags,
 		msg->flags);
@@ -1384,8 +1392,7 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 				&dsi_ctrl->host_config.common_config, flags);
 
 	if (dsi_hw_ops.init_cmddma_trig_ctrl)
-		dsi_hw_ops.init_cmddma_trig_ctrl(&dsi_ctrl->hw,
-				&dsi_ctrl->host_config.common_config);
+		dsi_hw_ops.init_cmddma_trig_ctrl(&dsi_ctrl->hw, trigger_type);
 
 	/*
 	 * Always enable DMA scheduling for video mode panel.
@@ -1519,6 +1526,7 @@ static int dsi_message_tx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd_de
 			true : false;
 		cmd_mem.datatype = msg->type;
 		cmd_mem.length = msg->tx_len;
+		cmd_mem.trigger_type = cmd_desc->trigger_type;
 
 		dsi_ctrl->cmd_len = msg->tx_len;
 		memcpy(dsi_ctrl->vaddr, msg->tx_buf, msg->tx_len);
@@ -1569,6 +1577,7 @@ static int dsi_message_tx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd_de
 			true : false;
 		cmd_mem.use_lpm = (msg->flags & MIPI_DSI_MSG_USE_LPM) ?
 			true : false;
+		cmd_mem.trigger_type = cmd_desc->trigger_type;
 
 		cmdbuf = (u8 *)(dsi_ctrl->vaddr);
 
