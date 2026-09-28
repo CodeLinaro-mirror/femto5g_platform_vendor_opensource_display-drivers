@@ -114,6 +114,117 @@ static const struct of_device_id msm_lsr_plat_match[] = {
 	{}
 };
 
+/*
+ * of_node_in_subtree - is @node inside (or equal to) the subtree rooted at @root?
+ */
+static bool of_node_in_subtree(struct device_node *root, struct device_node *node)
+{
+	struct device_node *p = of_node_get(node);
+
+	while (p) {
+		struct device_node *parent;
+
+		if (p == root) {
+			of_node_put(p);
+			return true;
+		}
+		parent = of_get_parent(p);
+		of_node_put(p);
+		p = parent;
+	}
+
+	return false;
+}
+
+/*
+ * msm_lsr_smmu_group_peers_ready - are the non-LSR peers sharing @group bound?
+ * @lsr_np: qcom,msm-lsr node; peers inside its own subtree are not a dependency,
+ *	since they are not created (of_platform_populate() has not run yet) or
+ *	probed until after this very check succeeds
+ * @group: iommu group node shared by @self and, possibly, an external peer
+ * @self: context bank node on whose behalf the check is made, for logging
+ */
+static bool msm_lsr_smmu_group_peers_ready(struct device_node *lsr_np,
+		struct device_node *group, struct device_node *self)
+{
+	struct device_node *peer, *peer_group;
+	struct platform_device *pdev;
+	bool ready = true;
+
+	for_each_node_with_property(peer, "qcom,iommu-group") {
+		if (!of_device_is_available(peer) || of_node_in_subtree(lsr_np, peer))
+			continue;
+
+		peer_group = of_parse_phandle(peer, "qcom,iommu-group", 0);
+		if (peer_group != group) {
+			of_node_put(peer_group);
+			continue;
+		}
+		of_node_put(peer_group);
+
+		pdev = of_find_device_by_node(peer);
+		if (pdev) {
+			ready = !!platform_get_drvdata(pdev);
+			platform_device_put(pdev);
+		} else {
+			ready = false;
+		}
+
+		if (!ready) {
+			dprintk(LSR_CORE, "%pOFn: %pOFn sharing iommu group %pOFn not probed yet\n",
+					self, peer, group);
+			of_node_put(peer);
+			break;
+		}
+	}
+
+	return ready;
+}
+
+/**
+ * msm_lsr_smmu_shared_group_ready - check non-LSR peers sharing an iommu group
+ *	with a child of @np have completed probe
+ * @np: parent node whose children carry the qcom,iommu-group phandles
+ *
+ * Devices placed in the same iommu group share a single SMMU context bank, and
+ * the group latches onto a context bank when its first member attaches - which
+ * happens in dma_configure(), before that member's probe runs. The display
+ * context bank has to win that race: __arm_smmu_alloc_cb() only adopts the
+ * context bank pinned by the bootloader for cont-splash when the device
+ * initialising the group's domain is the one owning the pinned stream ID, so a
+ * group led by any other member ends up on a freshly allocated context bank and
+ * the display attach that follows reprograms the pinned S2CR to the wrong one.
+ *
+ * Children without a qcom,iommu-group phandle, and groups with no non-LSR peer
+ * in them, carry no such ordering requirement and are ignored.
+ *
+ * Return: false if the caller should defer its probe, true otherwise.
+ */
+static bool msm_lsr_smmu_shared_group_ready(struct device_node *np)
+{
+	struct device_node *child, *group;
+	bool ready = true;
+
+	if (!np)
+		return true;
+
+	for_each_available_child_of_node(np, child) {
+		group = of_parse_phandle(child, "qcom,iommu-group", 0);
+		if (!group)
+			continue;
+
+		ready = msm_lsr_smmu_group_peers_ready(np, group, child);
+		of_node_put(group);
+
+		if (!ready) {
+			of_node_put(child);
+			break;
+		}
+	}
+
+	return ready;
+}
+
 static int msm_probe_lsr_device(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -122,6 +233,19 @@ static int msm_probe_lsr_device(struct platform_device *pdev)
 	if (!lsr_driver) {
 		dprintk(LSR_ERR, "Invalid lsr driver\n");
 		return -EINVAL;
+	}
+
+	/*
+	 * The LSR context banks share iommu groups, and therefore SMMU context
+	 * banks, with the display context banks. A group latches onto a context
+	 * bank when its first member attaches, which happens in dma_configure()
+	 * before the sub-device probe runs, so waiting for the display context
+	 * banks has to happen here - before of_platform_populate() below creates
+	 * the sub-devices - rather than in the sub-device probe itself.
+	 */
+	if (!msm_lsr_smmu_shared_group_ready(pdev->dev.of_node)) {
+		dprintk(LSR_CORE, "display smmu not ready, request probe defer\n");
+		return -EPROBE_DEFER;
 	}
 
 	core = kzalloc(sizeof(*core), GFP_KERNEL);
