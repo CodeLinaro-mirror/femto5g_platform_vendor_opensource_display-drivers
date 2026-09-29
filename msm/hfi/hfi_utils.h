@@ -8,7 +8,7 @@
 
 #include "hfi_adapter.h"
 
-#define HFI_UTIL_MAX_ALLOC   4096
+#define HFI_UTIL_MAX_ALLOC   16384
 #define HFI_PROP_ID(val)    (val & 0xfffff)
 #define HFI_PROP_SZ(val)    (val >> 24)
 #define HFI_VAL_L32(val)    (val & 0xffffffff)
