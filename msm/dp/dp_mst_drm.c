@@ -248,6 +248,25 @@ static int dp_mst_detect_port(
 	return status;
 }
 
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+/**
+ * _dp_mst_remove_payload() - Invoke upstream APIs to reset VCPI slots/remove payload
+ * @mgr: Manager to use.
+ * @mst_state: The MST atomic state
+ * @payload: The payload to remove
+ *
+ * Latest upstream implementation removes payload information in 2 parts. This func invokes
+ * both the required APIs.
+ */
+static void _dp_mst_remove_payload(struct drm_dp_mst_topology_mgr *mgr,
+				 struct drm_dp_mst_topology_state *mst_state,
+				 struct drm_dp_mst_atomic_payload *payload)
+{
+	drm_dp_remove_payload_part1(mgr, mst_state, payload);
+	drm_dp_remove_payload_part2(mgr, mst_state, payload, payload);
+}
+#endif
+
 static void _dp_mst_get_vcpi_info(
 		struct drm_dp_mst_topology_mgr *mgr,
 		int vcpi, int *start_slot, int *num_slots)
@@ -367,7 +386,7 @@ static const struct dp_drm_mst_fw_helper_ops drm_dp_mst_fw_helper_ops = {
 	.topology_mgr_set_mst      = drm_dp_mst_topology_mgr_set_mst,
 	.get_vcpi_info             = _dp_mst_get_vcpi_info,
 	.atomic_release_time_slots = drm_dp_atomic_release_time_slots,
-	.reset_vcpi_slots          = drm_dp_remove_payload_part1,
+	.reset_vcpi_slots          = _dp_mst_remove_payload,
 #elif (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	.calc_pbn_mode             = dp_mst_calc_pbn_mode,
 	.find_vcpi_slots           = dp_mst_find_vcpi_slots,
