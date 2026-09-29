@@ -31,6 +31,11 @@ struct dp_altmode_private {
 	struct altmode_client *amclient;
 	bool connected;
 	u32 lanes;
+	int orientation;
+	u16 svid;
+	int mode;
+	int hpd_state;
+	int hpd_irq;
 };
 
 enum dp_altmode_pin_assignment {
@@ -43,8 +48,7 @@ enum dp_altmode_pin_assignment {
 	DPAM_HPD_F,
 };
 
-static int dp_altmode_set_usb_dp_mode(struct dp_altmode_private *altmode,
-		int orientation, int pin_assign, int hpd_state, int hpd_irq)
+static int dp_altmode_set_usb_dp_mode(struct dp_altmode_private *altmode)
 {
 	int rc = 0;
 	struct device_node *np;
@@ -73,9 +77,13 @@ static int dp_altmode_set_usb_dp_mode(struct dp_altmode_private *altmode,
 	}
 
 	while (timeout) {
-		rc = dwc3_msm_set_dp_mode(&usb_pdev->dev, altmode->connected,
-				altmode->lanes, orientation, USB_SID_DISPLAYPORT,
-				pin_assign, hpd_state, hpd_irq);
+		#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0))
+			rc = dwc3_msm_set_dp_mode(&usb_pdev->dev, altmode->connected,
+					altmode->lanes, altmode->orientation, altmode->svid,
+					altmode->mode, altmode->hpd_state, altmode->hpd_irq);
+		#else
+			rc = dwc3_msm_set_dp_mode(&usb_pdev->dev, altmode->connected, altmode->lanes);
+		#endif
 		if (rc != -EBUSY && rc != -EAGAIN)
 			break;
 
@@ -130,6 +138,12 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 	hpd_state = (dp_data & ALTMODE_HPD_STATE_MASK) >> 6;
 	hpd_irq = (dp_data & ALTMODE_HPD_IRQ_MASK) >> 7;
 
+	altmode->orientation = orientation;
+	altmode->svid = USB_SID_DISPLAYPORT;
+	altmode->mode = pin;
+	altmode->hpd_state = hpd_state;
+	altmode->hpd_irq = hpd_irq;
+
 	altmode->dp_altmode.base.hpd_high = !!hpd_state;
 	altmode->dp_altmode.base.hpd_irq = !!hpd_irq;
 	altmode->dp_altmode.base.multi_func = force_multi_func ? true :
@@ -157,8 +171,7 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 			if (altmode->dp_cb && altmode->dp_cb->disconnect)
 				altmode->dp_cb->disconnect(altmode->dev);
 
-			rc = dp_altmode_set_usb_dp_mode(altmode, orientation,
-					pin, hpd_state, hpd_irq);
+			rc = dp_altmode_set_usb_dp_mode(altmode);
 			if (rc)
 				DP_ERR("failed to clear usb dp mode, rc: %d\n", rc);
 		}
@@ -194,8 +207,7 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 
 		altmode->dp_altmode.base.orientation = orientation;
 
-		rc = dp_altmode_set_usb_dp_mode(altmode, orientation,
-				pin, hpd_state, hpd_irq);
+		rc = dp_altmode_set_usb_dp_mode(altmode);
 		if (rc)
 			goto ack;
 
