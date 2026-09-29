@@ -132,3 +132,6 @@ define_bengal()
 
 load(":targets/malabar.bzl", "define_malabar")
 define_malabar()
+
+load(":targets/waipio.bzl", "define_waipio")
+define_waipio()
