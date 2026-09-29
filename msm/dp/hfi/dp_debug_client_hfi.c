@@ -2025,7 +2025,7 @@ static int dp_debug_client_hfi_write_mst_con_id(struct dp_debug_client *client,
 		mgr_priv->connected = false;
 
 		mgr_priv->hpd->hpd_high = true;
-		mgr_priv->hpd->hpd_irq = (mgr_priv->active_streams > 0) ? true : false;
+		mgr_priv->hpd->hpd_irq = true;
 		/*
 		 * Restore simulation pin/orientation values so DCP
 		 * accepts the plug (same logic as write_hpd connect).
