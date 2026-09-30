@@ -27,6 +27,7 @@
 #define MAX_VERT_DECIMATION    4
 #define SSPP_UNITY_SCALE       1
 #define MAX_NUM_LIMIT_PAIRS    16
+#define MAX_NUM_STAGES         11
 #define DBG_BUF_COUNT          50
 #define DEFAULT_MAX_MDP_CLK    575
 #define MAX_LAYERS_MULTIPIPE   4
@@ -1655,7 +1656,7 @@ static int virtio_kms_get_crtc_infos(struct msm_hyp_kms *hyp_kms,
 	struct virtio_crtc_info_priv *priv;
 	int i;
 	int plane_cnt = 0;
-	uint32_t plane_idx = 0;
+
 	if (!kms || !crtc_num)
 		return -EINVAL;
 
@@ -1670,12 +1671,15 @@ static int virtio_kms_get_crtc_infos(struct msm_hyp_kms *hyp_kms,
 			return -ENOMEM;
 		}
 
-		priv->base.max_blendstages = 0;
-		for (plane_idx = 0; plane_idx < kms->outputs[i].plane_cnt; plane_idx++) {
-			if (kms->outputs[i].plane_caps[plane_idx].master_plane_id < 0)
-				++priv->base.max_blendstages;
+		priv->base.max_blendstages = kms->outputs[i].plane_cnt;
+
+		if (priv->base.max_blendstages > MAX_NUM_STAGES) {
+			priv->base.max_blendstages = MAX_NUM_STAGES;
+			pr_debug("plane count %d exceeds the maximum blend stage %d of crtc\n",
+					kms->outputs[i].plane_cnt, priv->base.max_blendstages);
 		}
 		pr_err("virtio : blendstage %d\n", priv->base.max_blendstages);
+
 		priv->base.primary_plane_index = plane_cnt;
 		plane_cnt += kms->outputs[i].plane_cnt;
 
