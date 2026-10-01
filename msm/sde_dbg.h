@@ -7,7 +7,7 @@
 #ifndef SDE_DBG_H_
 #define SDE_DBG_H_
 
-#include <stdarg.h>
+#include <linux/stdarg.h>
 #include <linux/debugfs.h>
 #include <linux/list.h>
 #include <soc/qcom/minidump.h>

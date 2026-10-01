@@ -5,6 +5,7 @@
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
+#include <linux/delay.h>
 #include "sde_encoder_phys.h"
 #include "sde_hw_interrupts.h"
 #include "sde_core_irq.h"
@@ -2102,7 +2103,7 @@ static void sde_encoder_phys_cmd_setup_vsync_source(struct sde_encoder_phys *phy
 				vsync_source);
 }
 
-void sde_encoder_phys_cmd_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
+static void sde_encoder_phys_cmd_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_cmd *cmd_enc;
 	cmd_enc =  to_sde_encoder_phys_cmd(phys_enc);

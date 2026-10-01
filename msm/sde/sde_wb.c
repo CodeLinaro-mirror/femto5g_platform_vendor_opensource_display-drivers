@@ -8,6 +8,8 @@
 
 #include <drm/sde_drm.h>
 #include <drm/drm_probe_helper.h>
+#include <drm/drm_framebuffer.h>
+#include <drm/drm_edid.h>
 
 #include "msm_kms.h"
 #include "sde_kms.h"
@@ -1009,14 +1011,14 @@ static int sde_wb_probe(struct platform_device *pdev)
  * sde_wb_remove - unload writeback module
  * @pdev:	Pointer to platform device
  */
-static int sde_wb_remove(struct platform_device *pdev)
+static void sde_wb_remove(struct platform_device *pdev)
 {
 	struct sde_wb_device *wb_dev;
 	struct sde_wb_device *curr, *next;
 
 	wb_dev = platform_get_drvdata(pdev);
 	if (!wb_dev)
-		return 0;
+		return;
 
 	SDE_DEBUG("\n");
 
@@ -1037,7 +1039,6 @@ static int sde_wb_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	devm_kfree(&pdev->dev, wb_dev);
 
-	return 0;
 }
 
 static const struct of_device_id dt_match[] = {

@@ -21,12 +21,14 @@
 #include <linux/kthread.h>
 #include <linux/debugfs.h>
 #include <linux/input.h>
+#include <linux/delay.h>
 #include <linux/seq_file.h>
 #include <linux/sde_rsc.h>
 
 #include "msm_drv.h"
 #include "sde_kms.h"
 #include <drm/drm_crtc.h>
+#include <drm/drm_framebuffer.h>
 #include <drm/drm_probe_helper.h>
 #include "sde_hwio.h"
 #include "sde_hw_catalog.h"
@@ -1449,7 +1451,29 @@ static void _sde_encoder_update_vsync_source(struct sde_encoder_virt *sde_enc,
 	}
 }
 
+void sde_encoder_control_te(struct drm_encoder *drm_enc, bool enable)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys *phys;
+	int i;
 
+	if (!drm_enc) {
+		SDE_ERROR("invalid parameters\n");
+		return;
+	}
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	if (!sde_enc) {
+		SDE_ERROR("invalid sde encoder\n");
+		return;
+	}
+
+	for (i = 0; i < sde_enc->num_phys_encs; i++) {
+		phys = sde_enc->phys_encs[i];
+		if (phys && phys->ops.control_te)
+			phys->ops.control_te(phys, enable);
+	}
+}
 
 int sde_encoder_helper_switch_vsync(struct drm_encoder *drm_enc,
 	 bool watchdog_te)
@@ -2724,30 +2748,6 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	sde_encoder_virt_modeset_rc(drm_enc, adj_mode, msm_mode, false);
 }
 
-void sde_encoder_control_te(struct drm_encoder *drm_enc, bool enable)
-{
-	struct sde_encoder_virt *sde_enc;
-	struct sde_encoder_phys *phys;
-	int i;
-
-	if (!drm_enc) {
-		SDE_ERROR("invalid parameters\n");
-		return;
-	}
-
-	sde_enc = to_sde_encoder_virt(drm_enc);
-	if (!sde_enc) {
-		SDE_ERROR("invalid sde encoder\n");
-		return;
-	}
-
-	for (i = 0; i < sde_enc->num_phys_encs; i++) {
-		phys = sde_enc->phys_encs[i];
-		if (phys && phys->ops.control_te)
-			phys->ops.control_te(phys, enable);
-	}
-}
-
 static int _sde_encoder_input_connect(struct input_handler *handler,
 	struct input_dev *dev, const struct input_device_id *id)
 {
@@ -3460,7 +3460,7 @@ static enum sde_wb sde_encoder_get_wb(struct sde_mdss_cfg *catalog,
 	return WB_MAX;
 }
 
-void sde_encoder_hw_fence_status(struct sde_kms *sde_kms,
+static void sde_encoder_hw_fence_status(struct sde_kms *sde_kms,
 	struct drm_crtc *crtc, struct sde_hw_ctl *hw_ctl)
 {
 	u64 start_timestamp, end_timestamp;
@@ -3489,7 +3489,7 @@ void sde_encoder_hw_fence_status(struct sde_kms *sde_kms,
 	}
 }
 
-void sde_encoder_perf_uidle_status(struct sde_kms *sde_kms,
+static void sde_encoder_perf_uidle_status(struct sde_kms *sde_kms,
 	struct drm_crtc *crtc)
 {
 	struct sde_hw_uidle *uidle;
@@ -4263,7 +4263,7 @@ bool sde_encoder_check_curr_mode(struct drm_encoder *drm_enc, u32 mode)
 
 	return (disp_info->curr_panel_mode == mode);
 }
-
+#if 0
 void sde_encoder_trigger_rsc_state_change(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
@@ -4302,7 +4302,7 @@ void sde_encoder_trigger_rsc_state_change(struct drm_encoder *drm_enc)
 end:
 	mutex_unlock(&sde_enc->rc_lock);
 }
-
+#endif
 
 void sde_encoder_trigger_kickoff_pending(struct drm_encoder *drm_enc)
 {
@@ -6184,7 +6184,7 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc)
 		phys = sde_enc->phys_encs[i];
 
 		if (!phys || !phys->ops.collect_misr) {
-			SDE_DEBUG("invalid misr ops\n", i);
+			SDE_DEBUG("invalid misr ops at %d\n", i);
 			continue;
 		}
 

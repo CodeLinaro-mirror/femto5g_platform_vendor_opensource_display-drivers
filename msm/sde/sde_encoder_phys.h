@@ -835,6 +835,8 @@ void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
  * @phys_enc: Pointer to physical encoder structure
  */
 void sde_encoder_helper_phys_reset(struct sde_encoder_phys *phys_enc);
+void sde_encoder_phys_cmd_irq_control(struct sde_encoder_phys *phys_enc,
+		bool enable);
 
 /**
  * sde_encoder_helper_setup_misr - helper function to setup misr

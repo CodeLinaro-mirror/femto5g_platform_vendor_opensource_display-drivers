@@ -952,7 +952,7 @@ static void sde_hw_sspp_setup_sourceaddress(struct sde_hw_pipe *ctx,
 	}
 }
 
-u32 sde_hw_sspp_get_source_addr(struct sde_hw_pipe *ctx, bool is_virtual)
+static u32 sde_hw_sspp_get_source_addr(struct sde_hw_pipe *ctx, bool is_virtual)
 {
 	u32 idx;
 	u32 offset = 0;
@@ -1704,4 +1704,3 @@ void sde_hw_sspp_destroy(struct sde_hw_pipe *ctx)
 	}
 	kfree(ctx);
 }
-

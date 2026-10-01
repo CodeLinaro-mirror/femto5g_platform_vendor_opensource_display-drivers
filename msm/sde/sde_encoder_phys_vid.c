@@ -1386,7 +1386,7 @@ static int sde_encoder_phys_vid_wait_for_active(
 	return -EINVAL;
 }
 
-void sde_encoder_phys_vid_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
+static void sde_encoder_phys_vid_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_vid *vid_enc;
 	vid_enc =  to_sde_encoder_phys_vid(phys_enc);

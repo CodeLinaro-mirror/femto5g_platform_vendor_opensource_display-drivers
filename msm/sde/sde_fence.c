@@ -8,6 +8,7 @@
 #include <linux/sync_file.h>
 #include <linux/dma-fence.h>
 #include <linux/dma-fence-array.h>
+#include <linux/string.h>
 #include "msm_drv.h"
 #include "sde_kms.h"
 #include "sde_fence.h"
@@ -520,7 +521,7 @@ int sde_fence_update_hw_fences_txq(struct sde_fence_context *ctx, bool vid_mode,
 		/* avoid updating txq more than once and avoid repeating the same fence twice */
 		txq_updated = fc->txq_updated_fence = true;
 
-		SDE_DEBUG("update txq fence:0x%pK ctx:%llu seqno:%llu f:0x%llx ctl:%d vid:%d\n",
+		SDE_DEBUG("update txq fence:0x%pK ctx:%llu seqno:%llu f:0x%lx ctl:%d vid:%d\n",
 			fence, fence->context, fence->seqno, fence->flags, ctl_id, vid_mode);
 
 		/* We will update TxQ one time per frame */
@@ -641,18 +642,21 @@ void sde_sync_put(void *fence)
 		dma_fence_put(fence);
 }
 
-void sde_fence_dump(struct dma_fence *fence)
+static void sde_fence_dump(struct dma_fence *fence)
 {
 	char timeline_str[TIMELINE_VAL_LENGTH];
 
-	if (fence->ops->timeline_value_str)
-		fence->ops->timeline_value_str(fence, timeline_str, TIMELINE_VAL_LENGTH);
+	if (!fence || !fence->ops)
+		return;
+
+	snprintf(timeline_str, sizeof(timeline_str), "%llu",
+			(unsigned long long)fence->seqno);
 
 	SDE_ERROR(
-		"fence drv name:%s timeline name:%s seqno:0x%llx timeline:%s signaled:0x%x status:%d flags:0x%x\n",
+		"fence drv name:%s timeline name:%s seqno:0x%llx timeline:%s signaled:0x%x status:%d flags:0x%lx\n",
 		fence->ops->get_driver_name(fence),
 		fence->ops->get_timeline_name(fence),
-		fence->seqno, timeline_str,
+		(unsigned long long)fence->seqno, timeline_str,
 		fence->ops->signaled ?
 		fence->ops->signaled(fence) : 0xffffffff,
 		dma_fence_get_status(fence), fence->flags);
@@ -794,25 +798,6 @@ static void sde_fence_release(struct dma_fence *fence)
 	}
 }
 
-static void sde_fence_value_str(struct dma_fence *fence, char *str, int size)
-{
-	if (!fence || !str)
-		return;
-
-	snprintf(str, size, "%llu", fence->seqno);
-}
-
-static void sde_fence_timeline_value_str(struct dma_fence *fence, char *str,
-		int size)
-{
-	struct sde_fence *f = to_sde_fence(fence);
-
-	if (!fence || !f->ctx || !str)
-		return;
-
-	snprintf(str, size, "%d", f->ctx->done_count);
-}
-
 static struct dma_fence_ops sde_fence_ops = {
 	.get_driver_name = sde_fence_get_driver_name,
 	.get_timeline_name = sde_fence_get_timeline_name,
@@ -820,8 +805,6 @@ static struct dma_fence_ops sde_fence_ops = {
 	.signaled = sde_fence_signaled,
 	.wait = dma_fence_default_wait,
 	.release = sde_fence_release,
-	.fence_value_str = sde_fence_value_str,
-	.timeline_value_str = sde_fence_timeline_value_str,
 };
 
 /**
@@ -904,7 +887,7 @@ struct sde_fence_context *sde_fence_init(const char *name, uint32_t drm_id)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	strlcpy(ctx->name, name, ARRAY_SIZE(ctx->name));
+	strscpy(ctx->name, name, ARRAY_SIZE(ctx->name));
 	ctx->drm_id = drm_id;
 	kref_init(&ctx->kref);
 	ctx->context = dma_fence_context_alloc(1);
@@ -1088,14 +1071,16 @@ void sde_fence_list_dump(struct dma_fence *fence, struct seq_file **s)
 {
 	char timeline_str[TIMELINE_VAL_LENGTH];
 
-	if (fence->ops->timeline_value_str)
-		fence->ops->timeline_value_str(fence,
-		timeline_str, TIMELINE_VAL_LENGTH);
+	if (!fence || !fence->ops || !s || !*s)
+		return;
+
+	snprintf(timeline_str, sizeof(timeline_str), "%llu",
+			(unsigned long long)fence->seqno);
 
 	seq_printf(*s, "fence name:%s timeline name:%s seqno:0x%llx timeline:%s signaled:0x%x\n",
 		fence->ops->get_driver_name(fence),
 		fence->ops->get_timeline_name(fence),
-		fence->seqno, timeline_str,
+		(unsigned long long)fence->seqno, timeline_str,
 		fence->ops->signaled ?
 		fence->ops->signaled(fence) : 0xffffffff);
 }

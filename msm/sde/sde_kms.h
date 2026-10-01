@@ -128,6 +128,7 @@
 
 /* ESD status check interval in miliseconds */
 #define STATUS_CHECK_INTERVAL_MS 5000
+#define MAX_MISR_MODULES        4
 
 /**
  * enum sde_kms_smmu_state:	smmu state

@@ -20,6 +20,7 @@
 #include "sde_hw_ctl.h"
 #include "sde_formats.h"
 #include "sde_encoder_phys.h"
+#include "sde_encoder_dce.h"
 #include "sde_power_handle.h"
 #include "sde_hw_dsc.h"
 #include "sde_hw_vdc.h"

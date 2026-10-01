@@ -21,14 +21,22 @@
 #include <linux/sort.h>
 #include <linux/debugfs.h>
 #include <linux/ktime.h>
+#include <linux/vmalloc.h>
 #include <drm/sde_drm.h>
 #include <drm/drm_mode.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_flip_work.h>
+#include <drm/drm_framebuffer.h>
 #include <soc/qcom/of_common.h>
 #include <linux/version.h>
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <qcom_sync_file.h>
+#else
+#ifdef CONFIG_QCOM_SPEC_SYNC
 #include <linux/soc/qcom/qcom_sync_file.h>
+#endif
+#endif
 
 #include "sde_kms.h"
 #include "sde_hw_lm.h"
@@ -604,8 +612,9 @@ static void sde_crtc_event_notify(struct drm_crtc *crtc, uint32_t type, void *pa
 
 	SDE_EVT32(DRMID(crtc), type, len, *data,
 			((uint64_t)payload) >> 32, ((uint64_t)payload) & 0xFFFFFFFF);
-	SDE_DEBUG("crtc:%d event(%lu) ptr(%pK) value(%lu) notified\n",
-			DRMID(crtc), type, payload, *data);
+
+	SDE_DEBUG("crtc:%d event(%u) ptr(%pK) value(%u) notified\n",
+			DRMID(crtc), (unsigned int)type, payload, (unsigned int)*data);
 }
 
 static void sde_crtc_destroy(struct drm_crtc *crtc)
@@ -637,22 +646,6 @@ static void sde_crtc_destroy(struct drm_crtc *crtc)
 	kfree(sde_crtc);
 }
 
-struct sde_connector_state *_sde_crtc_get_sde_connector_state(struct drm_crtc *crtc,
-		struct drm_atomic_state *state)
-{
-	struct drm_connector *conn;
-	struct drm_connector_state *conn_state;
-	int i;
-
-	for_each_new_connector_in_state(state, conn, conn_state, i) {
-		if (!conn_state || conn_state->crtc != crtc)
-			continue;
-
-		return to_sde_connector_state(conn_state);
-	}
-
-	return NULL;
-}
 
 struct msm_display_mode *sde_crtc_get_msm_mode(struct drm_crtc_state *c_state)
 {
@@ -3031,7 +3024,7 @@ static void _sde_crtc_retire_event(struct drm_connector *connector,
 	SDE_ATRACE_END("signal_retire_fence");
 }
 
-void sde_crtc_opr_event_notify(struct drm_crtc *crtc)
+static void sde_crtc_opr_event_notify(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc;
 	uint32_t current_opr_value[MAX_DSI_DISPLAYS] = {0};
@@ -3046,7 +3039,7 @@ void sde_crtc_opr_event_notify(struct drm_crtc *crtc)
 		rc = sde_dspp_spr_read_opr_value(sde_crtc->mixers[i].hw_dspp,
 			&current_opr_value[i]);
 		if (rc) {
-			SDE_ERROR("failed to collect OPR %d", i, rc);
+			SDE_ERROR("failed to collect OPR idx: %d rc: %d\n", i, rc);
 			continue;
 		}
 
@@ -4187,7 +4180,6 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		if (encoder->crtc != crtc)
 			continue;
 
-		sde_encoder_trigger_rsc_state_change(encoder);
 		/* encoder will trigger pending mask now */
 		sde_encoder_trigger_kickoff_pending(encoder);
 	}
@@ -4836,7 +4828,7 @@ static void _sde_crtc_reserve_resource(struct drm_crtc *crtc, struct drm_connect
 	/* mode clock = [(h * v * fps * 1.05) / (num_lm)] */
 	mode_clock_hz = mult_frac(crtc->mode.htotal * crtc->mode.vtotal * updated_fps, 105, 100);
 	mode_clock_hz = div_u64(mode_clock_hz, lm_count);
-	SDE_DEBUG("[%s] h=%d v=%d fps=%d lm=%d mode_clk=%u\n",
+	SDE_DEBUG("[%s] h=%d v=%d fps=%lld lm=%d mode_clk=%llu\n",
 			crtc->mode.name, crtc->mode.htotal, crtc->mode.vtotal,
 			updated_fps, lm_count, mode_clock_hz);
 
@@ -5009,7 +5001,7 @@ static void sde_crtc_mmrm_cb_notification(struct drm_crtc *crtc)
 	/* notify user space the reduced clk rate */
 	sde_crtc_event_notify(crtc, DRM_EVENT_MMRM_CB, &requested_clk, sizeof(unsigned long));
 
-	SDE_DEBUG("crtc[%d]: MMRM cb notified clk:%d\n",
+	SDE_DEBUG("crtc[%d]: MMRM cb notified clk:%lu\n",
 		crtc->base.id, requested_clk);
 }
 
@@ -7884,7 +7876,7 @@ void sde_crtc_static_img_control(struct drm_crtc *crtc,
 /*
  * __sde_crtc_static_cache_read_work - transition to cache read
  */
-void __sde_crtc_static_cache_read_work(struct kthread_work *work)
+static void __sde_crtc_static_cache_read_work(struct kthread_work *work)
 {
 	struct sde_crtc *sde_crtc = container_of(work, struct sde_crtc,
 			static_cache_read_work.work);

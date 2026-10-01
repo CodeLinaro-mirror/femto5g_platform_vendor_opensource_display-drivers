@@ -10,6 +10,7 @@
 #include <linux/soc/qcom/spmi-pmic-arb.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
 #include <linux/delay.h>
+#include <linux/string.h>
 #include <linux/sde_io_util.h>
 #include <linux/sde_vm_event.h>
 #include "sde_dbg.h"
@@ -174,8 +175,6 @@ int msm_dss_get_pmic_io_mem(struct platform_device *pdev,
 	struct list_head temp_head;
 	struct msm_io_mem_entry *io_mem;
 	struct resource *res = NULL;
-	struct property *prop;
-	const __be32 *cur;
 	int rc = 0;
 	u32 val;
 
@@ -185,8 +184,7 @@ int msm_dss_get_pmic_io_mem(struct platform_device *pdev,
 	if (!res)
 		return -ENOMEM;
 
-	of_property_for_each_u32(pdev->dev.of_node, "qcom,pmic-arb-address",
-			prop, cur, val) {
+	of_property_for_each_u32(pdev->dev.of_node, "qcom,pmic-arb-address", val) {
 		rc = spmi_pmic_arb_map_address(&pdev->dev, val, res);
 		if (rc < 0) {
 			DEV_ERR("%pS - failed to map pmic address, rc:%d\n",
@@ -591,7 +589,7 @@ int msm_dss_mmrm_register(struct device *dev, struct dss_module_power *mp,
 			MMRM_CLIENT_DOMAIN_DISPLAY;
 		desc.client_info.desc.client_id =
 			clk_array[i].mmrm.clk_id;
-		strlcpy(name, clk_array[i].clk_name,
+		strscpy(name, clk_array[i].clk_name,
 			sizeof(desc.client_info.desc.name));
 		desc.client_info.desc.clk = clk_array[i].clk;
 		desc.priority = MMRM_CLIENT_PRIOR_LOW;

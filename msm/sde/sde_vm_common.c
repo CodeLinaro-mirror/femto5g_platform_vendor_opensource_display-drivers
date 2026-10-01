@@ -35,7 +35,7 @@ struct gh_acl_desc *sde_vm_populate_acl(enum gh_vm_names vm_name)
 	struct gh_acl_desc *acl_desc;
 	gh_vmid_t vmid;
 
-	gh_rm_get_vmid(vm_name, &vmid);
+	ghd_rm_get_vmid(vm_name, &vmid);
 
 	acl_desc = kzalloc(offsetof(struct gh_acl_desc, acl_entries[1]),
 			   GFP_KERNEL);
@@ -50,7 +50,7 @@ struct gh_acl_desc *sde_vm_populate_acl(enum gh_vm_names vm_name)
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-int __mem_sort_cmp(void *priv, const struct list_head *a, const struct list_head *b)
+static int __mem_sort_cmp(void *priv, const struct list_head *a, const struct list_head *b)
 {
 	const struct msm_io_mem_entry *left =
 		container_of(a, struct msm_io_mem_entry, list);
@@ -60,7 +60,7 @@ int __mem_sort_cmp(void *priv, const struct list_head *a, const struct list_head
 	return (left->base - right->base);
 }
 #else
-int __mem_sort_cmp(void *priv, struct list_head *a, struct list_head *b)
+static int __mem_sort_cmp(void *priv, struct list_head *a, struct list_head *b)
 {
 	struct msm_io_mem_entry *left =
 		container_of(a, struct msm_io_mem_entry, list);
@@ -71,7 +71,7 @@ int __mem_sort_cmp(void *priv, struct list_head *a, struct list_head *b)
 }
 #endif
 
-bool __merge_on_overlap(struct msm_io_mem_entry *res,
+static bool __merge_on_overlap(struct msm_io_mem_entry *res,
 		const struct msm_io_mem_entry *left,
 		const struct msm_io_mem_entry *right)
 {
@@ -92,7 +92,7 @@ bool __merge_on_overlap(struct msm_io_mem_entry *res,
 	return false;
 }
 
-void _sde_vm_sort_and_align(struct list_head *mem)
+static void _sde_vm_sort_and_align(struct list_head *mem)
 {
 	struct msm_io_mem_entry *entry, *tmp, *prev = NULL;
 	struct msm_io_mem_entry merged_entry;

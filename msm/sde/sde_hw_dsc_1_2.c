@@ -8,6 +8,7 @@
 #include "sde_hwio.h"
 #include "sde_hw_catalog.h"
 #include "sde_hw_dsc.h"
+#include "sde_hw_dsc_1_2.h"
 #include "sde_hw_pingpong.h"
 #include "sde_dbg.h"
 #include "sde_kms.h"
@@ -384,4 +385,3 @@ void sde_dsc1_2_setup_ops(struct sde_hw_dsc_ops *ops,
 	ops->dsc_config_thresh = sde_hw_dsc_config_thresh;
 	ops->bind_pingpong_blk = sde_hw_dsc_bind_pingpong_blk;
 }
-

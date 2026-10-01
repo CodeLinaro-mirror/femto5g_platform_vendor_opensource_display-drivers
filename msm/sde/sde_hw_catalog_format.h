@@ -4,6 +4,8 @@
  * Copyright (c) 2015-2019, 2021 The Linux Foundation. All rights reserved.
  */
 
+#include <drm/drm_fourcc.h>
+
 #include "sde_hw_mdss.h"
 
 #define RGB_10BIT_FMTS	{DRM_FORMAT_BGRA1010102, 0}, \
@@ -181,4 +183,3 @@ static const struct sde_dnsc_blur_filter_info dnsc_blur_v100_filters[] = {
 	{DNSC_BLUR_GAUS_FILTER, 16, 8192, 1, 8192, 8, 64, 0, 7, {8, 12, 16, 24, 32, 48, 64}},
 	{DNSC_BLUR_PCMN_FILTER, 16, 8192, 1, 8192, 1, 128, 1, 0, {0}},
 };
-

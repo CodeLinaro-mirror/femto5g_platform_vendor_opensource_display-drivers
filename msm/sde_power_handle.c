@@ -138,7 +138,7 @@ static int sde_power_parse_dt_supply(struct platform_device *pdev,
 			goto error;
 		}
 
-		strlcpy(mp->vreg_config[i].vreg_name, st,
+		strscpy(mp->vreg_config[i].vreg_name, st,
 					sizeof(mp->vreg_config[i].vreg_name));
 
 		rc = of_property_read_u32(supply_node,
@@ -267,7 +267,7 @@ static int sde_power_parse_dt_clock(struct platform_device *pdev,
 	for (i = 0; i < num_clk; i++) {
 		of_property_read_string_index(pdev->dev.of_node, "clock-names",
 							i, &clock_name);
-		strlcpy(mp->clk_config[i].clk_name, clock_name,
+		strscpy(mp->clk_config[i].clk_name, clock_name,
 				sizeof(mp->clk_config[i].clk_name));
 
 		of_property_read_u32_index(pdev->dev.of_node, "clock-rate",
@@ -286,7 +286,7 @@ static int sde_power_parse_dt_clock(struct platform_device *pdev,
 			mp->clk_config[i].type = DSS_CLK_MMRM;
 			mp->clk_config[i].mmrm.clk_id = clock_mmrm;
 		}
-		pr_debug("clk[%d]:%d mmrm:%d rate:%d name:%s dev:%s\n",
+		pr_debug("clk[%d] mmrm:%d rate:%d name:%s dev:%s\n",
 			i, clock_mmrm, clock_rate, clock_name,
 			pdev->name ? pdev->name : "<unknown>");
 
@@ -621,7 +621,7 @@ exit:
 	return ret;
 }
 
-int sde_power_mmrm_callback(
+static int sde_power_mmrm_callback(
 	struct mmrm_client_notifier_data *notifier_data)
 {
 	struct dss_clk_mmrm_cb *mmrm_cb_data =
@@ -975,7 +975,7 @@ int sde_power_clk_reserve_rate(struct sde_power_handle *phandle, char *clock_nam
 
 	mutex_lock(&phandle->phandle_lock);
 	phandle->mmrm_reserve.clk_rate = rate;
-	strlcpy(phandle->mmrm_reserve.clk_name, clock_name,
+	strscpy(phandle->mmrm_reserve.clk_name, clock_name,
 			sizeof(phandle->mmrm_reserve.clk_name));
 	mutex_unlock(&phandle->phandle_lock);
 
@@ -1022,8 +1022,8 @@ int sde_power_clk_set_rate(struct sde_power_handle *phandle, char *clock_name,
 
 			mp->clk_config[i].rate = rate;
 			mp->clk_config[i].mmrm.flags = flags;
-			pr_debug("set rate clk:%s rate:%lu flags:0x%x\n",
-				clock_name, rate, flags);
+			pr_debug("set rate clk:%s rate:%llu flags:0x%x\n",
+				clock_name, (unsigned long long)rate, flags);
 
 			SDE_ATRACE_BEGIN("sde_clk_set_rate");
 			rc = msm_dss_single_clk_set_rate(&mp->clk_config[i]);
@@ -1126,7 +1126,7 @@ struct sde_power_event *sde_power_handle_register_event(
 	event->event_type = event_type;
 	event->cb_fnc = cb_fnc;
 	event->usr = usr;
-	strlcpy(event->client_name, client_name, MAX_CLIENT_NAME_LEN);
+	strscpy(event->client_name, client_name, MAX_CLIENT_NAME_LEN);
 	event->active = true;
 
 	mutex_lock(&phandle->phandle_lock);

@@ -6,6 +6,7 @@
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
+#include <linux/delay.h>
 #include <linux/debugfs.h>
 
 #include "sde_vbif.h"

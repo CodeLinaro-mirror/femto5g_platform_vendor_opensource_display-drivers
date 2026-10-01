@@ -640,7 +640,7 @@ void sde_core_perf_crtc_update_uidle(struct drm_crtc *crtc,
 			if (!fps)
 				fps = sde_crtc_get_fps_mode(tmp_crtc);
 
-			SDE_DEBUG("crtc=%d fps:%d wb:%d cwb:%d dis:%d en:%d\n",
+			SDE_DEBUG("crtc=%d fps:%d wb:%d cwb:%d uidle:%d uidle_crtc:%d en:%d\n",
 				tmp_crtc->base.id, fps,
 				_sde_core_perf_is_wb(tmp_crtc),
 				_sde_core_perf_is_cwb(tmp_crtc),
@@ -1270,7 +1270,7 @@ static ssize_t _sde_core_perf_mmrm_write(struct file *file,
 	ret = sde_power_mmrm_set_clk_limit(clk,
 		perf->phandle, requested_clk);
 	if (ret)
-		SDE_ERROR("Failed to set %s clock rate %llu\n",
+		SDE_ERROR("Failed to set %s clock rate %lu\n",
 			clk->clk_name, requested_clk);
 
 exit:
@@ -1291,7 +1291,7 @@ static ssize_t _sde_core_perf_mmrm_read(struct file *file,
 		return 0;	/* the end */
 
 	len = snprintf(buf, sizeof(buf),
-			"mmrm clk_limit:%lu clk:%s\n",
+			"mmrm clk_limit:%llu clk:%s\n",
 			sde_power_mmrm_get_requested_clk(perf->phandle,
 			perf->clk_name), perf->clk_name);
 	if (len < 0 || len >= sizeof(buf))

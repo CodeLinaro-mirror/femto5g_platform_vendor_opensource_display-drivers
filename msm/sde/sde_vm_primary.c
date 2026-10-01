@@ -29,7 +29,7 @@ static bool _sde_vm_owns_hw(struct sde_kms *sde_kms)
 	return (owns_irq & owns_mem_io);
 }
 
-void sde_vm_irq_release_notification_handler(void *req,
+static void sde_vm_irq_release_notification_handler(void *req,
 		unsigned long notif_type, enum gh_irq_label label)
 {
 	SDE_INFO("irq release notification for label: %d\n", label);
@@ -42,7 +42,7 @@ static void sde_vm_mem_release_notification_handler(
 	SDE_INFO("mem release notification for tag: %d\n", tag);
 }
 
-int _sde_vm_reclaim_mem(struct sde_kms *sde_kms)
+static int _sde_vm_reclaim_mem(struct sde_kms *sde_kms)
 {
 	struct sde_vm_primary *sde_vm = to_vm_primary(sde_kms->vm);
 	int rc = 0;
@@ -50,7 +50,7 @@ int _sde_vm_reclaim_mem(struct sde_kms *sde_kms)
 	if (sde_vm->base.io_mem_handle < 0)
 		return 0;
 
-	rc = gh_rm_mem_reclaim(sde_vm->base.io_mem_handle, 0);
+	rc = ghd_rm_mem_reclaim(sde_vm->base.io_mem_handle, 0);
 	if (rc) {
 		SDE_ERROR("failed to reclaim IO memory, rc=%d\n", rc);
 		return rc;
@@ -63,7 +63,7 @@ int _sde_vm_reclaim_mem(struct sde_kms *sde_kms)
 	return rc;
 }
 
-int _sde_vm_reclaim_irq(struct sde_kms *sde_kms)
+static int _sde_vm_reclaim_irq(struct sde_kms *sde_kms)
 {
 	struct sde_vm_primary *sde_vm = to_vm_primary(sde_kms->vm);
 	struct sde_vm_irq_desc *irq_desc;
@@ -143,7 +143,7 @@ static int _sde_vm_lend_mem(struct sde_vm *vm,
 		goto sgl_fail;
 	}
 
-	rc = gh_rm_mem_lend(GH_RM_MEM_TYPE_IO, 0, SDE_VM_MEM_LABEL,
+	rc = ghd_rm_mem_lend(GH_RM_MEM_TYPE_IO, 0, SDE_VM_MEM_LABEL,
 				 acl_desc, sgl_desc, NULL, &mem_handle);
 	if (rc) {
 		SDE_ERROR("hyp lend failed with error, rc: %d\n", rc);
@@ -152,7 +152,7 @@ static int _sde_vm_lend_mem(struct sde_vm *vm,
 
 	sde_vm->base.io_mem_handle = mem_handle;
 
-	gh_rm_get_vmid(GH_TRUSTED_VM, &trusted_vmid);
+	ghd_rm_get_vmid(GH_TRUSTED_VM, &trusted_vmid);
 
 	vmid_desc = sde_vm_populate_vmid(trusted_vmid);
 

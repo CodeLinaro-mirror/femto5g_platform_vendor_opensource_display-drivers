@@ -12,7 +12,7 @@
 #include <linux/stat.h>
 #include <linux/iopoll.h>
 #include <linux/msm_hdcp.h>
-#include <drm/drm_dp_helper.h>
+#include <drm/display/drm_dp_helper.h>
 #include "sde_hdcp.h"
 #include "hdcp/msm_hdmi_hdcp_mgr.h"
 #include "dp/dp_reg.h"

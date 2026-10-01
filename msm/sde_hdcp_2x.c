@@ -19,6 +19,7 @@
 #include <linux/errno.h>
 #include <linux/kthread.h>
 #include <linux/kfifo.h>
+#include <linux/delay.h>
 
 #include "sde_hdcp_2x.h"
 
@@ -183,9 +184,11 @@ static int sde_hdcp_2x_get_next_message(struct sde_hdcp_2x_ctrl *hdcp,
 	case SKE_SEND_EKS:
 		if (!hdcp->repeater_flag)
 			return SKE_SEND_TYPE_ID;
+		fallthrough;
 	case SKE_SEND_TYPE_ID:
 		if (!hdcp->repeater_flag)
 			return SKE_SEND_TYPE_ID;
+		fallthrough;
 	case REP_STREAM_READY:
 	case REP_SEND_ACK:
 		if (!hdcp->repeater_flag)
