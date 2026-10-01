@@ -8,6 +8,7 @@
 #define _DP_PANEL_H_
 
 #include <drm/sde_drm.h>
+#include <linux/types.h>
 
 #include "dp_aux.h"
 #include "dp_link.h"
@@ -81,6 +82,7 @@ struct dp_display_mode {
 };
 
 struct dp_panel;
+struct dp_dsc_dto_params;
 
 struct dp_panel_in {
 	struct device *dev;
@@ -104,8 +106,11 @@ struct dp_audio;
 #define DP_PANEL_CAPS_DSC	BIT(0)
 
 struct dp_panel {
+	struct list_head list_node;
+
 	/* dpcd raw data */
 	u8 dpcd[DP_RECEIVER_CAP_SIZE + DP_RECEIVER_EXT_CAP_SIZE + 1];
+	u8 lttpr_common_caps[DP_LTTPR_COMMON_CAP_SIZE];
 	u8 ds_ports[DP_MAX_DOWNSTREAM_PORTS];
 	u8 dsc_dpcd[DP_RECEIVER_DSC_CAP_SIZE + 1];
 	u8 fec_dpcd;
@@ -120,11 +125,13 @@ struct dp_panel {
 	u32 vic;
 	u32 max_pclk_khz;
 	s64 mst_target_sc;
+	u32 id;
 
 	/* debug */
 	u32 max_bw_code;
 	u32 lane_count;
 	u32 link_bw_code;
+	u32 max_supported_bpp;
 
 	/* By default, stream_id is assigned to DP_INVALID_STREAM.
 	 * Client sets the stream id value using set_stream_id interface.
@@ -152,18 +159,22 @@ struct dp_panel {
 	bool widebus_en;
 	bool dsc_continuous_pps;
 	bool mst_state;
+	bool pclk_on;
+	u32 pclk_factor;
 
 	/* override debug option */
 	bool mst_hide;
 	bool mode_override;
-	int hdisplay;
-	int vdisplay;
-	int vrefresh;
-	int aspect_ratio;
+	int override_h;
+	int override_v;
+	int override_fps;
+	int override_ar;
 
 	s64 fec_overhead_fp;
 
-	int (*init)(struct dp_panel *dp_panel);
+	int (*init)(struct dp_panel *dp_panel, bool skip_op);
+	struct dp_display_mode mode;
+
 	int (*deinit)(struct dp_panel *dp_panel, u32 flags);
 	int (*hw_cfg)(struct dp_panel *dp_panel, bool enable);
 	int (*read_sink_caps)(struct dp_panel *dp_panel,
@@ -189,13 +200,16 @@ struct dp_panel {
 	int (*read_sink_status)(struct dp_panel *dp_panel, u8 *sts, u32 size);
 	int (*update_edid)(struct dp_panel *dp_panel, struct edid *edid);
 	bool (*read_mst_cap)(struct dp_panel *dp_panel);
-	void (*convert_to_dp_mode)(struct dp_panel *dp_panel,
+	int (*convert_to_dp_mode)(struct dp_panel *dp_panel,
 		const struct drm_display_mode *drm_mode,
 		struct dp_display_mode *dp_mode);
 	void (*update_pps)(struct dp_panel *dp_panel, char *pps_cmd);
 	int (*sink_crc_enable)(struct dp_panel *dp_panel, bool enable);
 	int (*get_src_crc)(struct dp_panel *dp_panel, u16 *crc);
 	int (*get_sink_crc)(struct dp_panel *dp_panel, u16 *crc);
+	bool (*get_panel_on)(struct dp_panel *dp_panel);
+	void (*set_lttpr_mode)(struct dp_panel *dp_panel, bool is_transparent);
+	struct dp_display_mode *(*get_mode)(struct dp_panel *dp_panel);
 };
 
 struct dp_tu_calc_input {
@@ -258,4 +272,8 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in);
 void dp_panel_put(struct dp_panel *dp_panel);
 void dp_panel_calc_tu_test(struct dp_tu_calc_input *in,
 		struct dp_vc_tu_mapping_table *tu_table);
+int dp_panel_get_src_crc(struct dp_panel *dp_panel, u16 *crc);
+int dp_panel_get_sink_crc(struct dp_panel *dp_panel, u16 *crc);
+int dp_panel_sink_crc_enable(struct dp_panel *dp_panel, bool enable);
+void dp_panel_get_dto_params(u32 src_bpp, u32 tgt_bpp, u32 *num, u32 *denom);
 #endif /* _DP_PANEL_H_ */

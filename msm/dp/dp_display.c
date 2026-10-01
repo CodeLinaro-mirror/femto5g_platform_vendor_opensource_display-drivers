@@ -1150,7 +1150,7 @@ static int dp_display_host_ready(struct dp_display_private *dp)
 	dp->ctrl->abort(dp->ctrl, false);
 
 	dp->aux->init(dp->aux, dp->parser->aux_cfg);
-	dp->panel->init(dp->panel);
+	dp->panel->init(dp->panel, false);
 
 	dp_display_state_add(DP_STATE_READY);
 	/* log this as it results from user action of cable connection */
@@ -1296,7 +1296,7 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 	dp_display_mst_init(dp);
 
 	rc = dp->ctrl->on(dp->ctrl, dp->mst.mst_active,
-			dp->panel->fec_en, dp->panel->dsc_en, false);
+			dp->panel->fec_en, dp->panel->dsc_en, false, false);
 	if (rc) {
 		dp_display_state_remove(DP_STATE_CONNECTED);
 		goto end;
@@ -2444,7 +2444,7 @@ static int dp_display_prepare(struct dp_display *dp_display, void *panel)
 	 * and required things.
 	 */
 	rc = dp->ctrl->on(dp->ctrl, dp->mst.mst_active, dp_panel->fec_en,
-			dp_panel->dsc_en, true);
+				dp_panel->dsc_en, true, false);
 	if (rc)
 		goto end;
 
@@ -3756,14 +3756,16 @@ static void dp_display_set_mst_state(void *dp_display,
 		dp->mst.cbs.set_drv_state(g_dp_display, mst_state);
 }
 
-static int dp_display_remove(struct platform_device *pdev)
+static void dp_display_remove(struct platform_device *pdev)
 {
 	struct dp_display_private *dp;
 
 	if (!pdev)
-		return -EINVAL;
+		return;
 
 	dp = platform_get_drvdata(pdev);
+	if (!dp)
+		return;
 
 	dp_display_deinit_sub_modules(dp);
 
@@ -3773,12 +3775,10 @@ static int dp_display_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	devm_kfree(&pdev->dev, dp);
 
-	if (g_dp_display->dp_ipc_log) {
+	if (g_dp_display && g_dp_display->dp_ipc_log) {
 		ipc_log_context_destroy(g_dp_display->dp_ipc_log);
 		g_dp_display->dp_ipc_log = NULL;
 	}
-
-	return 0;
 }
 
 static int dp_pm_prepare(struct device *dev)

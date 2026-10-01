@@ -8,9 +8,13 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/kthread.h>
+#include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/soc/qcom/altmode-glink.h>
+#include <linux/platform_device.h>
 #include <linux/usb/dwc3-msm.h>
 #include <linux/usb/pd_vdo.h>
+#include <linux/usb/usbpd.h>
 
 #include "dp_altmode.h"
 #include "dp_debug.h"
@@ -66,7 +70,7 @@ static int dp_altmode_set_usb_dp_mode(struct dp_altmode_private *altmode)
 	if (!usb_pdev) {
 		of_node_put(usb_node);
 		DP_ERR("unable to get usb pdev\n");
-		return -EINVAL;
+		return usb_pdev ? PTR_ERR(usb_pdev) : -EINVAL;
 	}
 
 	while (timeout) {

@@ -33,10 +33,10 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_crtc.h>
-#include <drm/drm_dp_mst_helper.h>
+#include <drm/display/drm_dp_mst_helper.h>
 #include <drm/drm_fixed.h>
 #include <drm/drm_connector.h>
-#include <drm/drm_dp_helper.h>
+#include <drm/display/drm_dp_helper.h>
 #include <linux/version.h>
 
 #include "msm_drv.h"
@@ -1943,4 +1943,3 @@ void dp_mst_deinit(struct dp_display *dp_display)
 
 	DP_MST_INFO("dp drm mst topology manager deinit completed\n");
 }
-

@@ -60,6 +60,7 @@ void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
 }
 
 static int dp_bridge_attach(struct drm_bridge *dp_bridge,
+				struct drm_encoder *encoder,
 				enum drm_bridge_attach_flags flags)
 {
 	struct dp_bridge *bridge = to_dp_bridge(dp_bridge);
@@ -692,10 +693,10 @@ enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,
 		return MODE_ERROR;
 	}
 
-	if (dp_panel->mode_override && (mode->hdisplay != dp_panel->hdisplay ||
-			mode->vdisplay != dp_panel->vdisplay ||
-			vrefresh != dp_panel->vrefresh ||
-			mode->picture_aspect_ratio != dp_panel->aspect_ratio))
+	if (dp_panel->mode_override && (mode->hdisplay != dp_panel->override_h ||
+			mode->vdisplay != dp_panel->override_v ||
+			vrefresh != dp_panel->override_fps ||
+			mode->picture_aspect_ratio != dp_panel->override_ar))
 		return MODE_BAD;
 
 	return dp_disp->validate_mode(dp_disp, sde_conn->drv_panel,
@@ -742,7 +743,7 @@ int dp_connector_install_properties(void *display, struct drm_connector *conn)
 	 */
 	if (!base_conn->colorspace_property) {
 		/* This is the base connector. create the drm property */
-		rc = drm_mode_create_dp_colorspace_property(base_conn);
+		rc = drm_mode_create_dp_colorspace_property(base_conn, 0);
 		if (rc)
 			return rc;
 	} else {

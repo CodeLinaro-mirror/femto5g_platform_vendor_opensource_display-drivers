@@ -39,7 +39,7 @@
 #define _DP_AUX_BRIDGE_H_
 
 #include <linux/types.h>
-#include <drm/drm_dp_helper.h>
+#include <drm/display/drm_dp_helper.h>
 
 /**
  * enum dp_aux_bridge_flag - DP aux bridge capability flag

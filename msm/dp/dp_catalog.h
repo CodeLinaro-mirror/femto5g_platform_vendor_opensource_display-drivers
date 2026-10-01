@@ -7,7 +7,7 @@
 #ifndef _DP_CATALOG_H_
 #define _DP_CATALOG_H_
 
-#include <drm/drm_dp_helper.h>
+#include <drm/display/drm_dp_helper.h>
 #include <drm/sde_drm.h>
 
 #include "dp_parser.h"

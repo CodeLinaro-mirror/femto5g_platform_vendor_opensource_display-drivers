@@ -12,7 +12,7 @@
 #include <linux/kthread.h>
 #include <linux/msm_hdcp.h>
 #include <linux/kfifo.h>
-#include <drm/drm_dp_helper.h>
+#include <drm/display/drm_dp_helper.h>
 
 #include "sde_hdcp_2x.h"
 #include "dp_debug.h"

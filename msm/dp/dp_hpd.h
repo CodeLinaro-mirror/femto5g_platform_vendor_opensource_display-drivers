@@ -7,23 +7,12 @@
 #define _DP_HPD_H_
 
 #include <linux/types.h>
+#include <linux/usb/usbpd.h>
 #include "dp_parser.h"
 #include "dp_catalog.h"
 #include "dp_aux_bridge.h"
 
 struct device;
-
-/**
- * enum dp_hpd_plug_orientation - plug orientation
- * @ORIENTATION_NONE:	Undefined or unspecified
- * @ORIENTATION_CC1:	CC1
- * @ORIENTATION_CC2:	CC2
- */
-enum dp_hpd_plug_orientation {
-	ORIENTATION_NONE,
-	ORIENTATION_CC1,
-	ORIENTATION_CC2,
-};
 
 /**
  * enum dp_hpd_type - dp hpd type

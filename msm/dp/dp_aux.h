@@ -8,7 +8,7 @@
 #define _DP_AUX_H_
 
 #include "dp_catalog.h"
-#include "drm/drm_dp_helper.h"
+#include "drm/display/drm_dp_helper.h"
 #include "dp_aux_bridge.h"
 
 #define DP_STATE_NOTIFICATION_SENT          BIT(0)

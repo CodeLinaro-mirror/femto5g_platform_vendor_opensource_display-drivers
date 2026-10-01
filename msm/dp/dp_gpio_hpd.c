@@ -11,6 +11,8 @@
 #include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
+#include <linux/pinctrl/consumer.h>
+#include <linux/string.h>
 #include <linux/sde_io_util.h>
 #include <linux/of_gpio.h>
 #include "dp_gpio_hpd.h"
@@ -183,7 +185,7 @@ error:
 	return rc;
 }
 
-int dp_gpio_hpd_register(struct dp_hpd *dp_hpd)
+static int dp_gpio_hpd_register(struct dp_hpd *dp_hpd)
 {
 	struct dp_gpio_hpd_private *gpio_hpd;
 	int edge;
@@ -240,7 +242,7 @@ struct dp_hpd *dp_gpio_hpd_get(struct device *dev,
 		goto error;
 	}
 
-	pinctrl.pin = devm_pinctrl_get(dev);
+	pinctrl.pin = pinctrl_get(dev);
 	if (!IS_ERR_OR_NULL(pinctrl.pin)) {
 		pinctrl.state_hpd_active = pinctrl_lookup_state(pinctrl.pin,
 						"mdss_dp_hpd_active");
@@ -255,7 +257,7 @@ struct dp_hpd *dp_gpio_hpd_get(struct device *dev,
 	}
 
 	gpio_hpd->gpio_cfg.gpio = gpio;
-	strlcpy(gpio_hpd->gpio_cfg.gpio_name, hpd_gpio_name,
+	strscpy(gpio_hpd->gpio_cfg.gpio_name, hpd_gpio_name,
 		sizeof(gpio_hpd->gpio_cfg.gpio_name));
 	gpio_hpd->gpio_cfg.value = 0;
 

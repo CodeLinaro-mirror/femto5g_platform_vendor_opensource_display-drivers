@@ -6,8 +6,10 @@
 #ifndef _DP_ALTMODE_H_
 #define _DP_ALTMODE_H_
 
+#include <linux/usb/usbpd.h>
 #include <linux/types.h>
 #include "dp_hpd.h"
+
 
 struct device;
 

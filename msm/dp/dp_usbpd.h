@@ -9,6 +9,7 @@
 #include <linux/types.h>
 #include "dp_hpd.h"
 
+
 struct device;
 
 /**
@@ -46,7 +47,7 @@ struct dp_usbpd {
 	bool debug_en;
 };
 
-#if IS_ENABLED(CONFIG_DRM_MSM_DP_USBPD_LEGACY)
+#ifdef CONFIG_DRM_MSM_DP_USBPD_LEGACY
 /**
  * dp_usbpd_get() - setup usbpd module
  *
@@ -59,9 +60,10 @@ struct dp_usbpd {
  * sink/usb device. This module will notify the client using
  * the callback functions about the connection and status.
  */
+#else
 struct dp_hpd *dp_usbpd_get(struct device *dev, struct dp_hpd_cb *cb);
 void dp_usbpd_put(struct dp_hpd *pd);
-#else
+#if 0
 static inline struct dp_hpd *dp_usbpd_get(struct device *dev,
 		struct dp_hpd_cb *cb)
 {
@@ -71,5 +73,6 @@ static inline struct dp_hpd *dp_usbpd_get(struct device *dev,
 static inline void dp_usbpd_put(struct dp_hpd *pd)
 {
 }
+#endif
 #endif /* CONFIG_DRM_MSM_DP_USBPD_LEGACY */
 #endif /* _DP_USBPD_H_ */

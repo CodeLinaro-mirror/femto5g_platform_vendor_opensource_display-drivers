@@ -8,7 +8,7 @@
 #include <linux/unistd.h>
 #include <drm/drm_fixed.h>
 #include "dp_debug.h"
-#include <drm/drm_dsc.h>
+#include <drm/display/drm_dsc.h>
 #include "sde_dsc_helper.h"
 #include <drm/drm_edid.h>
 
@@ -843,7 +843,7 @@ static void _dp_panel_calc_tu(struct dp_tu_calc_input *in,
 
 	if (HBLANK_MARGIN_EXTRA != 0) {
 		HBLANK_MARGIN += HBLANK_MARGIN_EXTRA;
-		DP_DEBUG("Info: increase HBLANK_MARGIN to %d. (PLUS%d)\n", HBLANK_MARGIN,
+		DP_DEBUG("Info: increase HBLANK_MARGIN to %lld. (PLUS%lld)\n", HBLANK_MARGIN,
 			HBLANK_MARGIN_EXTRA);
 	}
 
@@ -1176,7 +1176,7 @@ static void dp_panel_config_tr_unit(struct dp_panel *dp_panel)
 	catalog->update_transfer_unit(catalog);
 }
 
-static void dp_panel_get_dto_params(u32 src_bpp, u32 tgt_bpp, u32 *num, u32 *denom)
+void dp_panel_get_dto_params(u32 src_bpp, u32 tgt_bpp, u32 *num, u32 *denom)
 {
 	if ((tgt_bpp == 12) && (src_bpp == 24)) {
 		*num = 1;
@@ -2326,7 +2326,7 @@ static int dp_panel_set_stream_info(struct dp_panel *dp_panel,
 	return 0;
 }
 
-static int dp_panel_init_panel_info(struct dp_panel *dp_panel)
+static int dp_panel_init_panel_info(struct dp_panel *dp_panel, bool skip_op)
 {
 	int rc = 0;
 	struct dp_panel_private *panel;
@@ -2340,6 +2340,9 @@ static int dp_panel_init_panel_info(struct dp_panel *dp_panel)
 
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
 	pinfo = &dp_panel->pinfo;
+
+	if (skip_op)
+		return 0;
 
 	drm_dp_dpcd_writeb(panel->aux->drm_aux, DP_SET_POWER, DP_SET_POWER_D3);
 	/* 200us propagation time for the power down to take effect */
@@ -2952,7 +2955,7 @@ end:
 	return mst_cap;
 }
 
-static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
+static int dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 		const struct drm_display_mode *drm_mode,
 		struct dp_display_mode *dp_mode)
 {
@@ -3023,25 +3026,26 @@ static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 		if (dp_panel_dsc_prepare_basic_params(comp_info,
 					dp_mode, dp_panel)) {
 			DP_DEBUG("prepare DSC basic params failed\n");
-			return;
+			return -EINVAL;
 		}
 
 		rc = sde_dsc_populate_dsc_config(&comp_info->dsc_info.config, 0);
 		if (rc) {
 			DP_DEBUG("failed populating dsc params \n");
-			return;
+			return rc;
 		}
 
 		rc = sde_dsc_populate_dsc_private_params(&comp_info->dsc_info,
 				dp_mode->timing.h_active);
 		if (rc) {
 			DP_DEBUG("failed populating other dsc params\n");
-			return;
+			return rc;
 		}
 
 		dp_panel_dsc_pclk_param_calc(dp_panel, comp_info, dp_mode);
 	}
 	dp_mode->fec_overhead_fp = dp_panel->fec_overhead_fp;
+	return 0;
 }
 
 static void dp_panel_update_pps(struct dp_panel *dp_panel, char *pps_cmd)

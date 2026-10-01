@@ -38,7 +38,7 @@
 #define _DP_MST_SIM_HELPER_H_
 
 #include <linux/types.h>
-#include <drm/drm_dp_helper.h>
+#include <drm/display/drm_dp_helper.h>
 
 /**
  * struct dp_mst_sim_port - MST port configuration

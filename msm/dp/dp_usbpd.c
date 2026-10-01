@@ -4,13 +4,42 @@
  * Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
  */
 
+//#ifdef CONFIG_USBPD
 #include <linux/usb/usbpd.h>
+#include <linux/usb/typec_dp.h>
+//#endif
 #include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/delay.h>
+#include <linux/memblock.h>
 
 #include "dp_usbpd.h"
 #include "dp_debug.h"
+
+#ifndef USBPD_SVDM_DISCOVER_MODES
+#define USBPD_SVDM_DISCOVER_MODES	0x01
+#endif
+#ifndef USBPD_SVDM_ENTER_MODE
+#define USBPD_SVDM_ENTER_MODE		0x02
+#endif
+#ifndef USBPD_SVDM_EXIT_MODE
+#define USBPD_SVDM_EXIT_MODE		0x03
+#endif
+#ifndef USBPD_SVDM_ATTENTION
+#define USBPD_SVDM_ATTENTION		0x06
+#endif
+#ifndef USBPD_SVDM_CMD_TYPE_INITIATOR
+#define USBPD_SVDM_CMD_TYPE_INITIATOR	0x0
+#endif
+#ifndef USBPD_SVDM_CMD_TYPE_RESP_ACK
+#define USBPD_SVDM_CMD_TYPE_RESP_ACK	0x1
+#endif
+#ifndef USBPD_SVDM_CMD_TYPE_RESP_BUSY
+#define USBPD_SVDM_CMD_TYPE_RESP_BUSY	0x2
+#endif
+#ifndef USBPD_SVDM_CMD_TYPE_RESP_NAK
+#define USBPD_SVDM_CMD_TYPE_RESP_NAK	0x3
+#endif
 
 /* DP specific VDM commands */
 #define DP_USBPD_VDM_STATUS	0x10
@@ -96,9 +125,15 @@ static const char *dp_usbpd_port_name(enum dp_usbpd_port port)
 static const char *dp_usbpd_cmd_name(u8 cmd)
 {
 	switch (cmd) {
+#ifdef USBPD_SVDM_DISCOVER_MODES
 	case USBPD_SVDM_DISCOVER_MODES: return "USBPD_SVDM_DISCOVER_MODES";
+#endif
+#ifdef USBPD_SVDM_ENTER_MODE
 	case USBPD_SVDM_ENTER_MODE: return "USBPD_SVDM_ENTER_MODE";
+#endif
+#ifdef USBPD_SVDM_ATTENTION
 	case USBPD_SVDM_ATTENTION: return "USBPD_SVDM_ATTENTION";
+#endif
 	case DP_USBPD_VDM_STATUS: return "DP_USBPD_VDM_STATUS";
 	case DP_USBPD_VDM_CONFIGURE: return "DP_USBPD_VDM_CONFIGURE";
 	default: return "DP_USBPD_VDM_ERROR";
@@ -209,27 +244,27 @@ static void dp_usbpd_send_event(struct dp_usbpd_private *pd,
 	case DP_USBPD_EVT_DISCOVER:
 		usbpd_send_svdm(pd->pd, USB_C_DP_SID,
 			USBPD_SVDM_DISCOVER_MODES,
-			SVDM_CMD_TYPE_INITIATOR, 0x0, 0x0, 0x0);
+			USBPD_SVDM_CMD_TYPE_INITIATOR, 0x0, 0x0, 0x0);
 		break;
 	case DP_USBPD_EVT_ENTER:
 		usbpd_send_svdm(pd->pd, USB_C_DP_SID,
 			USBPD_SVDM_ENTER_MODE,
-			SVDM_CMD_TYPE_INITIATOR, 0x1, 0x0, 0x0);
+			USBPD_SVDM_CMD_TYPE_INITIATOR, 0x1, 0x0, 0x0);
 		break;
 	case DP_USBPD_EVT_EXIT:
 		usbpd_send_svdm(pd->pd, USB_C_DP_SID,
 			USBPD_SVDM_EXIT_MODE,
-			SVDM_CMD_TYPE_INITIATOR, 0x1, 0x0, 0x0);
+			USBPD_SVDM_CMD_TYPE_INITIATOR, 0x1, 0x0, 0x0);
 		break;
 	case DP_USBPD_EVT_STATUS:
 		config = 0x1; /* DFP_D connected */
 		usbpd_send_svdm(pd->pd, USB_C_DP_SID, DP_USBPD_VDM_STATUS,
-			SVDM_CMD_TYPE_INITIATOR, 0x1, &config, 0x1);
+			USBPD_SVDM_CMD_TYPE_INITIATOR, 0x1, &config, 0x1);
 		break;
 	case DP_USBPD_EVT_CONFIGURE:
 		config = dp_usbpd_gen_config_pkt(pd);
 		usbpd_send_svdm(pd->pd, USB_C_DP_SID, DP_USBPD_VDM_CONFIGURE,
-			SVDM_CMD_TYPE_INITIATOR, 0x1, &config, 0x1);
+			USBPD_SVDM_CMD_TYPE_INITIATOR, 0x1, &config, 0x1);
 		break;
 	default:
 		DP_ERR("unknown event:%d\n", event);
@@ -271,24 +306,24 @@ static void dp_usbpd_disconnect_cb(struct usbpd_svid_handler *hdlr)
 }
 
 static int dp_usbpd_validate_callback(u8 cmd,
-	enum usbpd_svdm_cmd_type cmd_type, int num_vdos)
+	u8 cmd_type, int num_vdos)
 {
 	int ret = 0;
 
-	if (cmd_type == SVDM_CMD_TYPE_RESP_NAK) {
+	if (cmd_type == USBPD_SVDM_CMD_TYPE_RESP_NAK) {
 		DP_ERR("error: NACK\n");
 		ret = -EINVAL;
 		goto end;
 	}
 
-	if (cmd_type == SVDM_CMD_TYPE_RESP_BUSY) {
+	if (cmd_type == USBPD_SVDM_CMD_TYPE_RESP_BUSY) {
 		DP_ERR("error: BUSY\n");
 		ret = -EBUSY;
 		goto end;
 	}
 
 	if (cmd == USBPD_SVDM_ATTENTION) {
-		if (cmd_type != SVDM_CMD_TYPE_INITIATOR) {
+		if (cmd_type != USBPD_SVDM_CMD_TYPE_INITIATOR) {
 			DP_ERR("error: invalid cmd type for attention\n");
 			ret = -EINVAL;
 			goto end;
@@ -300,7 +335,7 @@ static int dp_usbpd_validate_callback(u8 cmd,
 			goto end;
 		}
 	} else {
-		if (cmd_type != SVDM_CMD_TYPE_RESP_ACK) {
+		if (cmd_type != USBPD_SVDM_CMD_TYPE_RESP_ACK) {
 			DP_ERR("error: invalid cmd type\n");
 			ret = -EINVAL;
 		}
@@ -480,7 +515,7 @@ error:
 	return rc;
 }
 
-int dp_usbpd_register(struct dp_hpd *dp_hpd)
+static int dp_usbpd_register(struct dp_hpd *dp_hpd)
 {
 	struct dp_usbpd *dp_usbpd;
 	struct dp_usbpd_private *usbpd;

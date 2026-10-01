@@ -7,12 +7,14 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/kernel.h>
+#include <linux/string.h>
 #include <linux/kthread.h>
 #include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
 #include <linux/sde_io_util.h>
 #include <linux/of_gpio.h>
+#include <linux/pinctrl/consumer.h>
 #include "dp_lphw_hpd.h"
 #include "dp_debug.h"
 
@@ -291,7 +293,8 @@ static void dp_lphw_hpd_deinit(struct dp_lphw_hpd_private *lphw_hpd)
 
 static void dp_lphw_hpd_init(struct dp_lphw_hpd_private *lphw_hpd)
 {
-	struct dp_pinctrl pinctrl = {0};
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *state_hpd_active;
 	struct dp_parser *parser = lphw_hpd->parser;
 	int i = 0, rc = 0;
 
@@ -309,19 +312,15 @@ static void dp_lphw_hpd_init(struct dp_lphw_hpd_private *lphw_hpd)
 		}
 	}
 
-	pinctrl.pin = devm_pinctrl_get(lphw_hpd->dev);
-
-	if (!IS_ERR_OR_NULL(pinctrl.pin)) {
-		pinctrl.state_hpd_active = pinctrl_lookup_state(pinctrl.pin,
-						"mdss_dp_hpd_active");
-
-		if (!IS_ERR_OR_NULL(pinctrl.state_hpd_active)) {
-			rc = pinctrl_select_state(pinctrl.pin,
-					pinctrl.state_hpd_active);
+	pinctrl = pinctrl_get(lphw_hpd->dev);
+	if (!IS_ERR_OR_NULL(pinctrl)) {
+		state_hpd_active = pinctrl_lookup_state(pinctrl,
+					"mdss_dp_hpd_active");
+		if (!IS_ERR_OR_NULL(state_hpd_active)) {
+			rc = pinctrl_select_state(pinctrl, state_hpd_active);
 			if (rc)
 				DP_ERR("failed to set hpd_active state\n");
 		}
-		pinctrl.state_hpd_tlmm = pinctrl.state_hpd_ctrl = NULL;
 	}
 }
 
@@ -368,7 +367,7 @@ struct dp_hpd *dp_lphw_hpd_get(struct device *dev, struct dp_parser *parser,
 	}
 
 	lphw_hpd->gpio_cfg.gpio = gpio;
-	strlcpy(lphw_hpd->gpio_cfg.gpio_name, hpd_gpio_name,
+	strscpy(lphw_hpd->gpio_cfg.gpio_name, hpd_gpio_name,
 		sizeof(lphw_hpd->gpio_cfg.gpio_name));
 	lphw_hpd->gpio_cfg.value = 0;
 

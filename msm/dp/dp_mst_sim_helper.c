@@ -40,8 +40,10 @@
 #include <linux/delay.h>
 #include <drm/drm_fixed.h>
 #include <drm/drm_edid.h>
-#include <drm/drm_dp_mst_helper.h>
+#include <drm/display/drm_dp_mst_helper.h>
+#include <drm/display/drm_dp_helper.h>
 #include "dp_mst_sim_helper.h"
+
 #include "dp_debug.h"
 
 #define DP_MST_DEBUG(fmt, ...) DP_DEBUG(fmt, ##__VA_ARGS__)
@@ -1181,7 +1183,10 @@ int dp_mst_sim_destroy(void *mst_sim_context)
 		kfree(ctx->ports[i].edid);
 	kfree(ctx->ports);
 
-	destroy_workqueue(ctx->wq);
+	if (ctx->wq)
+		destroy_workqueue(ctx->wq);
+
+	kfree(ctx);
 
 	return 0;
 }

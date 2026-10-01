@@ -9,6 +9,8 @@
 #include <linux/delay.h>
 #include <drm/drm_fixed.h>
 #include <linux/version.h>
+#include <linux/string.h>
+#include <linux/limits.h>
 
 #include "dp_ctrl.h"
 #include "dp_debug.h"
@@ -827,10 +829,10 @@ static int dp_ctrl_enable_stream_clocks(struct dp_ctrl_private *ctrl,
 
 	if (dp_panel->stream_id == DP_STREAM_0) {
 		clk_type = DP_STREAM0_PM;
-		strlcpy(clk_name, "strm0_pixel_clk", 32);
+		strscpy(clk_name, "strm0_pixel_clk", sizeof(clk_name));
 	} else if (dp_panel->stream_id == DP_STREAM_1) {
 		clk_type = DP_STREAM1_PM;
-		strlcpy(clk_name, "strm1_pixel_clk", 32);
+		strscpy(clk_name, "strm1_pixel_clk", sizeof(clk_name));
 	} else {
 		DP_ERR("Invalid stream:%d for clk enable\n",
 				dp_panel->stream_id);
@@ -1057,7 +1059,7 @@ static void dp_ctrl_process_phy_test_request(struct dp_ctrl *dp_ctrl)
 	ctrl->aux->init(ctrl->aux, ctrl->parser->aux_cfg);
 
 	ret = ctrl->dp_ctrl.on(&ctrl->dp_ctrl, ctrl->mst_mode,
-			ctrl->fec_mode, ctrl->dsc_mode, false);
+			ctrl->fec_mode, ctrl->dsc_mode, false, false);
 	if (ret)
 		DP_ERR("failed to enable DP controller\n");
 
@@ -1381,7 +1383,7 @@ static void dp_ctrl_stream_off(struct dp_ctrl *dp_ctrl, struct dp_panel *panel)
 }
 
 static int dp_ctrl_on(struct dp_ctrl *dp_ctrl, bool mst_mode,
-		bool fec_mode, bool dsc_mode, bool shallow)
+		bool fec_mode, bool dsc_mode, bool shallow, bool skip_op)
 {
 	int rc = 0;
 	struct dp_ctrl_private *ctrl;
@@ -1507,7 +1509,7 @@ static void dp_ctrl_isr(struct dp_ctrl *dp_ctrl)
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT);
 }
 
-void dp_ctrl_set_sim_mode(struct dp_ctrl *dp_ctrl, bool en)
+static void dp_ctrl_set_sim_mode(struct dp_ctrl *dp_ctrl, bool en)
 {
 	struct dp_ctrl_private *ctrl;
 
@@ -1519,7 +1521,7 @@ void dp_ctrl_set_sim_mode(struct dp_ctrl *dp_ctrl, bool en)
 	DP_INFO("sim_mode=%d\n", ctrl->sim_mode);
 }
 
-int dp_ctrl_setup_misr(struct dp_ctrl *dp_ctrl)
+static int dp_ctrl_setup_misr(struct dp_ctrl *dp_ctrl)
 {
 	struct dp_ctrl_private *ctrl;
 
@@ -1531,7 +1533,7 @@ int dp_ctrl_setup_misr(struct dp_ctrl *dp_ctrl)
 	return ctrl->catalog->setup_misr(ctrl->catalog);
 }
 
-int dp_ctrl_read_misr(struct dp_ctrl *dp_ctrl, struct dp_misr40_data *data)
+static int dp_ctrl_read_misr(struct dp_ctrl *dp_ctrl, struct dp_misr40_data *data)
 {
 	struct dp_ctrl_private *ctrl;
 

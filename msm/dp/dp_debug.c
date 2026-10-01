@@ -6,7 +6,7 @@
 
 #include <linux/debugfs.h>
 #include <linux/slab.h>
-#include <drm/drm_dp_mst_helper.h>
+#include <drm/display/drm_dp_mst_helper.h>
 #include <drm/drm_probe_helper.h>
 
 #include "dp_power.h"
@@ -510,10 +510,10 @@ static ssize_t dp_debug_write_edid_modes(struct file *file,
 		goto clear;
 
 	panel->mode_override = true;
-	panel->hdisplay = hdisplay;
-	panel->vdisplay = vdisplay;
-	panel->vrefresh = vrefresh;
-	panel->aspect_ratio = aspect_ratio;
+	panel->override_h = hdisplay;
+	panel->override_v = vdisplay;
+	panel->override_fps = vrefresh;
+	panel->override_ar = aspect_ratio;
 	goto end;
 clear:
 	DP_DEBUG("clearing debug modes\n");
@@ -561,10 +561,10 @@ static ssize_t dp_debug_write_edid_modes_mst(struct file *file,
 			panel = sde_conn->drv_panel;
 			if (panel && sde_conn->mst_port) {
 				panel->mode_override = debug_en;
-				panel->hdisplay = hdisplay;
-				panel->vdisplay = vdisplay;
-				panel->vrefresh = vrefresh;
-				panel->aspect_ratio = aspect_ratio;
+				panel->override_h = hdisplay;
+				panel->override_v = vdisplay;
+				panel->override_fps = vrefresh;
+				panel->override_ar = aspect_ratio;
 			} else {
 				DP_ERR("connector id %d is not mst\n", con_id);
 			}
@@ -1863,7 +1863,7 @@ static ssize_t dp_debug_write_dump(struct file *file,
 
 	/* qfprom register dump not supported */
 	if (!strcmp(debug->reg_dump, "qfprom_physical"))
-		strlcpy(debug->reg_dump, "clear", sizeof(debug->reg_dump));
+		strscpy(debug->reg_dump, "clear", sizeof(debug->reg_dump));
 end:
 	return len;
 }

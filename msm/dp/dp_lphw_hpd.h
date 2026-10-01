@@ -23,6 +23,7 @@
  */
 struct dp_hpd *dp_lphw_hpd_get(struct device *dev, struct dp_parser *parser,
 	struct dp_catalog_hpd *catalog, struct dp_hpd_cb *cb);
+int dp_lphw_hpd_register(struct dp_hpd *dp_hpd);
 
 /**
  * dp_lphw_hpd_put()
