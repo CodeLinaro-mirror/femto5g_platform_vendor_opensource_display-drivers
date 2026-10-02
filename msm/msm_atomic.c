@@ -26,6 +26,30 @@
 #include "sde_trace.h"
 #include <drm/drm_atomic_uapi.h>
 
+static struct dma_fence *msm_atomic_get_excl_fence(struct dma_resv *resv)
+{
+	struct dma_resv_iter cursor;
+	struct dma_fence *fence;
+
+	dma_resv_iter_begin(&cursor, resv, DMA_RESV_USAGE_WRITE);
+	fence = dma_resv_iter_first_unlocked(&cursor);
+	if (fence)
+		dma_fence_get(fence);
+	dma_resv_iter_end(&cursor);
+
+	return fence;
+}
+
+static void msm_atomic_set_plane_fence(struct drm_plane_state *state,
+		struct dma_fence *fence)
+{
+	if (!state)
+		return;
+
+	dma_fence_put(state->fence);
+	state->fence = fence;
+}
+
 #define MULTIPLE_CONN_DETECTED(x) (x > 1)
 
 struct msm_commit {
@@ -234,7 +258,7 @@ msm_disable_outputs(struct drm_device *dev, struct drm_atomic_state *old_state)
 		 * it away), so we won't call disable hooks twice.
 		 */
 		bridge = drm_bridge_chain_get_first_bridge(encoder);
-		drm_bridge_chain_disable(bridge);
+		drm_atomic_bridge_chain_disable(bridge, old_state);
 
 		/* Right function depends upon target state. */
 		if (connector->state->crtc && funcs->prepare)
@@ -244,7 +268,7 @@ msm_disable_outputs(struct drm_device *dev, struct drm_atomic_state *old_state)
 		else
 			funcs->dpms(encoder, DRM_MODE_DPMS_OFF);
 
-		drm_bridge_chain_post_disable(bridge);
+		drm_atomic_bridge_chain_post_disable(bridge, old_state);
 	}
 
 	for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i) {
@@ -365,7 +389,7 @@ msm_crtc_set_mode(struct drm_device *dev, struct drm_atomic_state *old_state)
  * and do the plane commits at the end. This is useful for drivers doing runtime
  * PM since planes updates then only happen when the CRTC is actually enabled.
  */
-void msm_atomic_helper_commit_modeset_disables(struct drm_device *dev,
+static void msm_atomic_helper_commit_modeset_disables(struct drm_device *dev,
 		struct drm_atomic_state *old_state)
 {
 	msm_disable_outputs(dev, old_state);
@@ -479,8 +503,8 @@ static void msm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 		 * Each encoder has at most one connector (since we always steal
 		 * it away), so we won't call enable hooks twice.
 		 */
-		bridge = drm_bridge_chain_get_first_bridge(encoder);
-		drm_bridge_chain_pre_enable(bridge);
+			bridge = drm_bridge_chain_get_first_bridge(encoder);
+			drm_atomic_bridge_chain_pre_enable(bridge, old_state);
 		++bridge_enable_count;
 
 		if (funcs->enable)
@@ -525,7 +549,7 @@ static void msm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 				 encoder->base.id, encoder->name);
 
 		bridge = drm_bridge_chain_get_first_bridge(encoder);
-		drm_bridge_chain_enable(bridge);
+		drm_atomic_bridge_chain_enable(bridge, old_state);
 	}
 	SDE_ATRACE_END("msm_enable");
 }
@@ -545,12 +569,12 @@ int msm_atomic_prepare_fb(struct drm_plane *plane,
 	obj = msm_framebuffer_bo(new_state->fb, 0);
 	msm_obj = to_msm_bo(obj);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-	fence = dma_resv_get_excl_unlocked(msm_obj->resv);
+	fence = msm_atomic_get_excl_fence(msm_obj->resv);
 #else
 	fence = dma_resv_get_excl_rcu(msm_obj->resv);
 #endif
 
-	drm_atomic_set_fence_for_plane(new_state, fence);
+	msm_atomic_set_plane_fence(new_state, fence);
 
 	return msm_framebuffer_prepare(new_state->fb, kms->aspace);
 }
@@ -757,12 +781,12 @@ int msm_atomic_commit(struct drm_device *dev,
 			struct msm_gem_object *msm_obj = to_msm_bo(obj);
 			struct dma_fence *fence =
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-				dma_resv_get_excl_unlocked(msm_obj->resv);
+				 msm_atomic_get_excl_fence(msm_obj->resv);
 #else
 				dma_resv_get_excl_rcu(msm_obj->resv);
 #endif
 
-			drm_atomic_set_fence_for_plane(new_plane_state, fence);
+			msm_atomic_set_plane_fence(new_plane_state, fence);
 		}
 		c->plane_mask |= (1 << drm_plane_index(plane));
 	}

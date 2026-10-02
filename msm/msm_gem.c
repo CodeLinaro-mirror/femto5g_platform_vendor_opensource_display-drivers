@@ -21,7 +21,6 @@
 #include <linux/spinlock.h>
 #include <linux/shmem_fs.h>
 #include <linux/dma-buf.h>
-#include <linux/pfn_t.h>
 #include <linux/version.h>
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 #include <linux/ion.h>
@@ -223,8 +222,8 @@ int msm_gem_mmap_obj(struct drm_gem_object *obj,
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
-	vma->vm_flags &= ~VM_PFNMAP;
-	vma->vm_flags |= VM_MIXEDMAP;
+	vm_flags_clear(vma, VM_PFNMAP);
+	vm_flags_set(vma, VM_MIXEDMAP);
 
 	if (msm_obj->flags & MSM_BO_WC) {
 		vma->vm_page_prot = pgprot_writecombine(vm_get_page_prot(vma->vm_flags));
@@ -305,7 +304,7 @@ vm_fault_t msm_gem_fault(struct vm_fault *vmf)
 	VERB("Inserting %pK pfn %lx, pa %lx", (void *)vmf->address,
 			pfn, pfn << PAGE_SHIFT);
 
-	ret = vmf_insert_mixed(vma, vmf->address, __pfn_to_pfn_t(pfn, PFN_DEV));
+	ret = vmf_insert_mixed(vma, vmf->address, pfn);
 out_unlock:
 	mutex_unlock(&msm_obj->lock);
 out:
@@ -544,7 +543,11 @@ int msm_gem_get_iova(struct drm_gem_object *obj,
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	int ret;
-
+	if(!msm_obj)
+	{
+		DRM_ERROR("msm_obj is null:");
+		return -EINVAL;
+	}
 	mutex_lock(&msm_obj->lock);
 	ret = msm_gem_get_iova_locked(obj, aspace, iova);
 	mutex_unlock(&msm_obj->lock);
@@ -693,7 +696,7 @@ static void *get_vaddr(struct drm_gem_object *obj, unsigned madv)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-	struct dma_buf_map map;
+	struct iosys_map map;
 #endif
 	int ret = 0;
 
@@ -781,8 +784,6 @@ int msm_gem_madvise(struct drm_gem_object *obj, unsigned madv)
 
 	mutex_lock(&msm_obj->lock);
 
-	WARN_ON(!mutex_is_locked(&obj->dev->struct_mutex));
-
 	if (msm_obj->madv != __MSM_MADV_PURGED)
 		msm_obj->madv = madv;
 
@@ -797,7 +798,7 @@ static void msm_gem_vunmap_locked(struct drm_gem_object *obj)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-	struct dma_buf_map map = DMA_BUF_MAP_INIT_VADDR(msm_obj->vaddr);
+	struct iosys_map map = IOSYS_MAP_INIT_VADDR(msm_obj->vaddr);
 #endif
 
 	WARN_ON(!mutex_is_locked(&msm_obj->lock));
@@ -866,7 +867,7 @@ void msm_gem_free_object(struct drm_gem_object *obj)
 	struct drm_device *dev = obj->dev;
 	struct msm_drm_private *priv = dev->dev_private;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-	struct dma_buf_map map = DMA_BUF_MAP_INIT_VADDR(msm_obj->vaddr);
+	struct iosys_map map = IOSYS_MAP_INIT_VADDR(msm_obj->vaddr);
 #endif
 
 	/* object should not be on active list: */
@@ -1040,7 +1041,7 @@ static struct drm_gem_object *_msm_gem_new(struct drm_device *dev,
 
 	size = PAGE_ALIGN(size);
 
-	if (!iommu_present(&platform_bus_type))
+	if (!device_iommu_mapped(dev->dev) && !msm_has_sde_smmu())
 		use_vram = true;
 	else if ((flags & (MSM_BO_STOLEN | MSM_BO_SCANOUT)) && priv->vram.size)
 		use_vram = true;

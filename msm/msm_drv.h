@@ -21,16 +21,22 @@
 #define __MSM_DRV_H__
 
 #include <linux/kernel.h>
+#include <linux/iosys-map.h>
 #include <linux/clk.h>
 #include <linux/cpufreq.h>
 #include <linux/module.h>
 #include <linux/component.h>
 #include <linux/platform_device.h>
+#include <linux/of_platform.h>
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include <linux/list.h>
 #include <linux/iommu.h>
+#include <linux/pinctrl/consumer.h>
+#include <linux/pwm.h>
+#include <linux/timer.h>
 #include <linux/types.h>
 #include <linux/of_graph.h>
 #include <linux/of_device.h>
@@ -44,11 +50,13 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_plane_helper.h>
 #include <drm/drm_fb_helper.h>
+#include <drm/drm_framebuffer.h>
+#include <drm/drm_edid.h>
 #include <drm/msm_drm.h>
 #include <drm/sde_drm.h>
 #include <drm/drm_file.h>
 #include <drm/drm_gem.h>
-#include <drm/drm_dsc.h>
+#include <drm/display/drm_dsc.h>
 #include <drm/drm_bridge.h>
 
 #include "sde_power_handle.h"
@@ -1216,8 +1224,8 @@ int msm_gem_dumb_map_offset(struct drm_file *file, struct drm_device *dev,
 		uint32_t handle, uint64_t *offset);
 struct sg_table *msm_gem_prime_get_sg_table(struct drm_gem_object *obj);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-int msm_gem_prime_vmap(struct drm_gem_object *obj, struct dma_buf_map *map);
-void msm_gem_prime_vunmap(struct drm_gem_object *obj, struct dma_buf_map *map);
+int msm_gem_prime_vmap(struct drm_gem_object *obj, struct iosys_map *map);
+void msm_gem_prime_vunmap(struct drm_gem_object *obj, struct iosys_map *map);
 #else
 void *msm_gem_prime_vmap(struct drm_gem_object *obj);
 void msm_gem_prime_vunmap(struct drm_gem_object *obj, void *vaddr);
@@ -1240,6 +1248,7 @@ int msm_gem_new_handle(struct drm_device *dev, struct drm_file *file,
 		uint32_t size, uint32_t flags, uint32_t *handle, char *name);
 struct drm_gem_object *msm_gem_new(struct drm_device *dev,
 		uint32_t size, uint32_t flags);
+bool msm_has_sde_smmu(void);
 struct drm_gem_object *msm_gem_import(struct drm_device *dev,
 		struct dma_buf *dmabuf, struct sg_table *sgt);
 
@@ -1265,7 +1274,8 @@ struct drm_framebuffer *msm_framebuffer_init(struct drm_device *dev,
 		const struct drm_mode_fb_cmd2 *mode_cmd,
 		struct drm_gem_object **bos);
 struct drm_framebuffer *msm_framebuffer_create(struct drm_device *dev,
-		struct drm_file *file, const struct drm_mode_fb_cmd2 *mode_cmd);
+		struct drm_file *file, const struct drm_format_info *info,
+		const struct drm_mode_fb_cmd2 *mode_cmd);
 int msm_framebuffer_set_cache_hint(struct drm_framebuffer *fb,
 		u32 flags, u32 rd_type, u32 wr_type);
 int msm_framebuffer_get_cache_hint(struct drm_framebuffer *fb,
@@ -1516,5 +1526,8 @@ int msm_get_dsc_count(struct msm_drm_private *priv,
 		u32 hdisplay, u32 *num_dsc);
 
 int msm_get_src_bpc(int chroma_format, int bpc);
+
+int msm_ioctl_rmfb2(struct drm_device *dev, void *data,
+		struct drm_file *file_priv);
 
 #endif /* __MSM_DRV_H__ */

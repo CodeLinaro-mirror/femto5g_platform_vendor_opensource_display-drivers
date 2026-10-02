@@ -1212,7 +1212,7 @@ static struct sde_hw_rotator_context *sde_hw_rotator_get_ctx(
 static void sde_hw_rotator_map_vaddr(struct sde_dbg_buf *dbgbuf,
 		struct sde_layer_buffer *buf, struct sde_mdp_data *data)
 {
-	struct dma_buf_map map;
+	struct iosys_map map;
 
 	dbgbuf->dmabuf = data->p[0].srcp_dma_buf;
 	dbgbuf->buflen = data->p[0].srcp_dma_buf->size;

@@ -43,7 +43,7 @@ struct sg_table *msm_gem_prime_get_sg_table(struct drm_gem_object *obj)
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-int msm_gem_prime_vmap(struct drm_gem_object *obj, struct dma_buf_map *map)
+int msm_gem_prime_vmap(struct drm_gem_object *obj, struct iosys_map *map)
 {
 	map->vaddr = msm_gem_get_vaddr(obj);
 	return IS_ERR_OR_NULL(map->vaddr);
@@ -56,7 +56,7 @@ void *msm_gem_prime_vmap(struct drm_gem_object *obj)
 #endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-void msm_gem_prime_vunmap(struct drm_gem_object *obj, struct dma_buf_map *map)
+void msm_gem_prime_vunmap(struct drm_gem_object *obj, struct iosys_map *map)
 #else
 void msm_gem_prime_vunmap(struct drm_gem_object *obj, void *vaddr)
 #endif
@@ -144,7 +144,7 @@ struct drm_gem_object *msm_gem_prime_import(struct drm_device *dev,
 	 * - avoid using lazying unmap feature as it doesn't add
 	 * any value without nested translations
 	 */
-	if (!iommu_present(&platform_bus_type)) {
+	if (!device_iommu_mapped(dev->dev) && !msm_has_sde_smmu()) {
 		attach_dev = dev->dev;
 		lazy_unmap = false;
 	} else {

@@ -151,20 +151,6 @@ static void sde_rot_fence_release(struct dma_fence *fence)
 	kfree(f);
 }
 
-static void sde_rot_fence_value_str(struct dma_fence *fence, char *str,
-		int size)
-{
-	snprintf(str, size, "%llu", fence->seqno);
-}
-
-static void sde_rot_fence_timeline_value_str(struct dma_fence *fence,
-		char *str, int size)
-{
-	struct sde_rot_timeline *tl = to_sde_rot_timeline(fence);
-
-	snprintf(str, size, "%u", tl->curr_value);
-}
-
 static struct dma_fence_ops sde_rot_fence_ops = {
 	.get_driver_name = sde_rot_fence_get_driver_name,
 	.get_timeline_name = sde_rot_fence_get_timeline_name,
@@ -172,8 +158,6 @@ static struct dma_fence_ops sde_rot_fence_ops = {
 	.signaled = sde_rot_fence_signaled,
 	.wait = dma_fence_default_wait,
 	.release = sde_rot_fence_release,
-	.fence_value_str = sde_rot_fence_value_str,
-	.timeline_value_str = sde_rot_fence_timeline_value_str,
 };
 
 /*

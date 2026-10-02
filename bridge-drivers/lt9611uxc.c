@@ -22,6 +22,7 @@
 #include <linux/interrupt.h>
 #include <linux/component.h>
 #include <linux/workqueue.h>
+#include <linux/version.h>
 #include <linux/of_gpio.h>
 #include <linux/of_graph.h>
 #include <linux/of_irq.h>
@@ -41,7 +42,11 @@
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_file.h>
 
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <msm_ext_display.h>
+#else
 #include <linux/soc/qcom/msm_ext_display.h>
+#endif
 
 /* CEC Support form lt9611uxc */
 #include <media/cec-notifier.h>
@@ -172,6 +177,9 @@ static int cont_splash_en;
 static int lt9611_read_edid(struct lt9611 *pdata);
 static int lt9611_get_edid_block(void *data, u8 *buf, unsigned int block,
 				  size_t len);
+static struct edid *lt9611_read_edid_compat(struct drm_connector *connector,
+		int (*read_block)(void *data, u8 *buf, unsigned int block,
+				  size_t len), void *data);
 static void lt9611_change_to_dvi(struct lt9611 *pdata);
 static void lt9611_change_to_hdmi(struct lt9611 *pdata);
 static void lt9611_ctl_en(struct lt9611 *pdata);
@@ -457,13 +465,17 @@ end:
 	return rc;
 }
 
-void lt9611_helper_read_edid(struct lt9611 *pdata)
+static void lt9611_helper_read_edid(struct lt9611 *pdata)
 {
 	struct cec_notifier *notify = pdata->cec_notifier;
 
 	lt9611_read_edid(pdata);
-	pdata->edid = drm_do_get_edid(&pdata->connector,
+	pdata->edid = lt9611_read_edid_compat(&pdata->connector,
 			lt9611_get_edid_block, pdata);
+	if (!pdata->edid) {
+		pr_err("failed to read EDID\n");
+		return;
+	}
 
 	/* Detect interface and setup registers after we get new edid. */
 	if (!drm_detect_hdmi_monitor(pdata->edid))
@@ -476,7 +488,7 @@ void lt9611_helper_read_edid(struct lt9611 *pdata)
 		cec_notifier_set_phys_addr_from_edid(notify, pdata->edid);
 }
 
-void lt9611_edid_work(struct work_struct *work)
+static void lt9611_edid_work(struct work_struct *work)
 {
 	struct lt9611 *pdata = container_of(work, struct lt9611, edid_work);
 
@@ -485,7 +497,7 @@ void lt9611_edid_work(struct work_struct *work)
 	lt9611_helper_read_edid(pdata);
 }
 
-void lt9611_cec_work(struct work_struct *work)
+static void lt9611_cec_work(struct work_struct *work)
 {
 	struct cec_msg cec_msg = {};
 	struct lt9611 *pdata = container_of(work, struct lt9611, cec_work);
@@ -498,7 +510,7 @@ void lt9611_cec_work(struct work_struct *work)
 		cec_received_msg(pdata->cec_adapter, &cec_msg);
 };
 
-void lt9611_hpd_work(struct work_struct *work)
+static void lt9611_hpd_work(struct work_struct *work)
 {
 	char name[32], status[32];
 	char *envp[5];
@@ -531,7 +543,7 @@ void lt9611_hpd_work(struct work_struct *work)
 
 		if (!pdata->edid) {
 			lt9611_read_edid(pdata);
-			pdata->edid = drm_do_get_edid(&pdata->connector,
+			pdata->edid = lt9611_read_edid_compat(&pdata->connector,
 					lt9611_get_edid_block, pdata);
 		}
 	} else {
@@ -675,7 +687,7 @@ static int lt9611_read(struct lt9611 *pdata, u8 reg, char *buf, u32 size)
 	return 0;
 }
 
-void lt9611_config(struct lt9611 *pdata)
+static void lt9611_config(struct lt9611 *pdata)
 {
 	struct lt9611_reg_cfg reg_cfg[] = {
 		{0xFF, 0x80},
@@ -690,7 +702,7 @@ void lt9611_config(struct lt9611 *pdata)
 	lt9611_write_array(pdata, reg_cfg, ARRAY_SIZE(reg_cfg));
 }
 
-u8 lt9611_get_version(struct lt9611 *pdata)
+static u8 lt9611_get_version(struct lt9611 *pdata)
 {
 	u8 revison = 0;
 	u8 subversion = 0;
@@ -715,7 +727,7 @@ u8 lt9611_get_version(struct lt9611 *pdata)
 	return revison;
 }
 
-void lt9611_flash_write_en(struct lt9611 *pdata)
+static void lt9611_flash_write_en(struct lt9611 *pdata)
 {
 	struct lt9611_reg_cfg reg_cfg0[] = {
 		{0xFF, 0x81},
@@ -735,7 +747,7 @@ void lt9611_flash_write_en(struct lt9611 *pdata)
 	lt9611_write_array(pdata, reg_cfg1, ARRAY_SIZE(reg_cfg1));
 }
 
-void lt9611_block_erase(struct lt9611 *pdata)
+static void lt9611_block_erase(struct lt9611 *pdata)
 {
 	struct lt9611_reg_cfg reg_cfg[] = {
 		{0xFF, 0x80},
@@ -754,7 +766,7 @@ void lt9611_block_erase(struct lt9611 *pdata)
 	msleep(3000);
 }
 
-void lt9611_flash_read_addr_set(struct lt9611 *pdata, u32 addr)
+static void lt9611_flash_read_addr_set(struct lt9611 *pdata, u32 addr)
 {
 	struct lt9611_reg_cfg reg_cfg[] = {
 		{0x5E, 0x5F},
@@ -771,7 +783,7 @@ void lt9611_flash_read_addr_set(struct lt9611 *pdata, u32 addr)
 	lt9611_write_array(pdata, reg_cfg, ARRAY_SIZE(reg_cfg));
 }
 
-void lt9611_fw_read_back(struct lt9611 *pdata, u8 *buff, int size)
+static void lt9611_fw_read_back(struct lt9611 *pdata, u8 *buff, int size)
 {
 	u8 page_data[32];
 	int page_number = 0, i = 0, addr = 0;
@@ -801,7 +813,7 @@ void lt9611_fw_read_back(struct lt9611 *pdata, u8 *buff, int size)
 	}
 }
 
-void lt9611_flash_write_config(struct lt9611 *pdata)
+static void lt9611_flash_write_config(struct lt9611 *pdata)
 {
 	struct lt9611_reg_cfg reg_cfg[] = {
 		{0xFF, 0x80},
@@ -815,7 +827,7 @@ void lt9611_flash_write_config(struct lt9611 *pdata)
 	lt9611_write_array(pdata, reg_cfg, ARRAY_SIZE(reg_cfg));
 }
 
-void lt9611_flash_write_addr_set(struct lt9611 *pdata, u32 addr)
+static void lt9611_flash_write_addr_set(struct lt9611 *pdata, u32 addr)
 {
 	struct lt9611_reg_cfg reg_cfg[] = {
 		{0x5B, (addr & 0xFF0000) >> 16},
@@ -828,7 +840,7 @@ void lt9611_flash_write_addr_set(struct lt9611 *pdata, u32 addr)
 	lt9611_write_array(pdata, reg_cfg, ARRAY_SIZE(reg_cfg));
 }
 
-void lt9611_firmware_write(struct lt9611 *pdata, const u8 *f_data,
+static void lt9611_firmware_write(struct lt9611 *pdata, const u8 *f_data,
 		int size)
 {
 	u8 last_buf[32];
@@ -862,7 +874,7 @@ void lt9611_firmware_write(struct lt9611 *pdata, const u8 *f_data,
 		size, total_page, rest_data);
 }
 
-void lt9611_firmware_upgrade(struct lt9611 *pdata,
+static void lt9611_firmware_upgrade(struct lt9611 *pdata,
 			const struct firmware *cfg)
 {
 	int i = 0;
@@ -1274,19 +1286,19 @@ static void lt9611_ctl_disable(struct lt9611 *pdata)
 	lt9611_write_byte(pdata, 0xEE, 0x00);
 }
 
-void lt9611_edid_en(struct lt9611 *pdata)
+static void lt9611_edid_en(struct lt9611 *pdata)
 {
 	lt9611_write_byte(pdata, 0xFF, 0xB0);
 	lt9611_write_byte(pdata, 0x0B, 0x10);
 }
 
-void lt9611_edid_disable(struct lt9611 *pdata)
+static void lt9611_edid_disable(struct lt9611 *pdata)
 {
 	lt9611_write_byte(pdata, 0xFF, 0xB0);
 	lt9611_write_byte(pdata, 0x0B, 0x00);
 }
 
-int lt9611_read_cec_msg(struct lt9611 *pdata, struct cec_msg *msg)
+static int lt9611_read_cec_msg(struct lt9611 *pdata, struct cec_msg *msg)
 {
 	u8 cec_len, i;
 	u8 reg_cec_flag;
@@ -1905,6 +1917,30 @@ static int lt9611_get_edid_block(void *data, u8 *buf, unsigned int block,
 	return 0;
 }
 
+static struct edid *lt9611_read_edid_compat(struct drm_connector *connector,
+		int (*read_block)(void *data, u8 *buf, unsigned int block,
+				  size_t len), void *data)
+{
+	const struct drm_edid *drm_edid;
+	const struct edid *raw_edid;
+	struct edid *edid;
+
+	drm_edid = drm_edid_read_custom(connector, read_block, data);
+	if (!drm_edid)
+		return NULL;
+
+	raw_edid = drm_edid_raw(drm_edid);
+	if (!raw_edid) {
+		drm_edid_free(drm_edid);
+		return NULL;
+	}
+
+	edid = drm_edid_duplicate(raw_edid);
+	drm_edid_free(drm_edid);
+
+	return edid;
+}
+
 #define MODE_SIZE(m) ((m)->hdisplay * (m)->vdisplay)
 #define MODE_REFRESH_DIFF(c, t) (abs((c) - (t)))
 
@@ -2021,7 +2057,7 @@ static int lt9611_connector_get_modes(struct drm_connector *connector)
 }
 
 static enum drm_mode_status lt9611_connector_mode_valid(
-	struct drm_connector *connector, struct drm_display_mode *drm_mode)
+	struct drm_connector *connector, const struct drm_display_mode *drm_mode)
 {
 	struct lt9611 *pdata = connector_to_lt9611(connector);
 	struct drm_display_mode *mode, *n;
@@ -2117,7 +2153,7 @@ static const struct drm_connector_funcs lt9611_connector_funcs = {
 
 
 static int lt9611_bridge_attach(struct drm_bridge *bridge,
-		enum drm_bridge_attach_flags flags)
+		struct drm_encoder *encoder, enum drm_bridge_attach_flags flags)
 {
 	struct mipi_dsi_host *host;
 	struct mipi_dsi_device *dsi;
@@ -2128,7 +2164,7 @@ static int lt9611_bridge_attach(struct drm_bridge *bridge,
 						   .node = NULL,
 						 };
 
-	if (!bridge->encoder) {
+	if (!encoder) {
 		DRM_ERROR("Parent encoder object not found");
 		return -ENODEV;
 	}
@@ -2153,7 +2189,7 @@ static int lt9611_bridge_attach(struct drm_bridge *bridge,
 	pdata->connector.polled = DRM_CONNECTOR_POLL_CONNECT;
 
 	ret = drm_connector_attach_encoder(&pdata->connector,
-						bridge->encoder);
+						encoder);
 	if (ret) {
 		DRM_ERROR("Failed to link up connector to encoder: %d\n", ret);
 		return ret;
@@ -2475,8 +2511,7 @@ static int lt9611_cec_adap_init(struct lt9611 *pdata)
 	return ret;
 }
 
-static int lt9611_probe(struct i2c_client *client,
-	 const struct i2c_device_id *id)
+static int lt9611_probe(struct i2c_client *client)
 {
 	struct lt9611 *pdata;
 	int ret = 0;
@@ -2638,14 +2673,13 @@ err_dt_parse:
 	return ret;
 }
 
-static int lt9611_remove(struct i2c_client *client)
+static void lt9611_remove(struct i2c_client *client)
 {
-	int ret = -EINVAL;
 	struct lt9611 *pdata = i2c_get_clientdata(client);
 	struct drm_display_mode *mode, *n;
 
 	if (!pdata)
-		goto end;
+		return;
 
 	if (pdata->dsi) {
 		mipi_dsi_detach(pdata->dsi);
@@ -2663,7 +2697,7 @@ static int lt9611_remove(struct i2c_client *client)
 	disable_irq(pdata->irq);
 	free_irq(pdata->irq, pdata);
 
-	ret = lt9611_gpio_configure(pdata, false);
+	lt9611_gpio_configure(pdata, false);
 
 	lt9611_put_dt_supply(&client->dev, pdata);
 
@@ -2682,8 +2716,6 @@ static int lt9611_remove(struct i2c_client *client)
 			cec_unregister_adapter(pdata->cec_adapter);
 	}
 
-end:
-	return ret;
 }
 
 
@@ -2724,3 +2756,4 @@ MODULE_PARM_DESC(cont_splash_en,
 module_init(lt9611_init);
 module_exit(lt9611_exit);
 MODULE_LICENSE("GPL v2");
+MODULE_DESCRIPTION("Lontium LT9611UXC HDMI bridge driver");

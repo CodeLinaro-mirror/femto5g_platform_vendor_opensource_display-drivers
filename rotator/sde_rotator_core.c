@@ -21,6 +21,7 @@
 #include <asm/cacheflush.h>
 #include <uapi/linux/sched/types.h>
 #include <linux/qtee_shmbridge.h>
+#include <linux/string.h>
 
 #include "sde_rotator_base.h"
 #include "sde_rotator_core.h"
@@ -2944,7 +2945,7 @@ static inline int sde_rotator_search_dt_clk(struct platform_device *pdev,
 		rc = PTR_ERR(tmp);
 	}
 
-	strlcpy(mgr->rot_clk[clk_idx].clk_name, clk_name,
+	strscpy(mgr->rot_clk[clk_idx].clk_name, clk_name,
 			sizeof(mgr->rot_clk[clk_idx].clk_name));
 
 	mgr->rot_clk[clk_idx].clk = tmp;

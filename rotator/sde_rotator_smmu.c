@@ -16,6 +16,7 @@
 #include <linux/dma-buf.h>
 #include <linux/of_platform.h>
 #include <linux/msm_dma_iommu_mapping.h>
+#include <linux/string.h>
 
 #include "soc/qcom/secure_buffer.h"
 #include "sde_rotator_base.h"
@@ -100,7 +101,7 @@ static int sde_smmu_util_parse_dt_clock(struct platform_device *pdev,
 	for (i = 0; i < mp->num_clk; i++) {
 		of_property_read_string_index(pdev->dev.of_node, "clock-names",
 							i, &clock_name);
-		strlcpy(mp->clk_config[i].clk_name, clock_name,
+		strscpy(mp->clk_config[i].clk_name, clock_name,
 				sizeof(mp->clk_config[i].clk_name));
 
 		of_property_read_u32_index(pdev->dev.of_node, "clock-rate",
@@ -560,7 +561,7 @@ int sde_smmu_probe(struct platform_device *pdev)
 		if (!mp->vreg_config)
 			return -ENOMEM;
 
-		strlcpy(mp->vreg_config->vreg_name, "gdsc-mdss",
+		strscpy(mp->vreg_config->vreg_name, "gdsc-mdss",
 				sizeof(mp->vreg_config->vreg_name));
 		mp->num_vreg = 1;
 	}

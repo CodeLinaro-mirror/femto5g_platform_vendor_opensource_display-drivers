@@ -3205,6 +3205,9 @@ static int sde_kms_check_cwb_concurreny(struct msm_kms *kms,
 	}
 
 	sde_kms = to_sde_kms(kms);
+	if (!sde_kms->catalog)
+		return 0;
+
 	max_cwb = sde_kms->catalog->max_cwb;
 	if (!max_cwb)
 		return 0;

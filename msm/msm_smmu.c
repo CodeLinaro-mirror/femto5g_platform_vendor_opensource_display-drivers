@@ -193,7 +193,7 @@ static int msm_smmu_one_to_one_map(struct msm_mmu *mmu, uint32_t iova,
 		return -ENODEV;
 
 	ret = iommu_map(client->domain, dest_address, dest_address,
-			size, prot);
+			size, prot, GFP_KERNEL);
 	if (ret)
 		pr_err("smmu map failed\n");
 
@@ -209,7 +209,7 @@ static int msm_smmu_map(struct msm_mmu *mmu, uint64_t iova,
 
 	if (sgt && sgt->sgl) {
 		ret = iommu_map_sg(client->domain, iova, sgt->sgl,
-				sgt->orig_nents, prot);
+				sgt->orig_nents, prot, GFP_KERNEL);
 		WARN_ON((int)ret < 0);
 		DRM_DEBUG("%pad/0x%x/0x%x/\n", &sgt->sgl->dma_address,
 				sgt->sgl->dma_length, prot);
@@ -241,7 +241,7 @@ static void msm_smmu_destroy(struct msm_mmu *mmu)
 	kfree(smmu);
 }
 
-struct device *msm_smmu_get_dev(struct msm_mmu *mmu)
+static struct device *msm_smmu_get_dev(struct msm_mmu *mmu)
 {
 	struct msm_smmu *smmu = to_msm_smmu(mmu);
 
@@ -569,7 +569,7 @@ static int msm_smmu_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int msm_smmu_remove(struct platform_device *pdev)
+static void msm_smmu_remove(struct platform_device *pdev)
 {
 	struct msm_smmu_client *client;
 	struct msm_smmu_client *curr, *next;
@@ -586,7 +586,6 @@ static int msm_smmu_remove(struct platform_device *pdev)
 	}
 	mutex_unlock(&smmu_list_lock);
 
-	return 0;
 }
 
 static struct platform_driver msm_smmu_driver = {
