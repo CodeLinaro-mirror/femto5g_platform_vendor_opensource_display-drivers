@@ -5,6 +5,9 @@
 
 #include "dsi_pll.h"
 
+int dsi_pll_5nm_configure(void *pll, bool commit);
+int dsi_pll_5nm_toggle(void *pll, bool prepare);
+
 /* Register Offsets from PLL base address */
 #define PLL_ANALOG_CONTROLS_ONE			0x0000
 #define PLL_ANALOG_CONTROLS_TWO			0x0004

@@ -9,6 +9,7 @@
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
 #include <linux/pwm.h>
+#include <linux/pinctrl/consumer.h>
 #include <video/mipi_display.h>
 
 #include "dsi_panel.h"
@@ -700,7 +701,7 @@ static int dsi_panel_pwm_register(struct dsi_panel *panel)
 	int rc = 0;
 	struct dsi_backlight_config *bl = &panel->bl_config;
 
-	bl->pwm_bl = devm_of_pwm_get(panel->parent, panel->panel_of_node, NULL);
+	bl->pwm_bl = devm_pwm_get(panel->parent, NULL);
 	if (IS_ERR_OR_NULL(bl->pwm_bl)) {
 		rc = PTR_ERR(bl->pwm_bl);
 		DSI_ERR("[%s] failed to request pwm, rc=%d\n", panel->name,
@@ -1294,7 +1295,7 @@ static int dsi_panel_parse_avr_caps(struct dsi_panel *panel,
 		return rc;
 	} else if (val > 1 && val != panel->dfps_caps.dfps_list_len) {
 		DSI_ERR("[%s] avr step list size %d not same as dfps list %d\n",
-				val, panel->dfps_caps.dfps_list_len);
+				panel->name, val, panel->dfps_caps.dfps_list_len);
 		return -EINVAL;
 	}
 

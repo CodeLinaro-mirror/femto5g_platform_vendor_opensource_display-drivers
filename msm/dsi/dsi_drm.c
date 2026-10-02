@@ -7,6 +7,7 @@
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
+#include <drm/drm_edid.h>
 
 #include "msm_kms.h"
 #include "sde_connector.h"
@@ -162,9 +163,11 @@ static void dsi_convert_to_msm_mode(const struct dsi_display_mode *dsi_mode,
 }
 
 static int dsi_bridge_attach(struct drm_bridge *bridge,
+			struct drm_encoder *encoder,
 			enum drm_bridge_attach_flags flags)
 {
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
+	(void)encoder;
 
 	if (!bridge) {
 		DSI_ERR("Invalid params\n");
@@ -561,7 +564,7 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 	return true;
 }
 
-u32 dsi_drm_get_dfps_maxfps(void *display)
+static u32 dsi_drm_get_dfps_maxfps(void *display)
 {
 	u32 dfps_maxfps = 0;
 	struct dsi_display *dsi_display = display;
@@ -710,7 +713,7 @@ static const struct drm_bridge_funcs dsi_bridge_ops = {
 	.mode_set     = dsi_bridge_mode_set,
 };
 
-int dsi_conn_set_avr_step_info(struct dsi_panel *panel, void *info)
+static int dsi_conn_set_avr_step_info(struct dsi_panel *panel, void *info)
 {
 	u32 i;
 	int idx = 0;
@@ -1529,7 +1532,7 @@ int dsi_conn_set_dyn_bit_clk(struct drm_connector *connector, uint64_t value)
 	display->dyn_bit_clk_pending = true;
 
 	SDE_EVT32(display->dyn_bit_clk);
-	DSI_DEBUG("update dynamic bit clock rate to %llu\n", display->dyn_bit_clk);
+	DSI_DEBUG("update dynamic bit clock rate to %u\n", display->dyn_bit_clk);
 
 	return 0;
 }
