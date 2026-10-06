@@ -1231,6 +1231,7 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 		} else {
 			old_fps = 0;
 			old_mode = DRM_PANEL_EVENT_BLANK;
+			old_lp_mode = SDE_MODE_DPMS_OFF;
 		}
 
 		if ((old_mode != new_mode) || (old_fps != new_fps)

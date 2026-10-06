@@ -547,6 +547,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	struct hfi_encoder *hfi_enc;
 	struct hfi_kms *hfi_kms;
 	struct hfi_cmdbuf_t *cmd_buf;
+	struct sde_kms *sde_kms;
 	u32 cmd, display_id = 0, packet_id = 0;
 	int ret = 0;
 
@@ -556,7 +557,12 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	}
 
 	hfi_enc = to_hfi_encoder(enc);
-	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
+		return -EINVAL;
+	}
+	hfi_kms = to_hfi_kms(sde_kms);
 
 	if (!hfi_enc || !hfi_kms) {
 		SDE_ERROR("Invalid hfi_enc %d or hfi_kms %d\n", !hfi_enc, !hfi_kms );
@@ -674,6 +680,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	struct hfi_cmdbuf_t *cmd_buf;
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
+	struct sde_kms *sde_kms;
 	u32 payload[3];
 	u32 disp_id, packet_id = 0;
 	int ret;
@@ -684,7 +691,12 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	}
 
 	hfi_enc = to_hfi_encoder(enc);
-	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
+		return -EINVAL;
+	}
+	hfi_kms = to_hfi_kms(sde_kms);
 
 	if (!hfi_enc || !hfi_kms) {
 		SDE_ERROR("invalid hfi_enc %d or hfi_kms %d\n", !hfi_enc, !hfi_kms);
@@ -1509,9 +1521,10 @@ static int _hfi_enc_send_wb_detach_output_layer(struct sde_encoder_virt *enc)
  */
 static int hfi_enc_deregister_cwb_events(struct sde_encoder_virt *enc)
 {
-	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
+	struct hfi_encoder *hfi_enc;
 	struct hfi_kms *hfi_kms;
 	struct hfi_cmdbuf_t *cmd_buf;
+	struct sde_kms *sde_kms;
 	u32 display_id, packet_id = 0;
 	int ret = 0;
 	u32 capture_complete_event = HFI_EVENT_FRAME_CAPTURE_COMPLETE;
@@ -1521,12 +1534,24 @@ static int hfi_enc_deregister_cwb_events(struct sde_encoder_virt *enc)
 		return -EINVAL;
 	}
 
+	hfi_enc = to_hfi_encoder(enc);
+	if (!hfi_enc) {
+		SDE_ERROR("Invalid hfi_enc\n");
+		return -EINVAL;
+	}
+
 	if (!sde_encoder_in_clone_mode(&enc->base)) {
 		SDE_DEBUG("encoder not in clone mode, skipping post disable\n");
 		return 0;
 	}
 
-	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
 		return -EINVAL;
@@ -1574,6 +1599,7 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 {
 	struct hfi_encoder *hfi_enc;
 	struct hfi_kms *hfi_kms;
+	struct sde_kms *sde_kms;
 	int ret;
 
 	if (!enc) {
@@ -1583,6 +1609,12 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 	hfi_enc = to_hfi_encoder(enc);
 	if (!hfi_enc) {
 		SDE_ERROR("invalid params\n");
+		return -EINVAL;
+	}
+
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
 		return -EINVAL;
 	}
 

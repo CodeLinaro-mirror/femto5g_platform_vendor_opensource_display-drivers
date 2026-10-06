@@ -348,7 +348,7 @@ static void _hfi_kms_batch_commit_unblock(struct drm_device *dev,
 			SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
-		if (encoder->crtc != crtc)
+		if (encoder && encoder->crtc != crtc)
 			continue;
 
 		sde_enc = to_sde_encoder_virt(encoder);
