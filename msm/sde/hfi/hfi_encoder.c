@@ -498,6 +498,12 @@ static void hfi_enc_hfi_prop_handler(struct hfi_packet_info *packet_info,
 			return;
 		}
 
+		if (HFI_DEBUG_EVENT_UNDERRUN & (u32)data[1])
+			atomic_inc(&hfi_enc->hfi_underrun_cnt);
+
+		SDE_EVT32(DRMID(drm_enc), DPUID(drm_enc->dev), data[0], data[1],
+			atomic_read(&hfi_enc->hfi_underrun_cnt), recovery_events);
+
 		if (recovery_events) {
 			SDE_DBG_DUMP(SDE_DBG_BUILT_IN_ALL);
 			sde_connector_event_notify(conn, DRM_EVENT_SDE_HW_RECOVERY,
@@ -1928,7 +1934,8 @@ static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct 
 		return -EINVAL;
 
 	seq_printf(s, "intf:%d    vsync:%8d     underrun:%8d    ",
-		phys->intf_idx - INTF_0,  atomic_read(&hfi_enc->hfi_frame_done_cnt), 0);
+		phys->intf_idx - INTF_0,  atomic_read(&hfi_enc->hfi_frame_done_cnt),
+		atomic_read(&hfi_enc->hfi_underrun_cnt));
 
 	switch (phys->intf_mode) {
 	case INTF_MODE_VIDEO:
