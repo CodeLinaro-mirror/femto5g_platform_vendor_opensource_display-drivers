@@ -2715,6 +2715,10 @@ static void sde_encoder_phys_vid_idle_pc_enter(struct sde_encoder_phys *phys_enc
 	int rc;
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
+	/* Idle-PC sequencing is handled by active display operation. */
+	if (IS_DISP_OP_HFI(disp_op))
+		return;
+
 	if (WARN_ON(!phys_enc->hw_intf->ops.enable_timing[disp_op]
 			|| !phys_enc->hw_intf->ops.enable_backup_esync[disp_op]
 			|| !phys_enc->hw_intf->ops.wait_for_esync_src_switch[disp_op]
@@ -2773,6 +2777,10 @@ static void sde_encoder_phys_vid_idle_pc_exit(struct sde_encoder_phys *phys_enc)
 	int rc;
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 	struct sde_connector_state *c_state;
+
+	/* Avoid duplicate idle-PC restore sequencing in HFI mode. */
+	if (IS_DISP_OP_HFI(disp_op))
+		return;
 
 	if (WARN_ON(!phys_enc->hw_intf->ops.enable_timing[disp_op]
 			|| !phys_enc->hw_intf->ops.enable_backup_esync[disp_op]
