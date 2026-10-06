@@ -22,6 +22,11 @@
 #define HFI_MAX_COLOR_COMPONENTS  3 /* Maximum number of color components supported */
 #define HFI_DHDR_PAYLOAD_MAX_SIZE 32 /* Maximum dynamic HDR payload size */
 
+#define HFI_DP_AUX_FLAG_I2C		(1 << 0) /* Default: Native AUX, set if I2C-over-AUX */
+#define HFI_DP_AUX_FLAG_EOT		(1 << 1) /* Default: MOT, set if end of transaction*/
+#define HFI_DP_AUX_FLAG_BURST		(1 << 2) /* Transfer using burst mode*/
+#define HFI_DP_AUX_MAX_BUF_SZ		256 /* Maximum number of bytes written in an AUX transfer*/
+
 /*
  * Note: 1st MSB byte determines the type of color format
  * // Interleaved RGB (MSB byte = 0x01)
@@ -332,6 +337,53 @@ struct hfi_buff_dpu {
 enum hfi_subsystem_type {
 	HFI_SUBSYSTEM_TYPE_LSR = 0,
 	HFI_SUBSYSTEM_TYPE_GMU = 1
+};
+
+/*
+ * HFI data structure definitions for DisplayPort AUX transfer commands.
+ * These structures define the payload formats for commands and responses.
+ */
+
+/*
+ * Read DPCD registers over AUX
+ *
+ * @flags:
+ *     Bitmask containing transfer mode (Native AUX or I2C-over-AUX) and
+ *     other I2C flags (e.g. HFI_DP_AUX_FLAG_EOT, HFI_DP_AUX_FLAG_BURST)
+ * @buffer:
+ *     Shared buffer info
+ * @offset:
+ *     Register offset
+ * @bytes:
+ *     Number of bytes to read
+ */
+struct hfi_dp_aux_request {
+	u32 flags;
+	struct hfi_buff buffer;
+	u32 offset;
+	u32 bytes;
+};
+
+/*
+ * Write DPCD registers over AUX
+ *
+ * @flags:
+ *     Bitmask containing transfer mode (Native AUX or I2C-over-AUX) and
+ *     other I2C flags (e.g. HFI_DP_AUX_FLAG_EOT, HFI_DP_AUX_FLAG_BURST)
+ * @offset:
+ *     Register offset
+ * @size:
+ *     Number of valid bytes in data[] (1 to HFI_DP_AUX_MAX_BUF_SZ).
+ *     The full struct is always transmitted; only the first @size bytes
+ *     of data[] are considered valid by the receiver.
+ * @data:
+ *     Register data (only first @size bytes are valid)
+ */
+struct hfi_dp_aux_data {
+	u32 flags;
+	u32 offset;
+	u32 size;
+	u8  data[HFI_DP_AUX_MAX_BUF_SZ];
 };
 
 #endif // __H_HFI_DEFS_COMMON_H__

@@ -28,6 +28,7 @@
 #include "hfi_adapter.h"
 #include "dp_mgr.h"
 #include "dp_mgr_hfi.h"
+#include "dp_aux_hfi.h"
 #include "hfi_defs_display.h"
 #include "dp_altmode.h"
 
@@ -37,7 +38,7 @@
 struct dp_hfi_response_data {
 	u32 state;
 	u32 bw_code;
-	u8 dpcd_data[256];
+	u8 dpcd_data[HFI_DP_AUX_MAX_BUF_SZ];
 	u32 dpcd_size;
 	struct hfi_dp_crc_info crc_data;
 	u32 misr_values[8];
@@ -65,6 +66,10 @@ struct dp_debug_client_hfi_priv {
 	struct hfi_shared_addr_map *edid_addr_map[MAX_DP_MST_STREAMS];
 	struct hfi_shared_addr_map *info_addr_map;
 	struct drm_connector *mst_conn;
+
+	/* dpcd_ctrl last-read result */
+	u8 dpcd_ctrl_buf[HFI_DP_AUX_MAX_BUF_SZ];
+	u32 dpcd_ctrl_len;
 };
 
 /* Helper function to check buffer overflow */
@@ -706,7 +711,7 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 	struct dp_debug_client_hfi_priv *priv;
 	struct hfi_client_t *hfi_client;
 	struct hfi_shared_addr_map *dpcd_addr_map = NULL;
-	struct hfi_dp_dpcd_request dpcd_request;
+	struct hfi_dp_aux_request dpcd_request;
 	int rc;
 	u32 actual_size = 0;
 	u8 *dpcd_data;
@@ -732,10 +737,11 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 		dpcd_addr_map->size);
 
 	/* Prepare command payload with buffer address for DCP to write to */
+	dpcd_request.flags = 0 /* Native transaction*/;
 	dpcd_request.buffer.addr_l = HFI_VAL_L32(dpcd_addr_map->remote_addr);
 	dpcd_request.buffer.addr_h = HFI_VAL_H32(dpcd_addr_map->remote_addr);
 	dpcd_request.buffer.size = dpcd_addr_map->size;
-	dpcd_request.dpcd_offset = offset;
+	dpcd_request.offset = offset;
 	dpcd_request.bytes = size;
 
 	/* Send HFI command with shared buffer address */
@@ -1471,6 +1477,152 @@ bail:
 	return rc;
 }
 
+static int dp_debug_client_hfi_read_dpcd_drm(struct dp_debug_client *client,
+		u8 *dpcd, u32 count, u32 offset)
+{
+	struct dp_debug_client_hfi_priv *priv;
+	struct hfi_client_t *hfi_client;
+	struct hfi_shared_addr_map *dpcd_addr_map = NULL;
+	struct dp_mgr_hfi_priv *hfi_priv;
+	struct drm_dp_aux *drm_aux;
+	int rc, ret;
+
+	if (!client || !dpcd)
+		return -EINVAL;
+
+	priv = client->priv;
+	hfi_client = dp_debug_hfi_get_client(priv);
+	if (!hfi_client) {
+		DP_ERR("HFI client not available\n");
+		return -ENODEV;
+	}
+
+	/* Allocate shared buffer for DCP to populate with DPCD data */
+	rc = _alloc_addr_map(hfi_client, &priv->dpcd_addr_map, SZ_1K);
+	if (rc)
+		return rc;
+
+	dpcd_addr_map = priv->dpcd_addr_map;
+	DP_DEBUG("Allocated DPCD buffer: local=%p, remote=0x%llx, size=%u\n",
+		dpcd_addr_map->local_addr, (u64)dpcd_addr_map->remote_addr, dpcd_addr_map->size);
+
+	hfi_priv = _get_mgr_hfi(priv);
+	if (!hfi_priv) {
+		DP_ERR("HFI priv not available\n");
+		return -ENODEV;
+	}
+	drm_aux = dp_aux_hfi_get_drm_aux(hfi_priv->aux_hfi);
+
+	ret = drm_dp_dpcd_read(drm_aux, offset, dpcd, count);
+	if (ret != count) {
+		DP_ERR("drm_dp_dpcd_read failed: offset=0x%x len=%u ret=%d\n",
+			offset, count, ret);
+		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, offset, count, ret);
+	}
+
+	return ret;
+}
+
+/* Similar to dp_debug_client_hfi_write_dpcd but goes through DRM path */
+static int dp_debug_client_hfi_write_dpcd_drm(struct dp_debug_client *client,
+		const char *buf, size_t count)
+{
+	struct dp_debug_client_hfi_priv *priv;
+	struct hfi_client_t *hfi_client;
+	struct dp_mgr_hfi_priv *hfi_priv;
+	struct drm_dp_aux *drm_aux;
+	u8 *input_buf = NULL, *tmp_buf = NULL, *dpcd = NULL;
+	const int char_to_nib = 2;
+	size_t dpcd_size = 0;
+	size_t size = 0, dpcd_buf_index = 0;
+	char offset_ch[5];
+	char t[3];
+	u32 offset, data_len;
+	int rc = 0, d, ret;
+
+	if (!client || !buf || count < 4)
+		return -EINVAL;
+
+	priv = client->priv;
+
+	size = min_t(size_t, count, SZ_2K);
+
+	if (size < 4)
+		return -EINVAL;
+
+	input_buf = kzalloc(size, GFP_KERNEL);
+	if (!input_buf)
+		return -ENOMEM;
+
+	memcpy(input_buf, buf, size);
+
+	memcpy(offset_ch, input_buf, 4);
+	offset_ch[4] = '\0';
+
+	if (kstrtoint(offset_ch, 16, &offset)) {
+		DP_ERR("offset kstrtoint error\n");
+		rc = -EINVAL;
+		goto bail;
+	}
+
+	size -= 4;
+	if (size < char_to_nib) {
+		rc = -EINVAL;
+		goto bail;
+	}
+
+	dpcd_size = size / char_to_nib;
+	data_len = dpcd_size;
+	tmp_buf = input_buf + 4;
+
+	dpcd = kzalloc(dpcd_size, GFP_KERNEL);
+	if (!dpcd) {
+		rc = -ENOMEM;
+		goto bail;
+	}
+
+	while (dpcd_size--) {
+		memcpy(t, tmp_buf, char_to_nib);
+		t[char_to_nib] = '\0';
+
+		if (kstrtoint(t, 16, &d)) {
+			DP_ERR("kstrtoint error\n");
+			rc = -EINVAL;
+			goto bail;
+		}
+
+		dpcd[dpcd_buf_index++] = d;
+		tmp_buf += char_to_nib;
+	}
+
+	hfi_client = dp_debug_hfi_get_client(priv);
+	if (!hfi_client) {
+		rc = -ENODEV;
+		goto bail;
+	}
+
+	hfi_priv = _get_mgr_hfi(priv);
+	if (!hfi_priv) {
+		rc = -ENODEV;
+		goto bail;
+	}
+
+	drm_aux = dp_aux_hfi_get_drm_aux(hfi_priv->aux_hfi);
+	ret = drm_dp_dpcd_write(drm_aux, offset, dpcd, data_len);
+	if (ret != data_len) {
+		DP_ERR("drm_dp_dpcd_write failed: offset=0x%x len=%u ret=%d\n",
+			offset, data_len, ret);
+		goto bail;
+	}
+
+	rc = data_len;
+
+bail:
+	kfree(input_buf);
+	kfree(dpcd);
+	return rc;
+}
+
 /* Write DPCD register(s) to DCP; input is hex-encoded offset + data */
 static int dp_debug_client_hfi_write_dpcd(struct dp_debug_client *client,
 		const char *buf, size_t count)
@@ -1485,9 +1637,10 @@ static int dp_debug_client_hfi_write_dpcd(struct dp_debug_client *client,
 	int rc = 0;
 	struct hfi_client_t *hfi_client;
 	struct {
+		u32 flags;
 		u32 offset;
 		u32 size;
-		u8 data[256];
+		u8 data[HFI_DP_AUX_MAX_BUF_SZ];
 	} cmd_data;
 
 	if (!client || !buf || count < 4)
@@ -1550,6 +1703,7 @@ static int dp_debug_client_hfi_write_dpcd(struct dp_debug_client *client,
 
 	/* Prepare command data */
 	memset(&cmd_data, 0, sizeof(cmd_data));
+	cmd_data.flags = 0 /* Native transaction*/;
 	cmd_data.offset = offset;
 	cmd_data.size = dpcd_buf_index;
 	memcpy(cmd_data.data, dpcd, min_t(size_t, dpcd_buf_index, sizeof(cmd_data.data)));
@@ -1564,7 +1718,8 @@ static int dp_debug_client_hfi_write_dpcd(struct dp_debug_client *client,
 	rc = dp_debug_hfi_send_cmd(priv, hfi_client,
 			HFI_COMMAND_DEBUG_DP_SET_DPCD,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &cmd_data,
-			sizeof(cmd_data.offset) + sizeof(cmd_data.size) + cmd_data.size,
+			sizeof(cmd_data.offset) + sizeof(cmd_data.size) + cmd_data.size +
+			sizeof(cmd_data.flags),
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE,
 			dp_debug_hfi_get_base_obj_id(priv));
 	if (rc) {
@@ -2387,6 +2542,7 @@ int dp_debug_client_hfi_get(struct dp_debug_client *client)
 	/* Register all function pointers */
 	/* Read operations */
 	client->read_dpcd = dp_debug_client_hfi_read_dpcd;
+	client->read_dpcd_drm = dp_debug_client_hfi_read_dpcd_drm;
 	client->read_crc = dp_debug_client_hfi_read_crc;
 	client->read_connected = dp_debug_client_hfi_read_connected;
 	client->read_info = dp_debug_client_hfi_read_info;
@@ -2403,6 +2559,7 @@ int dp_debug_client_hfi_get(struct dp_debug_client *client)
 	client->write_sim_mode = dp_debug_client_hfi_write_sim_mode;
 	client->write_edid = dp_debug_client_hfi_write_edid;
 	client->write_dpcd = dp_debug_client_hfi_write_dpcd;
+	client->write_dpcd_drm = dp_debug_client_hfi_write_dpcd_drm;
 	client->write_bw_code = dp_debug_client_hfi_write_bw_code;
 	client->write_hdcp = dp_debug_client_hfi_write_hdcp;
 	client->write_hpd = dp_debug_client_hfi_write_hpd;

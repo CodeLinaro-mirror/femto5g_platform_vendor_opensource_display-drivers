@@ -27,6 +27,9 @@
 struct dp_debug_private {
 	struct dentry *root;
 
+	u32 dpcd_drm_offset;
+	u32 dpcd_drm_size;
+
 	u32 dpcd_offset;
 	u32 dpcd_size;
 
@@ -140,6 +143,122 @@ static ssize_t dp_debug_write_dpcd(struct file *file,
 bail:
 	kfree(buf);
 	return rc;
+}
+
+static ssize_t dp_debug_write_dpcd_drm(struct file *file,
+		const char __user *user_buff, size_t count, loff_t *ppos)
+{
+	struct dp_debug_private *priv = file->private_data;
+	char *buf;
+	ssize_t rc = count;
+	size_t size = 0;
+	char offset_ch[5];
+	u32 offset;
+
+	if (!priv || !priv->client.write_dpcd_drm)
+		return -ENODEV;
+
+	if (*ppos)
+		return 0;
+
+	buf = kzalloc(count + 1, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	if (copy_from_user(buf, user_buff, count)) {
+		rc = -EFAULT;
+		goto bail;
+	}
+
+	buf[count] = '\0';
+
+	size = min_t(size_t, count, SZ_2K);
+	if (size > 5) {
+		DP_DEBUG("write dpcd bytes\n");
+		mutex_lock(&priv->lock);
+		if (priv->client.write_dpcd_drm)
+			priv->client.write_dpcd_drm(&priv->client, buf, count);
+		rc = count;
+		mutex_unlock(&priv->lock);
+	} else {
+		DP_DEBUG("write dpcd offset, size=%zu\n", size);
+		/* this is part of a read operation where just the address is set */
+		memcpy(offset_ch, buf, size);
+		offset_ch[4] = '\0';
+
+		if (kstrtoint(offset_ch, 16, &offset)) {
+			DP_ERR("offset kstrtoint error\n");
+			rc = -EINVAL;
+			goto bail;
+		}
+		mutex_lock(&priv->lock);
+		priv->dpcd_drm_offset = offset;
+		mutex_unlock(&priv->lock);
+		DP_DEBUG("dpcd offset=%d\n", offset);
+	}
+
+bail:
+	kfree(buf);
+	return rc;
+}
+
+static ssize_t dp_debug_read_dpcd_drm(struct file *file,
+		char __user *user_buff, size_t count, loff_t *ppos)
+{
+	struct dp_debug_private *priv = file->private_data;
+	char *buf, *str_buf;
+	int const buf_size = SZ_4K;
+	u32 len = 0;
+	u32 dpcd_drm_offset, offset = 0;
+	u32 bytes = 0;
+
+	if (!priv || !priv->client.read_dpcd_drm)
+		return -ENODEV;
+
+	if (*ppos)
+		return 0;
+
+	buf = kzalloc(buf_size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	str_buf = kzalloc(buf_size, GFP_KERNEL);
+	if (!str_buf) {
+		kfree(buf);
+		return -ENOMEM;
+	}
+
+	/*
+	 * For DPCD address 0, return the full capability set
+	 * for the rest, just read one register at a time
+	 */
+	mutex_lock(&priv->lock);
+	dpcd_drm_offset = priv->dpcd_drm_offset;
+	priv->dpcd_drm_size = dpcd_drm_offset ? 1 : DPCD_CAP_SIZE;
+	if (priv->client.read_dpcd_drm)
+		bytes = priv->client.read_dpcd_drm(&priv->client, (u8 *)buf, priv->dpcd_drm_size,
+				dpcd_drm_offset);
+	mutex_unlock(&priv->lock);
+
+	if (!bytes) {
+		DP_ERR("DPCD read returned 0 bytes at offset 0x%x\n", dpcd_drm_offset);
+		len = 0;
+		goto exit;
+	}
+
+	len += scnprintf(str_buf + len, buf_size - len, "%04x: ", dpcd_drm_offset);
+	while (offset < bytes)
+		len += scnprintf(str_buf + len, buf_size - len, "%02x ", buf[offset++]);
+	len += scnprintf(str_buf + len, buf_size - len, "\n");
+
+	len = min_t(size_t, count, len);
+	if (len > 0 && !copy_to_user(user_buff, str_buf, len))
+		*ppos += len;
+
+exit:
+	kfree(str_buf);
+	kfree(buf);
+	return len;
 }
 
 static ssize_t dp_debug_read_dpcd(struct file *file,
@@ -1411,6 +1530,12 @@ static const struct file_operations dpcd_fops = {
 	.read = dp_debug_read_dpcd,
 };
 
+static const struct file_operations dpcd_drm_fops = {
+	.open = simple_open,
+	.write = dp_debug_write_dpcd_drm,
+	.read = dp_debug_read_dpcd_drm,
+};
+
 static const struct file_operations crc_fops = {
 	.open = simple_open,
 	.read = dp_debug_read_crc,
@@ -1694,6 +1819,13 @@ static int dp_debug_init_sink_caps(struct dp_debug_private *priv,
 		rc = PTR_ERR(file);
 		DP_ERR("[%s] debugfs dpcd failed, rc=%d\n",
 			priv->name, rc);
+		return rc;
+	}
+
+	file = debugfs_create_file("dpcd_drm", 0644, dir,
+					priv, &dpcd_drm_fops);
+	if (IS_ERR_OR_NULL(file)) {
+		rc = PTR_ERR(file);
 		return rc;
 	}
 
