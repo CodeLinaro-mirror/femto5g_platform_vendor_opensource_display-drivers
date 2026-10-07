@@ -1085,16 +1085,113 @@ static ssize_t retire_frame_event_show(struct device *device,
 			ktime_to_ns(sde_crtc->retire_frame_event_time));
 }
 
+static uint32_t _sde_crtc_get_connector_id(struct drm_crtc *crtc)
+{
+	struct drm_connector *conn;
+	struct drm_connector_list_iter conn_iter;
+	uint32_t conn_id = 0;
+
+	drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		if (conn->state && conn->state->crtc == crtc &&
+				conn->connector_type != DRM_MODE_CONNECTOR_VIRTUAL) {
+			conn_id = conn->base.id;
+			break;
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	return conn_id;
+}
+
+static ssize_t early_wakeup_store(struct device *device,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct drm_crtc *crtc;
+	struct sde_crtc *sde_crtc;
+	struct msm_drm_private *priv;
+	struct msm_kms *kms;
+	uint32_t connector_id;
+	uint32_t wakeup_hint;
+	int ret;
+
+	if (!device || !buf) {
+		SDE_ERROR("invalid input param(s)\n");
+		return -EAGAIN;
+	}
+
+	crtc = dev_get_drvdata(device);
+	if (!crtc)
+		return -EINVAL;
+
+	sde_crtc = to_sde_crtc(crtc);
+	priv = crtc->dev->dev_private;
+	if (!priv)
+		return -EINVAL;
+
+	ret = kstrtouint(buf, 0, &wakeup_hint);
+	if (ret) {
+		SDE_ERROR("crtc%d: invalid wakeup_hint value\n", DRMID(crtc));
+		return ret;
+	}
+
+	/* cache value regardless of wakeup_hint */
+	sde_crtc->early_wakeup_hint = wakeup_hint;
+
+	if (!wakeup_hint) {
+		SDE_DEBUG("crtc%d: wakeup_hint=0, no-op\n", DRMID(crtc));
+		return count;
+	}
+
+	connector_id = _sde_crtc_get_connector_id(crtc);
+	if (!connector_id) {
+		SDE_ERROR("crtc%d: no active connector\n", DRMID(crtc));
+		return -ENODEV;
+	}
+
+	SDE_EVT32(DRMID(crtc), connector_id, wakeup_hint);
+
+	kms = priv->kms;
+	if (kms && kms->funcs && kms->funcs->display_early_wakeup)
+		kms->funcs->display_early_wakeup(crtc->dev, connector_id);
+
+	sde_crtc->early_wakeup_hint = 0;
+
+	return count;
+}
+
+static ssize_t early_wakeup_show(struct device *device,
+		struct device_attribute *attr, char *buf)
+{
+	struct drm_crtc *crtc;
+	struct sde_crtc *sde_crtc;
+
+	if (!device || !buf) {
+		SDE_ERROR("invalid input param(s)\n");
+		return -EAGAIN;
+	}
+
+	crtc = dev_get_drvdata(device);
+	if (!crtc)
+		return -EINVAL;
+
+	sde_crtc = to_sde_crtc(crtc);
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n", sde_crtc->early_wakeup_hint);
+}
+
 static DEVICE_ATTR_RO(vsync_event);
 static DEVICE_ATTR_RO(measured_fps);
 static DEVICE_ATTR_RW(fps_periodicity_ms);
 static DEVICE_ATTR_RO(retire_frame_event);
+static DEVICE_ATTR_RW(early_wakeup);
 
 static struct attribute *sde_crtc_dev_attrs[] = {
 	&dev_attr_vsync_event.attr,
 	&dev_attr_measured_fps.attr,
 	&dev_attr_fps_periodicity_ms.attr,
 	&dev_attr_retire_frame_event.attr,
+	&dev_attr_early_wakeup.attr,
 	NULL
 };
 

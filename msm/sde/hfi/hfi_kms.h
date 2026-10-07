@@ -372,4 +372,18 @@ void hfi_kms_get_batch_info(struct hfi_kms *hfi_kms, struct drm_crtc_state *crtc
  */
 bool hfi_kms_is_gmu_lsr_batch(const struct hfi_kms_batch_info *batch);
 
+/**
+ * hfi_kms_send_hfi_subsystem_config - configure the HFI queue for a subsystem
+ * @hfi_kms: Pointer to hfi_kms structure
+ * @crtc: Pointer to DRM CRTC the config is sent on
+ * @disp_id: HFI display id
+ * @subsystem_type: Subsystem the buffer is being configured for
+ * @iova: Device address of the subsystem HFI queue buffer
+ * @size: Size of the subsystem HFI queue buffer in bytes
+ * Returns: 0 on success, negative error code otherwise
+ */
+int hfi_kms_send_hfi_subsystem_config(struct hfi_kms *hfi_kms,
+		struct drm_crtc *crtc, u32 disp_id,
+		enum hfi_subsystem_type subsystem_type, u32 iova, u32 size);
+
 #endif // _HFI_KMS_H_

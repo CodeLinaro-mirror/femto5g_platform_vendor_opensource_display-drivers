@@ -24,6 +24,7 @@ module_entry(
             "msm/hdmi/hdmi_phy_snps.c",
 	    "msm/hdmi/hdmi_audio.c",
 	    "msm/hdmi/hdmi_cec.c",
+            "msm/hdmi/hdmi_hdcp2p2.c",
         ],
         "CONFIG_HDCP_QSEECOM": [
             "hdcp/msm_hdcp.c",
@@ -77,6 +78,7 @@ module_entry(
             "msm/dp/hfi/dp_debug_client_hfi.c",
             "msm/dp/hfi/dp_hfi_audio.c",
             "msm/dp/hfi/dp_hdcp.c",
+            "msm/dp/hfi/dp_aux_hfi.c",
         ],
         "CONFIG_DRM_MSM_DP_MST": [
             "msm/dp/dp_mst_drm.c",

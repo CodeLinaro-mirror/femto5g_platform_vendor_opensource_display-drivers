@@ -1195,4 +1195,59 @@ enum hfi_privacy_mode {
 	HFI_PRIVACY_AREA_MODE  = 2,
 };
 
+/*
+ * HFI_SLICE_CFG_OUTPUT_FENCE_REUSABLE - Flag indicating the output fence
+ *                                       is reusable.
+ */
+#define HFI_SLICE_CFG_OUTPUT_FENCE_REUSABLE  (1 << 0)
+
+/*
+ * struct hfi_slice_cfg - Per-slice configuration carrying the slice height
+ *                        and fence handles. One instance of this structure
+ *                        is sent for each slice in the
+ *                        HFI_PROPERTY_DISPLAY_SLICE_CFG payload. DCP waits on
+ *                        @input_fence before processing the slice and
+ *                        signals @output_fence when processing of that
+ *                        slice is complete.
+ * @slice_height : Height of this slice in lines.
+ * @input_fence  : Input fence handle for this slice. DCP waits on this
+ *                 fence before processing the slice.
+ * @output_fence : Output fence handle for this slice. DCP signals this
+ *                 fence when processing of the slice is complete.
+ * @flags        : Fence flags. Set HFI_SLICE_CFG_OUTPUT_FENCE_REUSABLE to
+ *                 indicate the output fence is reusable.
+ */
+struct hfi_slice_cfg {
+	u32 slice_height;
+	u32 input_fence;
+	u32 output_fence;
+	u32 flags;
+};
+
+/*
+ * struct hfi_slice_cfg_payload - Full payload for
+ *                                HFI_PROPERTY_DISPLAY_SLICE_CFG. The host
+ *                                sends this as the property value.
+ *                                @num_slices entries of struct hfi_slice_cfg
+ *                                immediately follow in memory via the
+ *                                flexible array member @slices. The total
+ *                                wire size in dwords is:
+ *                                (sizeof(struct hfi_slice_cfg_payload) +
+ *                                 num_slices * sizeof(struct hfi_slice_cfg)) / sizeof(u32)
+ *                                which equals (2 + num_slices * 4) and must
+ *                                match the dsize field encoded in bits 24-31
+ *                                of the property key.
+ * @num_slices : Number of slices per vsync period.
+ * @reserved   : Reserved for future use; must be zero.
+ * @slices     : Variable-length array of per-slice configurations.
+ *               Contains @num_slices entries of struct hfi_slice_cfg.
+ *               sizeof(struct hfi_slice_cfg_payload) does not include
+ *               this array.
+ */
+struct hfi_slice_cfg_payload {
+	u32 num_slices;
+	u32 reserved;
+	struct hfi_slice_cfg slices[];
+};
+
 #endif // __H_HFI_DEFS_DISPLAY_H__

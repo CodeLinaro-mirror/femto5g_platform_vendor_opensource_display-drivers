@@ -42,8 +42,6 @@
 
 static u32 _hfi_kms_read_lsr_init_caps(struct hfi_catalog_base *catalog,
 		u32 hfi_prop, u32 *payload, u32 max_words);
-static int _hfi_kms_send_hfi_subsystem_config(struct hfi_kms *hfi_kms,
-		struct drm_crtc *crtc, u32 disp_id, u32 iova, u32 size);
 
 
 /* Map MSM batch type to HFI usecase id. */
@@ -125,8 +123,9 @@ static int _hfi_kms_add_batch_mode_cmd(struct hfi_kms *hfi_kms,
 				hfi_kms->primary_connector->sde_base->gmu_dcp_iova) {
 			struct sde_connector *pconn = hfi_kms->primary_connector->sde_base;
 
-			ret = _hfi_kms_send_hfi_subsystem_config(hfi_kms, crtc, disp_id,
-					pconn->gmu_dcp_iova, pconn->gmu_dcp_size);
+			ret = hfi_kms_send_hfi_subsystem_config(hfi_kms, crtc, disp_id,
+					HFI_SUBSYSTEM_TYPE_GMU, pconn->gmu_dcp_iova,
+					pconn->gmu_dcp_size);
 			if (ret) {
 				SDE_ERROR("crtc:%d failed to send subsystem config rc:%d\n",
 						DRMID(crtc), ret);
@@ -209,15 +208,16 @@ static void _hfi_kms_handle_batch_mode(struct hfi_kms *hfi_kms,
 	}
 }
 
-static int _hfi_kms_send_hfi_subsystem_config(struct hfi_kms *hfi_kms,
-		struct drm_crtc *crtc, u32 disp_id, u32 iova, u32 size)
+int hfi_kms_send_hfi_subsystem_config(struct hfi_kms *hfi_kms,
+		struct drm_crtc *crtc, u32 disp_id,
+		enum hfi_subsystem_type subsystem_type, u32 iova, u32 size)
 {
 	int packet_id = 0;
 	struct {
 		enum hfi_subsystem_type subsystem_type;
 		struct hfi_buff buff;
 	} payload = {
-		.subsystem_type = HFI_SUBSYSTEM_TYPE_GMU,
+		.subsystem_type = subsystem_type,
 		.buff = {
 			.addr_l  = iova,
 			.addr_h  = 0,
@@ -226,9 +226,18 @@ static int _hfi_kms_send_hfi_subsystem_config(struct hfi_kms *hfi_kms,
 			.flags   = 0,
 		},
 	};
-	struct hfi_crtc *hfi_crtc = to_sde_crtc(crtc)->hfi_crtc;
+	struct hfi_crtc *hfi_crtc;
 	struct hfi_cmdbuf_t *cmd_buf;
 	int ret;
+
+	if (!hfi_kms || !crtc)
+		return -EINVAL;
+
+	hfi_crtc = to_sde_crtc(crtc)->hfi_crtc;
+	if (!hfi_crtc) {
+		SDE_ERROR("crtc:%d hfi_crtc is NULL\n", DRMID(crtc));
+		return -EINVAL;
+	}
 
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
 			disp_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
@@ -257,7 +266,7 @@ static int _hfi_kms_send_hfi_subsystem_config(struct hfi_kms *hfi_kms,
 				DRMID(crtc), ret);
 
 out:
-	SDE_EVT32(HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG, iova, size, ret);
+	SDE_EVT32(HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG, subsystem_type, iova, size, ret);
 	return ret;
 }
 
@@ -339,7 +348,7 @@ static void _hfi_kms_batch_commit_unblock(struct drm_device *dev,
 			SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
-		if (encoder->crtc != crtc)
+		if (encoder && encoder->crtc != crtc)
 			continue;
 
 		sde_enc = to_sde_encoder_virt(encoder);

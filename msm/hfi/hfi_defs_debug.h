@@ -151,43 +151,6 @@ struct misr_read_data {
 };
 
 /*
- * HFI data structure definitions for DP Simulation commands.
- * These structures define the payload formats for commands and responses.
- */
-
-/*
- * Read DPCD registers
- *
- * @buffer:
- *     Shared buffer info
- * @dpcd_offset:
- *     DPCD register offset
- * @bytes:
- *     Number of bytes to read
- */
-struct hfi_dp_dpcd_request {
-	struct hfi_buff buffer;
-	u32 dpcd_offset;
-	u32 bytes;
-};
-
-/*
- * Write DPCD registers
- *
- * @offset:
- *     DPCD register offset
- * @size:
- *     Number of bytes to write (up to 256 bytes)
- * @data:
- *     DPCD register data
- */
-struct hfi_dp_dpcd_data {
-	u32 offset;
-	u32 size;
-	u8  data[256];
-};
-
-/*
  * Set display mode
  *
  * @hdisplay:

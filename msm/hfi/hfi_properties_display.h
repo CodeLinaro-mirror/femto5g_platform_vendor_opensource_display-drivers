@@ -872,6 +872,33 @@
 #define HFI_PROPERTY_DISPLAY_PRIVACY_LAYER                           0x00020036
 
 /*
+ * HFI_PROPERTY_DISPLAY_SLICE_CFG - This property configures the number of
+ *                                  slices per vsync period along with
+ *                                  per-slice height and fence handles. DCP
+ *                                  waits on each input_fence before
+ *                                  processing the corresponding slice and
+ *                                  signals each output_fence when
+ *                                  processing of that slice is complete.
+ *                                  Host is expected to send this packet as
+ *                                  part of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                  command packet payload.
+ *
+ * @BasicFuntionality @Display - HFI_PROPERTY_DISPLAY_SLICE_CFG
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_SLICE_CFG |
+ *                               | (version=0 << 20) |
+ *                               | (dsize=((sizeof(struct hfi_slice_cfg_payload) +
+ *                               |   num_slices * sizeof(struct hfi_slice_cfg)) / 4) << 24)
+ *   (u32_value) payload [1..]   | struct hfi_slice_cfg_payload:
+ *                               |   .num_slices - number of slices
+ *                               |   .reserved   - reserved, must be zero
+ *                               |   .slices[]   - num_slices entries of struct hfi_slice_cfg
+ */
+#define HFI_PROPERTY_DISPLAY_SLICE_CFG                               0x00020037
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100

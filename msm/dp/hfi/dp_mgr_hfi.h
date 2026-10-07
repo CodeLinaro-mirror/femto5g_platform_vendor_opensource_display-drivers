@@ -124,6 +124,7 @@ struct dp_mgr_hfi_priv {
 	struct work_struct connect_work;
 	struct work_struct reconnect_work;
 
+	struct dp_aux_hfi *aux_hfi;
 	struct dp_aux_switch *aux_switch;
 	struct dp_display_mode default_mode;
 
