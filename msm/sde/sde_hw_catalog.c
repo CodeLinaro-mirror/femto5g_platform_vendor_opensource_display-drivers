@@ -6607,6 +6607,7 @@ static void _sde_get_hw_caps_for_chora(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);
 	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
+	set_bit(SDE_FEATURE_RSC_CLK_STATE, sde_cfg->features);
 	sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
 	sde_cfg->autorefresh_disable_seq = AUTOREFRESH_DISABLE_SEQ2;
 	/* if pingpong block supports it this should not be set on top block */
@@ -6648,6 +6649,7 @@ static void _sde_get_hw_caps_for_ravelin(struct sde_mdss_cfg *sde_cfg, uint32_t 
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+	set_bit(SDE_FEATURE_RSC_CLK_STATE, sde_cfg->features);
 }
 
 static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {

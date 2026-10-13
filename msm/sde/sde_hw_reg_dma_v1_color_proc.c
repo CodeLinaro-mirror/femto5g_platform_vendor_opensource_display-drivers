@@ -3624,6 +3624,7 @@ static int reg_dmav1_setup_vig_igc_common(struct sde_hw_reg_dma_ops *dma_ops,
 	if (hw_cfg->len != sizeof(struct drm_msm_igc_lut)) {
 		DRM_ERROR("invalid size of payload len %d exp %zd\n",
 				hw_cfg->len, sizeof(struct drm_msm_igc_lut));
+		return -EINVAL;
 	}
 
 	data = kvzalloc(VIG_1D_LUT_IGC_LEN * sizeof(u32), GFP_KERNEL);
