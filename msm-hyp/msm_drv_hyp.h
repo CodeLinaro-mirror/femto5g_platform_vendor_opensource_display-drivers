@@ -106,6 +106,7 @@ struct msm_hyp_plane_info {
 	uint32_t maxvdeciexp;
 	uint32_t max_width;
 	uint64_t max_bandwidth;
+	uint64_t max_bandwidth_high;
 	bool support_scale;
 	bool support_csc;
 	bool support_multirect;

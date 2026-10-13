@@ -178,6 +178,7 @@ static const struct drm_prop_enum_list e_fb_translation_mode[] = {
 static const struct drm_prop_enum_list e_multirect_mode[] = {
 	{DRM_MULTIRECT_NONE,     "none"},
 	{DRM_MULTIRECT_PARALLEL, "parallel"},
+	{DRM_MULTIRECT_TIME_MX,  "serial"},
 };
 
 struct msm_hyp_topology {
@@ -1516,8 +1517,9 @@ static int msm_hyp_plane_set_property(
 		ret = -EINVAL;
 	}
 
-	if (size)
+	if (size) {
 		ret = -EINVAL;
+	}
 
 	return ret;
 }
@@ -1704,6 +1706,9 @@ static int _msm_hyp_plane_init_caps(struct msm_hyp_plane *plane)
 
 	snprintf(buf, sizeof(buf), "%lld", plane->info->max_bandwidth);
 	msm_hyp_prop_info_add_keystr(info, "max_per_pipe_bw", buf);
+
+	snprintf(buf, sizeof(buf), "%lld", plane->info->max_bandwidth_high);
+	msm_hyp_prop_info_add_keystr(info, "max_per_pipe_bw_high", buf);
 
 	if (plane->info->extra_caps)
 		msm_hyp_prop_info_append(info, plane->info->extra_caps);
