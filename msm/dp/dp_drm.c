@@ -418,6 +418,7 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 	int rc;
 	struct dp_display *dp_display = display;
 	struct sde_connector *sde_conn;
+	struct dp_panel *dp_panel;
 
 	if (!dp_display || !connector)
 		return -EINVAL;
@@ -433,6 +434,17 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 
 	sde_conn = to_sde_connector(connector);
 	dp_display->bridge->dp_panel = sde_conn->drv_panel;
+
+	if (dp_display->is_edp) {
+		dp_panel = sde_conn->drv_panel;
+		if (dp_panel && dp_panel->drm_panel.dev) {
+			sde_conn->panel = &dp_panel->drm_panel;
+		} else {
+			sde_conn->panel = NULL;
+			DP_DEBUG("no registered drm_panel %s, DPMS notify skipped\n",
+					sde_conn->name);
+		}
+	}
 
 	rc = dp_mst_init(dp_display);
 

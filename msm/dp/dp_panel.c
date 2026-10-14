@@ -8,6 +8,7 @@
 #include <linux/unistd.h>
 #include <linux/of_platform.h>
 #include <linux/pwm.h>
+#include <linux/math64.h>
 #include <drm/drm_fixed.h>
 #include "dp_debug.h"
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
@@ -75,6 +76,7 @@ struct dp_panel_private {
 	struct dp_parser *parser;
 	struct dp_catalog_panel *catalog;
 	struct dp_panel *base;
+	struct platform_device *panel_pdev;
 	bool panel_on;
 	bool vsc_supported;
 	bool vscext_supported;
@@ -2334,7 +2336,7 @@ static int dp_panel_pwm_register(struct dp_panel *dp_panel)
 #else
 	bl->pwm_bl = devm_of_pwm_get(dev, dev->of_node, NULL);
 #endif
-	if (IS_ERR_OR_NULL(bl->pwm_bl)) {
+	if (IS_ERR(bl->pwm_bl)) {
 		rc = PTR_ERR(bl->pwm_bl);
 		DP_ERR("failed to request pwm, rc=%d\n", rc);
 		return rc;
@@ -2346,7 +2348,7 @@ static int dp_panel_pwm_register(struct dp_panel *dp_panel)
 static int dp_panel_set_backlight(struct dp_panel *panel, u32 bl_lvl)
 {
 	int rc = 0;
-	u32 duty = 0;
+	u64 duty;
 	u32 period_ns = 0;
 	struct dp_backlight_config *bl;
 
@@ -2364,10 +2366,10 @@ static int dp_panel_set_backlight(struct dp_panel *panel, u32 bl_lvl)
 	DP_DEBUG("backlight lvl:%d\n", bl_lvl);
 
 	period_ns = bl->pwm_period_usecs * NSEC_PER_USEC;
-	duty = bl_lvl * period_ns;
-	duty /= bl->bl_max_level;
+	duty = (u64)bl_lvl * period_ns;
+	duty = div_u64(duty, bl->bl_max_level);
 
-	rc = pwm_config(bl->pwm_bl, duty, period_ns);
+	rc = pwm_config(bl->pwm_bl, (int)duty, (int)period_ns);
 	if (rc) {
 		DP_ERR("failed to change pwm config, rc=%d\n", rc);
 		goto error;
@@ -3309,9 +3311,20 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 		if (!of_node) {
 			DP_ERR("phandle for default panel not found\n");
 		} else {
-			drm_panel_init(&dp_panel->drm_panel, in->dev, NULL,
-					DRM_MODE_CONNECTOR_eDP);
-			drm_panel_add(&dp_panel->drm_panel);
+			struct platform_device *panel_pdev =
+					of_platform_device_create(of_node, NULL, in->dev);
+
+			if (!panel_pdev) {
+				DP_ERR("failed to create panel device for of_node %pOF\n", of_node);
+			} else {
+				drm_panel_init(&dp_panel->drm_panel, &panel_pdev->dev, NULL,
+						DRM_MODE_CONNECTOR_eDP);
+				drm_panel_add(&dp_panel->drm_panel);
+				panel->panel_pdev = panel_pdev;
+				DP_INFO("drm_panel registered for %s\n",
+						dev_name(&panel_pdev->dev));
+			}
+
 			of_node_put(of_node);
 		}
 	}
@@ -3337,15 +3350,24 @@ void dp_panel_put(struct dp_panel *dp_panel)
 
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
 
+	sde_conn = to_sde_connector(dp_panel->connector);
+
+	if (sde_conn) {
+		sde_conn->drv_panel = NULL;
+		if (sde_conn->panel == &dp_panel->drm_panel)
+			sde_conn->panel = NULL;
+	}
+
 	dp_panel_edid_deregister(panel);
 	if (dp_panel->drm_panel.dev) {
 		drm_panel_remove(&dp_panel->drm_panel);
 		dp_panel->drm_panel.dev = NULL;
 	}
-	sde_conn = to_sde_connector(dp_panel->connector);
 
-	if (sde_conn)
-		sde_conn->drv_panel = NULL;
+	if (panel->panel_pdev) {
+		of_platform_device_destroy(&panel->panel_pdev->dev, NULL);
+		panel->panel_pdev = NULL;
+	}
 
 	devm_kfree(panel->dev, panel);
 }

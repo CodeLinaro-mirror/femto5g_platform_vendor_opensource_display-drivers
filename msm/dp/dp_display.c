@@ -2926,6 +2926,9 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 			if (rc)
 				DP_ERR("Cannot turn edp backlight power on");
 		}
+		if (!dp_display->base_connector)
+			goto cancel_hdcp;
+
 		connector = dp_display->base_connector;
 		sde_conn = to_sde_connector(connector);
 
@@ -2937,6 +2940,7 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 		}
 	}
 
+cancel_hdcp:
 	cancel_delayed_work_sync(&dp->hdcp_cb_work);
 	queue_delayed_work(dp->wq, &dp->hdcp_cb_work, HZ);
 

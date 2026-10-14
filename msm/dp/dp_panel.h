@@ -115,13 +115,11 @@ struct dp_backlight_config {
 	u32 bl_scale;
 	u32 bl_scale_sv;
 
-	int en_gpio;
 	/* PWM params */
 	struct pwm_device *pwm_bl;
 	bool pwm_enabled;
 	u32 pwm_period_usecs;
 };
-
 
 struct dp_audio;
 
