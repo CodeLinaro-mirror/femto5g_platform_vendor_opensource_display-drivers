@@ -22,6 +22,7 @@ def define_waipio():
                     "CONFIG_DRM_SDE_WB",
                     "CONFIG_DRM_MSM_REGISTER_LOGGING",
                     "CONFIG_QCOM_MDSS_PLL",
+                    "CONFIG_DRM_SDE_VM",
                     "CONFIG_QCOM_WCD939X_I2C",
                     "CONFIG_THERMAL_OF",
                     "CONFIG_DRM_SDE_RSC",
@@ -33,4 +34,26 @@ def define_waipio():
                     "CONFIG_MSM_EXT_DISPLAY",
                     "CONFIG_MSM_MMRM",
                 ],
+            )
+        elif t == "waipio-tuivm":
+            define_target_variant_modules(
+                target = t,
+                variant = v,
+                registry = display_driver_modules,
+                modules = [
+                    "msm_drm",
+                ],
+                config_options = [
+                    "CONFIG_DRM_MSM_SDE",
+                    "CONFIG_SYNC_FILE",
+                    "CONFIG_DRM_MSM_DSI",
+                    "CONFIG_MDSS_HFI_ADAPTER",
+                    "CONFIG_MDSS_HFI",
+                    "CONFIG_DSI_PARSER",
+                    "CONFIG_QCOM_MDSS_PLL",
+                    "CONFIG_DRM_MSM_REGISTER_LOGGING",
+                    "CONFIG_DRM_SDE_VM",
+                    "CONFIG_DRM_LOW_MSM_MEM_FOOTPRINT",
+                ],
+                vm_target = True,
             )
