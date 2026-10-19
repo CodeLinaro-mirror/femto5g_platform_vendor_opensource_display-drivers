@@ -658,7 +658,7 @@ static void dp_aux_reset_phy_config_indices(struct dp_aux_cfg *aux_cfg)
 		aux_cfg[i].current_index = 0;
 }
 
-static void dp_aux_init(struct dp_aux *dp_aux, struct dp_aux_cfg *aux_cfg)
+static void dp_aux_init(struct dp_aux *dp_aux, struct dp_aux_cfg *aux_cfg, bool skip_op)
 {
 	struct dp_aux_private *aux;
 
@@ -673,9 +673,13 @@ static void dp_aux_init(struct dp_aux *dp_aux, struct dp_aux_cfg *aux_cfg)
 		return;
 
 	dp_aux_reset_phy_config_indices(aux_cfg);
-	aux->catalog->setup(aux->catalog, aux_cfg);
-	aux->catalog->reset(aux->catalog);
-	aux->catalog->enable(aux->catalog, true);
+
+	if (!skip_op) {
+		aux->catalog->setup(aux->catalog, aux_cfg);
+		aux->catalog->reset(aux->catalog);
+		aux->catalog->enable(aux->catalog, true);
+	}
+
 	atomic_set(&aux->aborted, 0);
 	aux->retry_cnt = 0;
 	aux->enabled = true;
@@ -817,8 +821,19 @@ static int dp_aux_configure_fsa_switch(struct dp_aux *dp_aux,
 
 	rc = fsa4480_switch_event(aux->aux_switch_node, event);
 
-	if (rc)
+	/*
+	 * FSA4480 may be disabled in DT (status = "disabled").
+	 * Ignore the error and let DP proceed without FSA4480 switch,
+	 * similar to configurations where FSA4480 switch is not
+	 * required for DP proceed.
+	 */
+	if (rc == -EINVAL || rc == -ENODEV || rc == -EPROBE_DEFER) {
+		DP_AUX_WARN(dp_aux, "fsa4480 unavailable (%d), continuing without aux switch\n",
+				rc);
+		rc = 0;
+	} else if (rc) {
 		DP_AUX_ERR(dp_aux, "failed to configure fsa4480 i2c device (%d)\n", rc);
+	}
 end:
 	return rc;
 }

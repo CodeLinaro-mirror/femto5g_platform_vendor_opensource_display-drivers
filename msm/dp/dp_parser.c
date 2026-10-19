@@ -179,12 +179,14 @@ static int dp_parser_misc(struct dp_parser *parser)
 	if (!parser->display_type)
 		parser->display_type = "unknown";
 
-
 	parser->no_backlight_support = of_property_read_bool(of_node,
 			"qcom,no-backlight-support");
 
 	parser->ext_hpd_en = of_property_read_bool(of_node,
 			"qcom,dp-ext-hpd");
+	parser->panel_notifier_support = of_property_read_bool(of_node,
+			"qcom,panel-notifier-support");
+	DP_DEBUG("panel-notifier-support = %d\n", parser->panel_notifier_support);
 
 	return 0;
 }
@@ -255,7 +257,56 @@ static int dp_parser_pinctrl(struct dp_parser *parser)
 		pinctrl->state_suspend = NULL;
 		DP_DEBUG("failed to get pinctrl suspend state\n");
 	}
+
+	pinctrl->state_bl_pwm = pinctrl_lookup_state(pinctrl->pin,
+					"mdss_edp_bl_pwm");
+	if (IS_ERR_OR_NULL(pinctrl->state_bl_pwm)) {
+		pinctrl->state_bl_pwm = NULL;
+		DP_DEBUG("failed to get pinctrl bl_pwm state\n");
+	}
+
 	return 0;
+}
+
+static void dp_parser_bl_config(struct dp_parser *parser)
+{
+	int rc = 0;
+	u32 val = 0;
+	struct device_node *of_node = parser->pdev->dev.of_node;
+
+	rc = of_property_read_u32(of_node, "qcom,edp-bl-min-level", &val);
+	if (rc) {
+		DP_DEBUG("bl-min-level unspecified, defaulting to zero\n");
+		parser->bl_min_level = 0;
+	} else {
+		parser->bl_min_level = val;
+	}
+
+	rc = of_property_read_u32(of_node, "qcom,edp-bl-max-level", &val);
+	if (rc) {
+		DP_DEBUG("bl-max-level unspecified, defaulting to 4096\n");
+		parser->bl_max_level = 4096;
+	} else {
+		parser->bl_max_level = val;
+	}
+
+	rc = of_property_read_u32(of_node, "qcom,edp-brightness-max-level",
+				&val);
+	if (rc) {
+		DP_DEBUG("brigheness-max-level unspecified, defaulting to 255\n");
+		parser->brightness_max_level = 255;
+	} else {
+		parser->brightness_max_level = val;
+	}
+
+	rc = of_property_read_u32(of_node, "qcom,bl-pmic-pwm-period-usecs",
+				&val);
+	if (rc) {
+		DP_DEBUG("bl-pmic-pwm-period-usecs unspecified, default 100\n");
+		parser->pwm_period_usecs = 100;
+	} else {
+		parser->pwm_period_usecs = val;
+	}
 }
 
 static int dp_parser_gpio(struct dp_parser *parser)
@@ -275,10 +326,9 @@ static int dp_parser_gpio(struct dp_parser *parser)
 	};
 
 	if (of_find_property(of_node, "qcom,dp-hpd-gpio", NULL)) {
-                parser->no_aux_switch = true;
+		parser->no_aux_switch = true;
 		parser->lphw_hpd = of_find_property(of_node,
 				"qcom,dp-low-power-hw-hpd", NULL);
-		return 0;
 	}
 
 	if (of_find_property(of_node, "qcom,dp-gpio-aux-switch", NULL))
@@ -967,6 +1017,7 @@ static int dp_parser_parse(struct dp_parser *parser)
 	if (rc)
 		goto err;
 
+	dp_parser_bl_config(parser);
 	dp_parser_dsc(parser);
 	dp_parser_fec(parser);
 	dp_parser_widebus(parser);
