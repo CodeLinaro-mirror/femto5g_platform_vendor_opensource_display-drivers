@@ -159,6 +159,7 @@ struct lt9611 {
 	bool edid_complete;
 	bool fix_mode;
 	bool bridge_attach;
+	bool bridge_added;
 	bool pending_edid;
 	bool hpd_trigger;
 	enum lt9611_fw_upgrade_status fw_status;
@@ -2490,10 +2491,12 @@ static int lt9611_probe(struct i2c_client *client,
 		return -ENODEV;
 	}
 
-	pdata = devm_kzalloc(&client->dev,
-		sizeof(struct lt9611), GFP_KERNEL);
-	if (!pdata)
-		return -ENOMEM;
+	pdata = devm_drm_bridge_alloc(&client->dev,
+		struct lt9611,
+		bridge,
+		&lt9611_bridge_funcs);
+	if (IS_ERR(pdata))
+		return PTR_ERR(pdata);
 
 	ret = lt9611_parse_dt(&client->dev, pdata);
 	if (ret) {
@@ -2573,8 +2576,8 @@ static int lt9611_probe(struct i2c_client *client,
 	pdata->bridge.of_node = client->dev.of_node;
 #endif
 
-	pdata->bridge.funcs = &lt9611_bridge_funcs;
 	drm_bridge_add(&pdata->bridge);
+	pdata->bridge_added = true;
 
 	pdata->wq = create_singlethread_workqueue("lt9611_workqueue");
 	if (!pdata->wq) {
@@ -2624,11 +2627,14 @@ err_request_irq:
 	disable_irq(pdata->irq);
 	free_irq(pdata->irq, pdata);
 err_i2c_prog:
+	if (pdata->bridge_added) {
+		drm_bridge_remove(&pdata->bridge);
+		pdata->bridge_added = false;
+	}
 	lt9611_gpio_configure(pdata, false);
 err_dt_supply:
 	lt9611_put_dt_supply(&client->dev, pdata);
 err_dt_parse:
-	devm_kfree(&client->dev, pdata);
 	return ret;
 }
 
@@ -2641,10 +2647,16 @@ static int lt9611_remove(struct i2c_client *client)
 	if (!pdata)
 		goto end;
 
-	mipi_dsi_detach(pdata->dsi);
-	mipi_dsi_device_unregister(pdata->dsi);
+	if (pdata->dsi) {
+		mipi_dsi_detach(pdata->dsi);
+		mipi_dsi_device_unregister(pdata->dsi);
+		pdata->dsi = NULL;
+	}
 
-	drm_bridge_remove(&pdata->bridge);
+	if (pdata->bridge_added) {
+		drm_bridge_remove(&pdata->bridge);
+		pdata->bridge_added = false;
+	}
 
 	lt9611_sysfs_remove(&client->dev);
 
@@ -2660,7 +2672,6 @@ static int lt9611_remove(struct i2c_client *client)
 		kfree(mode);
 	}
 
-	devm_kfree(&client->dev, pdata);
 	if (pdata->wq)
 		destroy_workqueue(pdata->wq);
 
