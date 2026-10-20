@@ -27,5 +27,10 @@ def define_waipio():
                     "CONFIG_DRM_SDE_RSC",
                     "CONFIG_DRM_SDE_CESTA",
                     "CONFIG_DSI_EXTENDED_MODES",
+                    "CONFIG_DRM_MSM_DP",
+                    "CONFIG_DRM_MSM_DP_MST",
+                    "CONFIG_DRM_SDE_EVTLOG_DEBUG",
+                    "CONFIG_MSM_EXT_DISPLAY",
+                    "CONFIG_MSM_MMRM",
                 ],
             )
