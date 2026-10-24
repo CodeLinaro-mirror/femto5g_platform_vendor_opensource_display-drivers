@@ -2612,6 +2612,8 @@ static int _sde_encoder_rc_post_modeset(struct drm_encoder *drm_enc,
 	u32 sw_event, struct sde_encoder_virt *sde_enc)
 {
 	int ret = 0;
+	struct sde_connector_state *c_state = NULL;
+	bool autorefresh_mode_switch = false;
 
 	mutex_lock(&sde_enc->rc_lock);
 
@@ -2631,8 +2633,16 @@ static int _sde_encoder_rc_post_modeset(struct drm_encoder *drm_enc,
 		goto end;
 	}
 
+	if (sde_enc->cur_master && sde_enc->cur_master->connector) {
+		c_state = to_sde_connector_state(
+				sde_enc->cur_master->connector->state);
+		autorefresh_mode_switch = c_state &&
+				msm_is_mode_seamless_autorefresh(&c_state->msm_mode);
+	}
+
 	/* toggle te bit to update vsync source for sim cmd mode panels */
-	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_CMD_MODE)
+	if (!autorefresh_mode_switch &&
+			sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_CMD_MODE)
 			&& sde_enc->disp_info.is_te_using_watchdog_timer) {
 		sde_encoder_control_te(sde_enc, false);
 		_sde_encoder_update_vsync_source(sde_enc, &sde_enc->disp_info);

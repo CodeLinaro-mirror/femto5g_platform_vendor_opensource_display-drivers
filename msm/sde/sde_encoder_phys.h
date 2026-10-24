@@ -1,12 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
 #ifndef __SDE_ENCODER_PHYS_H__
 #define __SDE_ENCODER_PHYS_H__
 
+#include <linux/completion.h>
 #include <linux/jiffies.h>
 #include <linux/sde_rsc.h>
 
@@ -477,6 +478,8 @@ struct sde_encoder_phys_cmd_te_timestamp {
  * @stream_sel:	Stream selection for multi-stream interfaces
  * @frame_tx_timeout_report_cnt: number of pp_done/ctl_done irq timeout errors
  * @autorefresh: autorefresh feature state
+ * @last_autorefresh_frame_count: last non-zero autorefresh frame count used
+ * @mode_switch_done: completion signaled when wr_ptr safe point is reached
  * @pending_vblank_cnt: Atomic counter tracking pending wait for VBLANK
  * @pending_vblank_wq: Wait queue for blocking until VBLANK received
  * @wr_ptr_wait_success: log wr_ptr_wait success for release fence trigger
@@ -489,6 +492,8 @@ struct sde_encoder_phys_cmd {
 	int stream_sel;
 	int frame_tx_timeout_report_cnt;
 	struct sde_encoder_phys_cmd_autorefresh autorefresh;
+	u32 last_autorefresh_frame_count;
+	struct completion mode_switch_done;
 	atomic_t pending_vblank_cnt;
 	wait_queue_head_t pending_vblank_wq;
 	bool wr_ptr_wait_success;

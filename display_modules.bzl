@@ -191,5 +191,9 @@ module_entry(
         "CONFIG_MSM_EXT_DISPLAY" : [
             "//vendor/qcom/opensource/mm-drivers/msm_ext_display:%b_msm_ext_display"
         ],
-       }
+        "CONFIG_SMMU_PROXY" : [
+            "//vendor/qcom/opensource/securemsm-kernel:%b_smmu_proxy_dlkm",
+             "//vendor/qcom/opensource/securemsm-kernel:smmu_proxy_headers",
+        ],
+      },
 )

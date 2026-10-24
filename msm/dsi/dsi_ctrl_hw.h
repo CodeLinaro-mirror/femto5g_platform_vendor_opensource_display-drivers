@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -343,6 +343,7 @@ enum dsi_error_int_type {
  * @en_broadcast:  Enable broadcast mode if set to true.
  * @is_master:     Is master in broadcast mode.
  * @use_lpm:       Use low power mode for command transmission.
+ * @trigger_type:  Trigger type for command DMA.
  */
 struct dsi_ctrl_cmd_dma_info {
 	u32 offset;
@@ -351,6 +352,7 @@ struct dsi_ctrl_cmd_dma_info {
 	bool en_broadcast;
 	bool is_master;
 	bool use_lpm;
+	enum dsi_trigger_type trigger_type;
 };
 
 /**
@@ -910,13 +912,13 @@ struct dsi_ctrl_hw_ops {
 			struct dsi_host_common_cfg *cfg);
 
 	/**
-	 * hw.ops.init_cmddma_trig_ctrl() - Initialize the default trigger used
+	 * hw.ops.init_cmddma_trig_ctrl() - Initialize the trigger used
 	 *                             for command mode DMA path.
-	 * @ctrl:	Pointer to the controller host hardware.
-	 * @cfg:	Common configuration parameters.
+	 * @ctrl:         Pointer to the controller host hardware.
+	 * @trigger_type: DSI command DMA trigger type.
 	 */
 	void (*init_cmddma_trig_ctrl)(struct dsi_ctrl_hw *ctrl,
-			struct dsi_host_common_cfg *cfg);
+			enum dsi_trigger_type trigger_type);
 
 	/**
 	 * hw.ops.log_line_count() - reads the MDP interface line count

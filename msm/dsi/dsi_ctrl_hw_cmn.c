@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/delay.h>
@@ -99,7 +99,7 @@ static void dsi_setup_trigger_controls(struct dsi_ctrl_hw *ctrl,
 {
 	u32 reg;
 	const u8 trigger_map[DSI_TRIGGER_MAX] = {
-		0x0, 0x2, 0x1, 0x4, 0x5, 0x6 };
+		0x0, 0x2, 0x1, 0x1, 0x4, 0x5, 0x5, 0x6 };
 
 	reg = DSI_R32(ctrl, DSI_TRIG_CTRL);
 
@@ -1949,16 +1949,33 @@ bool dsi_ctrl_hw_cmn_vid_engine_busy(struct dsi_ctrl_hw *ctrl)
 }
 
 void dsi_ctrl_hw_cmn_init_cmddma_trig_ctrl(struct dsi_ctrl_hw *ctrl,
-					   struct dsi_host_common_cfg *cfg)
+					enum dsi_trigger_type trigger_type)
 {
 	u32 reg;
 	const u8 trigger_map[DSI_TRIGGER_MAX] = {
-		0x0, 0x2, 0x1, 0x4, 0x5, 0x6 };
+		0x0, 0x2, 0x1, 0x1, 0x4, 0x5, 0x5, 0x6 };
 
-	/* Initialize the default trigger used for Command Mode DMA path. */
+	if (trigger_type >= DSI_TRIGGER_MAX) {
+		SDE_EVT32(ctrl->index, trigger_type, SDE_EVTLOG_ERROR);
+		return;
+	}
+
+	/* Initialize the trigger used for Command Mode DMA path. */
 	reg = DSI_R32(ctrl, DSI_TRIG_CTRL);
 	reg &= ~BIT(16); /* Reset DMA_TRG_MUX */
+	reg &= ~BIT(28); /* Reset COMMAND_MODE_DMA_MDP_ORDER */
 	reg &= ~(0xF); /* Reset DMA_TRIGGER_SEL */
-	reg |= (trigger_map[cfg->dma_cmd_trigger] & 0xF);
+
+	if (trigger_type == DSI_TRIGGER_EOF) {
+		reg |= (0x1 & 0xF); /* Set COMMAND_MODE_DMA_TRIGGER_SEL[3:0] = 0x1 */
+		reg |= BIT(28); /* Set COMMAND_MODE_DMA_MDP_ORDER[28] = 0x1 */
+	} else if (trigger_type == DSI_TRIGGER_SOF) {
+		reg |= (0x1 & 0xF); /* Set COMMAND_MODE_DMA_TRIGGER_SEL[3:0] = 0x1 */
+		reg &= ~BIT(28); /* Set COMMAND_MODE_DMA_MDP_ORDER[28] = 0x0 */
+	} else {
+		reg |= (trigger_map[trigger_type] & 0xF);
+	}
+
 	DSI_W32(ctrl, DSI_TRIG_CTRL, reg);
+	SDE_EVT32(ctrl->index, trigger_type, reg, SDE_EVTLOG_FUNC_EXIT);
 }

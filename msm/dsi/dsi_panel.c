@@ -19,6 +19,7 @@
 #include "dsi_panel.h"
 #include "dsi_ctrl_hw.h"
 #include "dsi_defs.h"
+#include "dsi_display.h"
 #include "dsi_parser.h"
 #include "sde_dbg.h"
 #include "sde_dsc_helper.h"
@@ -459,6 +460,9 @@ static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 			 panel->name, type);
 		goto error;
 	}
+
+	if (type == DSI_CMD_SET_PANEL_SYNC)
+		dsi_display_set_keep_dma_done_irq(panel->host);
 
 	for (i = 0; i < count; i++) {
 		cmds->ctrl_flags = 0;
@@ -939,6 +943,14 @@ static int dsi_panel_parse_timing(struct dsi_mode_info *mode,
 		rc = 0;
 	}
 
+	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-panel-self-refresh-rate",
+				&priv_info->panel_self_refresh_rate);
+	if (rc) {
+		DSI_DEBUG("panel self refresh rate not defined in timing node\n");
+		priv_info->panel_self_refresh_rate = 0;
+		rc = 0;
+	}
+
 	DSI_DEBUG("panel vert active:%d front_portch:%d back_porch:%d pulse_width:%d\n",
 		mode->v_active, mode->v_front_porch, mode->v_back_porch,
 		mode->v_sync_width);
@@ -1087,6 +1099,34 @@ static int dsi_panel_parse_color_swap(struct dsi_host_common_cfg *host,
 	return rc;
 }
 
+static int dsi_panel_parse_trigger_type(const char *name, const char *trig,
+					enum dsi_trigger_type *trigger)
+{
+	if (!strcmp(trig, "none"))
+		*trigger = DSI_TRIGGER_NONE;
+	else if (!strcmp(trig, "trigger_te"))
+		*trigger = DSI_TRIGGER_TE;
+	else if (!strcmp(trig, "trigger_sof"))
+		*trigger = DSI_TRIGGER_SOF;
+	else if (!strcmp(trig, "trigger_eof"))
+		*trigger = DSI_TRIGGER_EOF;
+	else if (!strcmp(trig, "trigger_sw"))
+		*trigger = DSI_TRIGGER_SW;
+	else if (!strcmp(trig, "trigger_sw_sof"))
+		*trigger = DSI_TRIGGER_SW_SOF;
+	else if (!strcmp(trig, "trigger_sw_eof"))
+		*trigger = DSI_TRIGGER_SW_EOF;
+	else if (!strcmp(trig, "trigger_sw_te"))
+		*trigger = DSI_TRIGGER_SW_TE;
+	else {
+		DSI_ERR("[%s] Unrecognized trigger type (%s)\n",
+				name, trig);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int dsi_panel_parse_triggers(struct dsi_host_common_cfg *host,
 				    struct dsi_parser_utils *utils,
 				    const char *name)
@@ -1120,24 +1160,12 @@ static int dsi_panel_parse_triggers(struct dsi_host_common_cfg *host,
 	trig = utils->get_property(utils->data,
 			"qcom,mdss-dsi-dma-trigger", NULL);
 	if (trig) {
-		if (!strcmp(trig, "none")) {
-			host->dma_cmd_trigger = DSI_TRIGGER_NONE;
-		} else if (!strcmp(trig, "trigger_te")) {
-			host->dma_cmd_trigger = DSI_TRIGGER_TE;
-		} else if (!strcmp(trig, "trigger_sw")) {
-			host->dma_cmd_trigger = DSI_TRIGGER_SW;
-		} else if (!strcmp(trig, "trigger_sw_seof")) {
-			host->dma_cmd_trigger = DSI_TRIGGER_SW_SEOF;
-		} else if (!strcmp(trig, "trigger_sw_te")) {
-			host->dma_cmd_trigger = DSI_TRIGGER_SW_TE;
-		} else {
-			DSI_ERR("[%s] Unrecognized mdp trigger type (%s)\n",
-			       name, trig);
+		rc = dsi_panel_parse_trigger_type(name, trig,
+						&host->dma_cmd_trigger);
+		if (rc)
 			rc = -EINVAL;
-		}
-
 	} else {
-		DSI_DEBUG("[%s] Falling back to default MDP trigger\n", name);
+		DSI_DEBUG("[%s] Falling back to default DMA trigger\n", name);
 		host->dma_cmd_trigger = DSI_TRIGGER_SW;
 	}
 
@@ -1900,6 +1928,7 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-qsync-on-commands",
 	"qcom,mdss-dsi-qsync-off-commands",
 	"qcom,mdss-dsi-calibration-commands",
+	"qcom,mdss-dsi-sync-command",
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -1929,6 +1958,7 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-qsync-on-commands-state",
 	"qcom,mdss-dsi-qsync-off-commands-state",
 	"qcom,mdss-dsi-calibration-commands-state",
+	"qcom,mdss-dsi-sync-command-state",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -2035,6 +2065,40 @@ int dsi_panel_alloc_cmd_packets(struct dsi_panel_cmd_set *cmd,
 	return 0;
 }
 
+static int dsi_panel_parse_cmd_set_trigger_types(struct dsi_panel *panel,
+					struct dsi_panel_cmd_set *cmd,
+					enum dsi_cmd_set_type type,
+					struct dsi_parser_utils *utils)
+{
+	int rc = 0, i = 0;
+	const char *trigger;
+	char trigger_prop[128];
+	enum dsi_trigger_type trigger_type = DSI_TRIGGER_NONE;
+
+	if (!cmd || !cmd->cmds || !cmd->count)
+		return 0;
+
+	snprintf(trigger_prop, sizeof(trigger_prop), "%s-trigger-type",
+		 cmd_set_prop_map[type]);
+
+	rc = utils->read_string(utils->data, trigger_prop, &trigger);
+	if (rc) {
+		/* No trigger-type defined, use default DMA trigger later */
+		trigger_type = DSI_TRIGGER_NONE;
+		rc = 0;
+	} else {
+		rc = dsi_panel_parse_trigger_type(trigger_prop, trigger,
+						&trigger_type);
+		if (rc)
+			return rc;
+	}
+
+	for (i = 0; i < cmd->count; i++)
+		cmd->cmds[i].trigger_type = trigger_type;
+
+	return 0;
+}
+
 static int dsi_panel_parse_cmd_sets_sub(struct dsi_panel *panel,
 					struct dsi_panel_cmd_set *cmd,
 					enum dsi_cmd_set_type type,
@@ -2097,6 +2161,10 @@ static int dsi_panel_parse_cmd_sets_sub(struct dsi_panel *panel,
 		       cmd_set_state_map[type], state);
 		goto error_free_mem;
 	}
+
+	rc = dsi_panel_parse_cmd_set_trigger_types(panel, cmd, type, utils);
+	if (rc)
+		goto error_free_mem;
 
 	return rc;
 error_free_mem:
@@ -5071,6 +5139,26 @@ int dsi_panel_send_qsync_off_dcs(struct dsi_panel *panel,
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_QSYNC_OFF);
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_QSYNC_OFF cmds rc=%d\n",
+		       panel->name, rc);
+
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
+int dsi_panel_send_panel_sync_dcs(struct dsi_panel *panel)
+{
+	int rc = 0;
+
+	if (!panel) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+
+	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_PANEL_SYNC);
+	if (rc)
+		DSI_ERR("[%s] failed to send DSI_CMD_SET_PANEL_SYNC cmds rc=%d\n",
 		       panel->name, rc);
 
 	mutex_unlock(&panel->panel_lock);

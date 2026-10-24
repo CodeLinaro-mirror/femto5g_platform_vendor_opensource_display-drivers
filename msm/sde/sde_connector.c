@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -28,7 +28,7 @@
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
 
 /* Autorefresh will occur after FRAME_CNT frames. Large values are unlikely */
-#define AUTOREFRESH_MAX_FRAME_CNT 6
+#define AUTOREFRESH_MAX_FRAME_CNT 8
 
 #define SDE_DEBUG_CONN(c, fmt, ...) SDE_DEBUG("conn%d " fmt,\
 		(c) ? (c)->base.base.id : -1, ##__VA_ARGS__)
@@ -3014,6 +3014,9 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 
 		sde_kms_info_add_keyint(info, "allowed_mode_switch",
 			mode_info.allowed_mode_switches);
+
+		sde_kms_info_add_keyint(info, "panel_self_refresh_rate",
+			mode_info.panel_self_refresh_rate);
 
 		if (!mode_info.roi_caps.num_roi)
 			continue;

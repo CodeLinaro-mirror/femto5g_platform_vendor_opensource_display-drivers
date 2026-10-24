@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -860,5 +860,14 @@ int dsi_display_get_panel_scan_line(void *display, u16 *scan_line, ktime_t *scan
  *
  */
 void dsi_display_report_dead(struct dsi_display *display);
+
+/**
+ * dsi_display_set_keep_dma_done_irq() - Set the keep_dma_done_irq flag on all
+ *                                       DSI controllers owned by this display.
+ *                                       Called once when a PANEL_SYNC command
+ *                                       is first transmitted.
+ * @host: DSI host handle (from panel->host).
+ */
+void dsi_display_set_keep_dma_done_irq(struct mipi_dsi_host *host);
 
 #endif /* _DSI_DISPLAY_H_ */

@@ -439,4 +439,6 @@ int dsi_panel_create_cmd_packets(const char *data, u32 length, u32 count,
 void dsi_panel_destroy_cmd_packets(struct dsi_panel_cmd_set *set);
 
 void dsi_panel_dealloc_cmd_packets(struct dsi_panel_cmd_set *set);
+
+int dsi_panel_send_panel_sync_dcs(struct dsi_panel *panel);
 #endif /* _DSI_PANEL_H_ */

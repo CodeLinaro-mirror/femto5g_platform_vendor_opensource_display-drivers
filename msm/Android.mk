@@ -72,6 +72,9 @@ endif
 	LOCAL_REQUIRED_MODULES    += msm-ext-disp-module-symvers
 	LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,msm-ext-disp-module-symvers)/Module.symvers
 endif
+ifeq ($(CONFIG_SMMU_PROXY), y)
+	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,smmu-proxy-module-symvers)/Module.symvers
+endif
 endif
 
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
