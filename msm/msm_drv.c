@@ -1809,6 +1809,9 @@ static const struct file_operations fops = {
 	.read               = drm_read,
 	.llseek             = no_llseek,
 	.mmap               = msm_gem_mmap,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0))
+	.fop_flags          = FOP_UNSIGNED_OFFSET,
+#endif
 };
 
 static struct drm_driver msm_driver = {
