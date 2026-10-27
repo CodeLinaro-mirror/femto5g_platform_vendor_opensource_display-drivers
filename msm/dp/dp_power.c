@@ -376,7 +376,7 @@ exit:
 
 
 static int dp_power_clk_set_rate(struct dp_power_private *power,
-		enum dp_pm_type module, bool enable)
+		enum dp_pm_type module, bool enable, bool skip_set_rate)
 {
 	int rc = 0;
 	struct dss_module_power *mp;
@@ -390,10 +390,12 @@ static int dp_power_clk_set_rate(struct dp_power_private *power,
 	mp = &power->parser->mp[module];
 
 	if (enable) {
-		rc = msm_dss_clk_set_rate(mp->clk_config, mp->num_clk);
-		if (rc) {
-			DP_ERR("failed to set clks rate.\n");
-			goto exit;
+		if (!skip_set_rate) {
+			rc = msm_dss_clk_set_rate(mp->clk_config, mp->num_clk);
+			if (rc) {
+				DP_ERR("failed to set clks rate.\n");
+				goto exit;
+			}
 		}
 
 		rc = msm_dss_enable_clk(mp->clk_config, mp->num_clk, 1);
@@ -408,7 +410,8 @@ static int dp_power_clk_set_rate(struct dp_power_private *power,
 				goto exit;
 		}
 
-		dp_power_park_module(power, module);
+		if (!skip_set_rate)
+			dp_power_park_module(power, module);
 	}
 exit:
 	return rc;
@@ -438,7 +441,7 @@ static bool dp_power_clk_status(struct dp_power *dp_power, enum dp_pm_type pm_ty
 }
 
 static int dp_power_clk_enable(struct dp_power *dp_power,
-		enum dp_pm_type pm_type, bool enable)
+		enum dp_pm_type pm_type, bool enable, bool skip_set_rate)
 {
 	int rc = 0;
 	struct dss_module_power *mp;
@@ -469,7 +472,7 @@ static int dp_power_clk_enable(struct dp_power *dp_power,
 		if ((pm_type == DP_CTRL_PM) && (!power->core_clks_on)) {
 			DP_DEBUG("Need to enable core clks before link clks\n");
 
-			rc = dp_power_clk_set_rate(power, pm_type, enable);
+			rc = dp_power_clk_set_rate(power, pm_type, enable, skip_set_rate);
 			if (rc) {
 				DP_ERR("failed to enable clks: %s. err=%d\n",
 					dp_parser_pm_name(DP_CORE_PM), rc);
@@ -494,7 +497,7 @@ static int dp_power_clk_enable(struct dp_power *dp_power,
 		}
 	}
 
-	rc = dp_power_clk_set_rate(power, pm_type, enable);
+	rc = dp_power_clk_set_rate(power, pm_type, enable, skip_set_rate);
 	if (rc) {
 		DP_ERR("failed to '%s' clks for: %s. err=%d\n",
 			enable ? "enable" : "disable",
@@ -846,7 +849,7 @@ static int dp_power_init(struct dp_power *dp_power, bool flip)
 		goto err_sde_power;
 	}
 
-	rc = dp_power_clk_enable(dp_power, DP_CORE_PM, true);
+	rc = dp_power_clk_enable(dp_power, DP_CORE_PM, true, false);
 	if (rc) {
 		DP_ERR("failed to enable DP core clocks\n");
 		goto err_clk;
@@ -880,9 +883,10 @@ static int dp_power_deinit(struct dp_power *dp_power)
 	power = container_of(dp_power, struct dp_power_private, dp_power);
 
 	if (power->link_clks_on)
-		dp_power_clk_enable(dp_power, DP_LINK_PM, false);
+		dp_power_clk_enable(dp_power, DP_LINK_PM, false, false);
 
-	dp_power_clk_enable(dp_power, DP_CORE_PM, false);
+	dp_power_clk_enable(dp_power, DP_CORE_PM, false, false);
+
 	pm_runtime_put_sync(dp_power->drm_dev->dev);
 
 	dp_power_config_gpios(power, false, false);

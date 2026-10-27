@@ -1396,14 +1396,14 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 	SDE_EVT32(DRMID(crtc), crtc->state->active,
 			sde_kms->splash_data.num_splash_displays);
 
-	for (i = 0; i < MAX_DSI_DISPLAYS; i++) {
+	for (i = 0; i < MAX_SPLASH_DISPLAYS; i++) {
 		splash_display = &sde_kms->splash_data.splash_display[i];
 		if (splash_display->encoder &&
 				crtc == splash_display->encoder->crtc)
 			break;
 	}
 
-	if (i >= MAX_DSI_DISPLAYS)
+	if (i >= MAX_SPLASH_DISPLAYS)
 		return;
 
 	if (splash_display->cont_splash_enabled) {
@@ -1832,7 +1832,31 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 
 		sde_kms->dp_stream_count = dp_display_get_num_of_streams();
 	}
+
+	/* edp */
+	sde_kms->edp_displays = NULL;
+	sde_kms->edp_display_count = 0;
+	if (sde_kms->dp_display_count) {
+		int i;
+
+		sde_kms->edp_displays = kcalloc(sde_kms->dp_display_count,
+				sizeof(void *), GFP_KERNEL);
+		if (!sde_kms->edp_displays) {
+			SDE_ERROR("failed to allocate edp displays\n");
+			goto exit_deinit_dp;
+		}
+
+		for (i = 0; i < sde_kms->dp_display_count; i++) {
+			struct dp_display *dp_display = sde_kms->dp_displays[i];
+
+			if (dp_display->is_edp)
+				sde_kms->edp_displays[sde_kms->edp_display_count++] = dp_display;
+		}
+	}
 #endif
+	sde_kms->builtin_disp_count = sde_kms->dsi_display_count ?
+			sde_kms->dsi_display_count : sde_kms->edp_display_count;
+
 	return 0;
 #if IS_ENABLED(CONFIG_DRM_MSM_DP)
 exit_deinit_dp:
@@ -1871,6 +1895,10 @@ static void _sde_kms_release_displays(struct sde_kms *sde_kms)
 	kfree(sde_kms->dsi_displays);
 	sde_kms->dsi_displays = NULL;
 	sde_kms->dsi_display_count = 0;
+
+	kfree(sde_kms->edp_displays);
+	sde_kms->edp_displays = NULL;
+	sde_kms->edp_display_count = 0;
 }
 
 /**
@@ -1951,12 +1979,13 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.get_info   = dp_connector_get_info,
 		.get_mode_info  = dp_connector_get_mode_info,
 		.post_open  = dp_connector_post_open,
+		.set_backlight = dp_connector_set_backlight,
 		.check_status = NULL,
 		.set_colorspace = dp_connector_set_colorspace,
 		.config_hdr = dp_connector_config_hdr,
 		.cmd_transfer = NULL,
-		.cont_splash_config = NULL,
-		.cont_splash_res_disable = NULL,
+		.cont_splash_config = dp_display_cont_splash_config,
+		.cont_splash_res_disable = dp_display_cont_splash_res_disable,
 		.get_panel_vfp = NULL,
 		.update_pps = dp_connector_update_pps,
 		.cmd_receive = NULL,
@@ -2753,7 +2782,7 @@ static int _sde_kms_remove_fbs(struct sde_kms *sde_kms, struct drm_file *file,
 
 	if (list_empty(&fbs)) {
 		SDE_DEBUG("skip commit as no fb(s)\n");
-		if (sde_kms->dsi_display_count == sde_kms->splash_data.num_splash_displays)
+		if (sde_kms->builtin_disp_count == sde_kms->splash_data.num_splash_displays)
 			_sde_kms_connector_add_refcount(sde_kms, state);
 		return 0;
 	}
@@ -3517,9 +3546,8 @@ static int _sde_kms_update_planes_for_cont_splash(struct sde_kms *sde_kms,
 }
 
 static int sde_kms_inform_cont_splash_res_disable(struct msm_kms *kms,
-		struct dsi_display *dsi_display)
+		void *display, int splash_type)
 {
-	void *display;
 	struct drm_encoder *encoder = NULL;
 	struct msm_display_info info;
 	struct drm_device *dev;
@@ -3527,16 +3555,30 @@ static int sde_kms_inform_cont_splash_res_disable(struct msm_kms *kms,
 	struct drm_connector_list_iter conn_iter;
 	struct drm_connector *connector = NULL;
 	struct sde_connector *sde_conn = NULL;
+	struct dsi_display *dsi_display = NULL;
+	struct dp_display *dp_display = NULL;
 	int rc = 0;
 
 	sde_kms = to_sde_kms(kms);
 	dev = sde_kms->dev;
-	display = dsi_display;
-	if (dsi_display) {
-		if (dsi_display->bridge->base.encoder) {
-			encoder = dsi_display->bridge->base.encoder;
-			SDE_DEBUG("encoder name = %s\n", encoder->name);
+
+	if (display) {
+		if (splash_type == INTF_DSI) {
+			dsi_display = (struct dsi_display *)display;
+			if (dsi_display->bridge->base.encoder)
+				encoder = dsi_display->bridge->base.encoder;
+		} else if (splash_type == INTF_EDP) {
+			dp_display = (struct dp_display *)display;
+			if (dp_display->bridge->base.encoder)
+				encoder = dp_display->bridge->base.encoder;
 		}
+
+	}
+
+	if (encoder)
+		SDE_DEBUG("encoder name = %s\n", encoder->name);
+
+	if (dsi_display) {
 		memset(&info, 0x0, sizeof(info));
 		rc = dsi_display_get_info(NULL, &info, display);
 		if (rc) {
@@ -3564,7 +3606,7 @@ static int sde_kms_inform_cont_splash_res_disable(struct msm_kms *kms,
 		 */
 		sde_conn = to_sde_connector(connector);
 		if (sde_conn && sde_conn->ops.cont_splash_res_disable) {
-			if (!dsi_display || !encoder) {
+			if (!display || !encoder) {
 				sde_conn->ops.cont_splash_res_disable
 						(sde_conn->display);
 			} else if (c_encoder->base.id == encoder->base.id) {
@@ -3672,6 +3714,8 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 	struct drm_connector *connector = NULL;
 	struct sde_connector *sde_conn = NULL;
 	struct sde_splash_display *splash_display;
+	const char *display_name = NULL;
+	int intf_type;
 
 	if (!kms) {
 		SDE_ERROR("invalid kms\n");
@@ -3691,45 +3735,65 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 		return -EINVAL;
 	}
 
+	intf_type = edp_display_get_num_of_displays(sde_kms->dev) ? INTF_EDP : INTF_DSI;
+
 	if (((sde_kms->splash_data.type == SDE_SPLASH_HANDOFF)
 		&& (!sde_kms->splash_data.num_splash_regions)) ||
 			!sde_kms->splash_data.num_splash_displays) {
 		DRM_INFO("cont_splash feature not enabled\n");
-		sde_kms_inform_cont_splash_res_disable(kms, NULL);
+		sde_kms_inform_cont_splash_res_disable(kms, NULL, intf_type);
 		return rc;
 	}
 
 	DRM_INFO("cont_splash enabled in %d of %d display(s)\n",
 				sde_kms->splash_data.num_splash_displays,
-				sde_kms->dsi_display_count);
+				sde_kms->builtin_disp_count);
 
 	/* dsi */
-	for (i = 0; i < sde_kms->dsi_display_count; ++i) {
+	for (i = 0; i < sde_kms->builtin_disp_count; ++i) {
 		struct sde_crtc_state *cstate;
 		struct sde_connector_state *conn_state;
 
-		display = sde_kms->dsi_displays[i];
-		dsi_display = (struct dsi_display *)display;
 		splash_display = &sde_kms->splash_data.splash_display[i];
+
+		if (intf_type == INTF_DSI) {
+			display = sde_kms->dsi_displays[i];
+			dsi_display = (struct dsi_display *)display;
+			display_name = dsi_display->name;
+			encoder = ((struct dsi_display *)display)->bridge->base.encoder;
+		} else if (intf_type == INTF_EDP) {
+			display = sde_kms->edp_displays[i];
+			encoder = ((struct dp_display *)display)->bridge->base.encoder;
+			display_name = "edp_display";
+		}
 
 		if (!splash_display->cont_splash_enabled) {
 			SDE_DEBUG("display->name = %s splash not enabled\n",
-					dsi_display->name);
+					display_name ? display_name : "");
 			sde_kms_inform_cont_splash_res_disable(kms,
-					dsi_display);
+					display, intf_type);
 			continue;
 		}
 
-		SDE_DEBUG("display->name = %s\n", dsi_display->name);
+		SDE_DEBUG("display->name = %s\n", display_name);
 
-		if (dsi_display->bridge->base.encoder) {
-			encoder = dsi_display->bridge->base.encoder;
-			SDE_DEBUG("encoder name = %s\n", encoder->name);
+		if (!encoder) {
+			SDE_ERROR("encoder not initialized\n");
+			return -EINVAL;
 		}
+
+		SDE_DEBUG("encoder name = %s\n", encoder->name);
+
 		memset(&info, 0x0, sizeof(info));
-		rc = dsi_display_get_info(NULL, &info, display);
+
+		if (intf_type == INTF_DSI)
+			rc = dsi_display_get_info(NULL, &info, display);
+		else if (intf_type == INTF_EDP)
+			rc = dp_connector_get_info(NULL, &info, display);
+
 		if (rc) {
-			SDE_ERROR("dsi get_info %d failed\n", i);
+			SDE_ERROR("%s get_info %d failed\n",
+				(intf_type == INTF_DSI) ? "dsi" : "dp", i);
 			encoder = NULL;
 			continue;
 		}
@@ -3737,16 +3801,11 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			((info.is_connected) ? "true" : "false"),
 			info.display_type);
 
-		if (!encoder) {
-			SDE_ERROR("encoder not initialized\n");
-			return -EINVAL;
-		}
-
 		priv = sde_kms->dev->dev_private;
 		encoder->crtc = priv->crtcs[i];
 		crtc = encoder->crtc;
 		splash_display->encoder =  encoder;
-		SDE_DEBUG("for dsi-display:%d crtc id[%d]:%d enc id[%d]:%d\n",
+		SDE_DEBUG("for display:%d crtc id[%d]:%d enc id[%d]:%d\n",
 				i, crtc->index, crtc->base.id, encoder->index,
 				encoder->base.id);
 
@@ -3781,12 +3840,33 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			return -EINVAL;
 		}
 
+		/*
+		 * Connectors utilize the cont_splash_config API to determine whether
+		 * splash is enabled. Unlike DSI, EDP connectors must read modes from
+		 * EDID during the splash handoff. This change moves the logic
+		 * earlier, allowing EDP to detect splash status and correctly read
+		 * and populate display modes.
+		 */
+		sde_conn = to_sde_connector(connector);
+		if (sde_conn && sde_conn->ops.cont_splash_config)
+			sde_conn->ops.cont_splash_config(sde_conn->display);
+
+		if (sde_kms->splash_data.type == SDE_SPLASH_HANDOFF &&
+			(intf_type == INTF_EDP) && connector->funcs &&
+			connector->funcs->fill_modes) {
+			sde_irq_update(&sde_kms->base, true);
+			connector->funcs->fill_modes(connector,
+				dev->mode_config.max_width,
+				dev->mode_config.max_height);
+			sde_irq_update(&sde_kms->base, false);
+		}
+
 		crtc->state->encoder_mask = drm_encoder_mask(encoder);
 		crtc->state->connector_mask = drm_connector_mask(connector);
 		connector->state->crtc = crtc;
 
 		/* get supported modes in case of external bridge panels*/
-		if (!dsi_display->panel->num_timing_nodes) {
+		if ((intf_type == INTF_DSI) && (!dsi_display->panel->num_timing_nodes)) {
 			connector->funcs->fill_modes(connector,
 					dev->mode_config.max_width,
 					dev->mode_config.max_height);
@@ -3825,10 +3905,6 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 				splash_display, true);
 
 		sde_crtc_update_cont_splash_settings(crtc);
-
-		sde_conn = to_sde_connector(connector);
-		if (sde_conn && sde_conn->ops.cont_splash_config)
-			sde_conn->ops.cont_splash_config(sde_conn->display);
 
 		conn_state = to_sde_connector_state(connector->state);
 		conn_state->cont_splash_populated = true;
@@ -4070,14 +4146,14 @@ static int sde_kms_trigger_null_flush(struct msm_kms *kms)
 		return 0;
 
 	/* If all builtin-displays are having cont splash enabled, ignore lastclose*/
-	if (sde_kms->dsi_display_count == sde_kms->splash_data.num_splash_displays)
+	if (sde_kms->builtin_disp_count == sde_kms->splash_data.num_splash_displays)
 		return -EINVAL;
 
 	/*
 	 * Trigger NULL flush if built-in secondary/primary is stuck in splash
 	 * while the  primary/secondary is running respectively before lastclose.
 	 */
-	for (i = 0; i < MAX_DSI_DISPLAYS; i++) {
+	for (i = 0; i < MAX_SPLASH_DISPLAYS; i++) {
 		splash_display = &sde_kms->splash_data.splash_display[i];
 
 		if (splash_display->cont_splash_enabled && splash_display->encoder) {
@@ -4781,7 +4857,18 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 	return ret;
 }
 
-static int _sde_kms_get_splash_data(struct sde_splash_data *data)
+static int sde_get_builtin_disp_count(struct drm_device *dev)
+{
+	int count;
+
+	count = dsi_display_get_num_of_displays();
+	if (count)
+		return count;
+
+	return edp_display_get_num_of_displays(dev);
+}
+
+static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_data *data)
 {
 	int i = 0;
 	int ret = 0;
@@ -4824,7 +4911,7 @@ static int _sde_kms_get_splash_data(struct sde_splash_data *data)
 	 * cont_splash_region  should be collection of all memory regions
 	 * Ex: <r1.start r1.end r2.start r2.end  ... rn.start, rn.end>
 	 */
-	num_displays = dsi_display_get_num_of_displays();
+	num_displays = sde_get_builtin_disp_count(dev);
 	num_regions = of_property_count_u64_elems(node, "reg") / 2;
 
 	data->num_splash_displays = num_displays;
@@ -5253,7 +5340,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	if (rc)
 		goto error;
 
-	rc = _sde_kms_get_splash_data(&sde_kms->splash_data);
+	rc = _sde_kms_get_splash_data(dev, &sde_kms->splash_data);
 	if (rc)
 		SDE_DEBUG("sde splash data fetch failed: %d\n", rc);
 

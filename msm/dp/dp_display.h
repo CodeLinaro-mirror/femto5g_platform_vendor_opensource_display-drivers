@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -65,6 +65,7 @@ struct dp_display {
 	void *dp_aux_ipc_log;
 	bool no_backlight_support;
 	bool ext_hpd_en;
+	bool is_cont_splash_enabled;
 
 	int (*enable)(struct dp_display *dp_display, void *panel);
 	int (*post_enable)(struct dp_display *dp_display, void *panel);
@@ -89,6 +90,8 @@ struct dp_display {
 				bool dhdr_update);
 	int (*set_colorspace)(struct dp_display *dp_display, void *panel,
 				u32 colorspace);
+	int (*set_backlight)(struct dp_display *dp_display, void *panel,
+				u32 bl_lvl);
 	int (*post_init)(struct dp_display *dp_display);
 	int (*mst_install)(struct dp_display *dp_display,
 			struct dp_mst_drm_install_info *mst_install_info);
@@ -136,6 +139,10 @@ int dp_display_get_displays(void **displays, int count);
 int dp_display_get_num_of_streams(void);
 int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data);
 int dp_display_get_info(void *dp_display, struct dp_display_info *dp_info);
+int edp_display_get_num_of_displays(struct drm_device *dev);
+int dp_display_cont_splash_config(void *display);
+int dp_display_cont_splash_res_disable(void *display);
+int dp_display_splash_res_cleanup(struct dp_display *dp_display);
 #else
 static inline int dp_display_get_num_of_displays(void)
 {
@@ -159,6 +166,22 @@ static inline int dp_connector_update_pps(struct drm_connector *connector,
 	return 0;
 }
 static inline int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data)
+{
+	return 0;
+}
+static inline int edp_display_get_num_of_displays(struct drm_device *dev)
+{
+	return 0;
+}
+static inline int dp_display_cont_splash_config(void *dp_display)
+{
+	return 0;
+}
+static inline int dp_display_cont_splash_res_disable(void *dp_display)
+{
+	return 0;
+}
+static inline int dp_display_splash_res_cleanup(struct dp_display *dp_display)
 {
 	return 0;
 }

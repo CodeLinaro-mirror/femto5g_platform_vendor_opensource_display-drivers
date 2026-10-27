@@ -150,6 +150,9 @@ static void dp_bridge_enable(struct drm_bridge *drm_bridge)
 	if (rc)
 		DP_ERR("[%d] DP display post enable failed, rc=%d\n",
 		       bridge->id, rc);
+
+	if (dp->is_edp)
+		sde_connector_helper_bridge_enable(bridge->connector);
 }
 
 static void dp_bridge_disable(struct drm_bridge *drm_bridge)
@@ -370,6 +373,27 @@ int dp_connector_config_hdr(struct drm_connector *connector, void *display,
 			c_state->dyn_hdr_meta.dynamic_hdr_update);
 }
 
+int dp_connector_set_backlight(struct drm_connector *connector,
+	void *display, u32 bl_lvl)
+{
+	struct dp_display *dp_display = display;
+	struct sde_connector *sde_conn;
+
+	if (!dp_display || !connector) {
+		DP_ERR("invalid dp display\n");
+		return -EINVAL;
+	}
+
+	sde_conn = to_sde_connector(connector);
+	if (!sde_conn->drv_panel) {
+		DP_ERR("invalid dp panel\n");
+		return -EINVAL;
+	}
+
+	return dp_display->set_backlight(dp_display,
+		sde_conn->drv_panel, bl_lvl);
+}
+
 int dp_connector_set_colorspace(struct drm_connector *connector,
 	void *display)
 {
@@ -394,6 +418,7 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 	int rc;
 	struct dp_display *dp_display = display;
 	struct sde_connector *sde_conn;
+	struct dp_panel *dp_panel;
 
 	if (!dp_display || !connector)
 		return -EINVAL;
@@ -409,6 +434,17 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 
 	sde_conn = to_sde_connector(connector);
 	dp_display->bridge->dp_panel = sde_conn->drv_panel;
+
+	if (dp_display->is_edp) {
+		dp_panel = sde_conn->drv_panel;
+		if (dp_panel && dp_panel->drm_panel.dev) {
+			sde_conn->panel = &dp_panel->drm_panel;
+		} else {
+			sde_conn->panel = NULL;
+			DP_DEBUG("no registered drm_panel %s, DPMS notify skipped\n",
+					sde_conn->name);
+		}
+	}
 
 	rc = dp_mst_init(dp_display);
 
@@ -555,7 +591,8 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 		return connector_status_disconnected;
 	}
 
-	if (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG) {
+	if (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG &&
+			!dp_disp->is_cont_splash_enabled) {
 		status = (info.is_connected ? connector_status_connected :
 					      connector_status_disconnected);
 	} else {

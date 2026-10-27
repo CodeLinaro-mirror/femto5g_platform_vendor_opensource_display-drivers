@@ -14,6 +14,8 @@
 #include <linux/usb/phy.h>
 #include <linux/jiffies.h>
 #include <linux/pm_qos.h>
+#include <linux/pinctrl/consumer.h>
+#include <linux/backlight.h>
 
 #if __has_include(<soc/qcom/pmic_glink_altmode.h>)
     #include <linux/soc/qcom/pmic_glink_altmode.h>
@@ -1139,13 +1141,16 @@ static int dp_display_host_init(struct dp_display_private *dp)
 	if (dp->hpd->orientation == ORIENTATION_CC2)
 		flip = true;
 
-	reset = dp->debug->sim_mode ? false : !dp->hpd->multi_func;
+	reset = dp->debug->sim_mode || dp->dp_display.is_cont_splash_enabled ?
+			false : !dp->hpd->multi_func;
 
-	rc = dp->power->init(dp->power, flip);
-	if (rc) {
-		DP_WARN("Power init failed.\n");
-		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, dp->state);
-		return rc;
+	if (!dp->dp_display.is_cont_splash_enabled) {
+		rc = dp->power->init(dp->power, flip);
+		if (rc) {
+			DP_WARN("Power init failed.\n");
+			SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, dp->state);
+			return rc;
+		}
 	}
 
 	dp->hpd->host_init(dp->hpd, &dp->catalog->hpd);
@@ -1192,7 +1197,7 @@ static int dp_display_panel_ready(struct dp_display_private *dp)
 			return -ETIMEDOUT;
 		}
 	}
-	dp->panel->init(dp->panel);
+	dp->panel->init(dp->panel, dp->dp_display.is_cont_splash_enabled);
 
 	return 0;
 }
@@ -1233,7 +1238,7 @@ static int dp_display_host_ready(struct dp_display_private *dp)
 	dp->aux->abort(dp->aux, false);
 	dp->ctrl->abort(dp->ctrl, false);
 
-	dp->aux->init(dp->aux, dp->parser->aux_cfg);
+	dp->aux->init(dp->aux, dp->parser->aux_cfg, dp->dp_display.is_cont_splash_enabled);
 	rc = dp_display_panel_ready(dp);
 
 	dp_display_state_add(DP_STATE_READY);
@@ -1360,7 +1365,9 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 		goto err_state;
 	}
 
-	dp->link->psm_config(dp->link, &dp->panel->link_info, false);
+	if (!dp->dp_display.is_cont_splash_enabled)
+		dp->link->psm_config(dp->link, &dp->panel->link_info, false);
+
 	dp->debug->psm_enabled = false;
 
 	if (!dp->dp_display.base_connector)
@@ -1380,8 +1387,8 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 
 	dp_display_mst_init(dp);
 
-	rc = dp->ctrl->on(dp->ctrl, dp->mst.mst_active,
-			dp->panel->fec_en, dp->panel->dsc_en, false);
+	rc = dp->ctrl->on(dp->ctrl, dp->mst.mst_active, dp->panel->fec_en,
+			dp->panel->dsc_en, false, dp->dp_display.is_cont_splash_enabled);
 	if (rc)
 		goto err_mst;
 
@@ -1845,7 +1852,8 @@ static int dp_display_stream_enable(struct dp_display_private *dp,
 {
 	int rc = 0;
 
-	rc = dp->ctrl->stream_on(dp->ctrl, dp_panel);
+	if (!dp->dp_display.is_cont_splash_enabled)
+		rc = dp->ctrl->stream_on(dp->ctrl, dp_panel);
 
 	if (dp->debug->tpg_pattern)
 		dp_panel->tpg_config(dp_panel, dp->debug->tpg_pattern);
@@ -2273,6 +2281,8 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	panel_in.connector = dp->dp_display.base_connector;
 	panel_in.base_panel = NULL;
 	panel_in.parser = dp->parser;
+	panel_in.is_edp = dp->dp_display.is_edp;
+	panel_in.panel_notifier_support = dp->parser->panel_notifier_support;
 
 	dp->panel = dp_panel_get(&panel_in);
 	if (IS_ERR(dp->panel)) {
@@ -2387,6 +2397,82 @@ error_catalog:
 error:
 	mutex_destroy(&dp->session_lock);
 	return rc;
+}
+
+int dp_display_cont_splash_config(void *display)
+{
+	int rc = 0;
+	struct dp_display *dp_display = display;
+	struct dp_display_private *dp;
+
+	if (!dp_display) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	if (IS_ERR_OR_NULL(dp)) {
+		DP_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	rc = dp->power->init(dp->power, false);
+	if (rc) {
+		DP_WARN("Power init failed.\n");
+		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, dp->state);
+		return rc;
+	}
+
+	rc = dp->power->clk_enable(dp->power, DP_LINK_PM, true, true);
+	if (rc) {
+		DP_ERR("Unable to start link clocks\n");
+		goto end;
+	}
+
+	rc = dp->power->clk_enable(dp->power, DP_STREAM0_PM, true, true);
+	if (rc) {
+		DP_ERR("Unable to start stream clocks\n");
+		goto end;
+	}
+
+	dp_display->is_cont_splash_enabled = true;
+
+	DP_DEBUG("done\n");
+	return rc;
+end:
+	dp->power->deinit(dp->power);
+	return rc;
+}
+
+int dp_display_cont_splash_res_disable(void *display)
+{
+	/* Operations to be performed in splash disabled case */
+	return 0;
+}
+
+int dp_display_splash_res_cleanup(struct  dp_display *dp_display)
+{
+	struct dp_display_private *dp;
+
+	if (!dp_display) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	if (IS_ERR_OR_NULL(dp)) {
+		DP_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	if (!dp_display->is_cont_splash_enabled)
+		return 0;
+
+	dp_display->is_cont_splash_enabled = false;
+
+	DP_DEBUG("done\n");
+
+	return 0;
 }
 
 static int dp_display_post_init(struct dp_display *dp_display)
@@ -2628,7 +2714,7 @@ static int dp_display_prepare(struct dp_display *dp_display, void *panel)
 	 * and required things.
 	 */
 	rc = dp->ctrl->on(dp->ctrl, dp->mst.mst_active, dp_panel->fec_en,
-			dp_panel->dsc_en, shallow_mode);
+			dp_panel->dsc_en, shallow_mode, dp_display->is_cont_splash_enabled);
 	if (rc)
 		goto end;
 
@@ -2685,10 +2771,30 @@ static int dp_display_set_stream_info(struct dp_display *dp_display,
 	return rc;
 }
 
+static int dp_display_set_pinctrl_state(struct dp_pinctrl *pinctrl,
+		struct pinctrl_state *state)
+{
+	int rc = 0;
+
+	if (pinctrl && !IS_ERR_OR_NULL(state)) {
+		rc = pinctrl_select_state(pinctrl->pin, state);
+		if (rc) {
+			DP_ERR("failed to set pin state, rc=%d\n", rc);
+		}
+	} else {
+		rc = -EINVAL;
+		DP_DEBUG("pinctrl state does not exist\n");
+	}
+
+	return rc;
+}
+
 static int dp_display_enable(struct dp_display *dp_display, void *panel)
 {
 	int rc = 0;
 	struct dp_display_private *dp;
+	struct dp_parser *parser;
+	struct dp_pinctrl *pinctrl;
 
 	if (!dp_display || !panel) {
 		DP_ERR("invalid input\n");
@@ -2725,8 +2831,9 @@ static int dp_display_enable(struct dp_display *dp_display, void *panel)
 		goto end;
 
 	/*edp backlight enable and edp pwm enable*/
-	if ((dp_display->is_edp) && (!dp_display->no_backlight_support)) {
-		rc = dp->power->edp_panel_set_gpio(dp->power, DP_GPIO_EDP_BACKLIGHT_PWR, true);
+	if ((dp_display->is_edp) && (!dp_display->no_backlight_support))  {
+		rc = dp->power->edp_panel_set_gpio(dp->power,
+				DP_GPIO_EDP_BACKLIGHT_PWR, true);
 		if (rc) {
 			DP_ERR("Cannot turn edp backlight power on");
 			goto end;
@@ -2739,7 +2846,18 @@ static int dp_display_enable(struct dp_display *dp_display, void *panel)
 			DP_ERR("Cannot turn edp PWM on ");
 			goto end;
 		}
+
+		parser = dp->parser;
+		if (!parser) {
+			DP_ERR("failed to get parser");
+		} else {
+			pinctrl = &parser->pinctrl;
+			rc = dp_display_set_pinctrl_state(pinctrl, pinctrl->state_bl_pwm);
+			if (rc)
+				DP_DEBUG("failed to set pinctrl, rc=%d\n", rc);
+		}
 	}
+
 
 	dp_display_state_add(DP_STATE_ENABLED);
 end:
@@ -2759,6 +2877,9 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 {
 	struct dp_display_private *dp;
 	struct dp_panel *dp_panel;
+	struct drm_connector *connector;
+	struct sde_connector *sde_conn;
+	struct backlight_device *bl_device;
 	int rc = 0;
 
 	if (!dp_display || !panel) {
@@ -2796,16 +2917,30 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 		goto end;
 	}
 
-	dp_display_stream_post_enable(dp, dp_panel);
+	if (!dp_display->is_cont_splash_enabled) {
+		dp_display_stream_post_enable(dp, dp_panel);
 
-	if ((dp_display->is_edp) && (!dp_display->no_backlight_support)) {
-		rc = dp->power->edp_panel_set_gpio(dp->power, DP_GPIO_EDP_BACKLIGHT_EN, true);
-		if (rc) {
-			DP_ERR("Cannot turn edp backlight power on");
-			goto end;
+		if ((dp_display->is_edp) && (!dp_display->no_backlight_support)) {
+			rc = dp->power->edp_panel_set_gpio(dp->power,
+				DP_GPIO_EDP_BACKLIGHT_EN, true);
+			if (rc)
+				DP_ERR("Cannot turn edp backlight power on");
+		}
+		if (!dp_display->base_connector)
+			goto cancel_hdcp;
+
+		connector = dp_display->base_connector;
+		sde_conn = to_sde_connector(connector);
+
+		sde_conn->allow_bl_update = true;
+		if (sde_conn->bl_device) {
+			bl_device = sde_conn->bl_device;
+			bl_device->props.power = FB_BLANK_UNBLANK;
+			bl_device->props.state &= ~BL_CORE_FBBLANK;
 		}
 	}
 
+cancel_hdcp:
 	cancel_delayed_work_sync(&dp->hdcp_cb_work);
 	queue_delayed_work(dp->wq, &dp->hdcp_cb_work, HZ);
 
@@ -2817,6 +2952,9 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 
 	dp->aux->state &= ~DP_STATE_CTRL_POWERED_OFF;
 	dp->aux->state |= DP_STATE_CTRL_POWERED_ON;
+
+	dp_display_splash_res_cleanup(dp_display);
+
 	complete_all(&dp->notification_comp);
 	DP_DEBUG("display post enable complete. state: 0x%x\n", dp->state);
 end:
@@ -3462,6 +3600,37 @@ static int dp_display_config_hdr(struct dp_display *dp_display, void *panel,
 		core_clk_rate, flush_hdr);
 }
 
+static int dp_display_set_backlight(struct dp_display *dp_display,
+		void *panel, u32 bl_lvl)
+{
+	struct dp_panel *dp_panel;
+	struct dp_display_private *dp;
+	u32 bl_scale, bl_scale_sv;
+	u64 bl_temp;
+
+	if (!dp_display || !panel) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	dp_panel = panel;
+
+	dp_panel->bl_config.bl_level = bl_lvl;
+
+	/* scale backlight */
+	bl_scale = dp_panel->bl_config.bl_scale;
+	bl_temp = bl_lvl * bl_scale / MAX_BL_SCALE_LEVEL;
+
+	bl_scale_sv = dp_panel->bl_config.bl_scale_sv;
+	bl_temp = (u32)bl_temp * bl_scale_sv / MAX_SV_BL_SCALE_LEVEL;
+
+	DP_DEBUG("bl_scale = %u, bl_scale_sv = %u, bl_lvl = %u\n",
+		bl_scale, bl_scale_sv, (u32)bl_temp);
+
+	return dp_panel->set_backlight(dp_panel, (u32)bl_temp);
+}
+
 static int dp_display_setup_colospace(struct dp_display *dp_display,
 		void *panel,
 		u32 colorspace)
@@ -3999,7 +4168,9 @@ static int dp_display_edp_detect(struct dp_display *dp_display)
 		goto end;
 	}
 
-	dp->link->psm_config(dp->link, &dp->panel->link_info, false);
+	if (!dp_display->is_cont_splash_enabled)
+		dp->link->psm_config(dp->link, &dp->panel->link_info, false);
+
 	dp->debug->psm_enabled = false;
 
 	rc = dp->panel->read_sink_caps(dp->panel,
@@ -4018,7 +4189,6 @@ static int dp_display_edp_detect(struct dp_display *dp_display)
 	dp_display_state_add(DP_STATE_CONNECT_NOTIFIED);
 	dp_display_state_remove(DP_STATE_DISCONNECT_NOTIFIED);
 
-	dp->power->edp_panel_set_gpio(dp->power, DP_GPIO_EDP_VCC_EN, false);
 end:
 	mutex_unlock(&dp->session_lock);
 	return rc;
@@ -4129,6 +4299,7 @@ static int dp_display_probe(struct platform_device *pdev)
 	dp_display->wakeup_phy_layer =
 					dp_display_wakeup_phy_layer;
 	dp_display->set_colorspace = dp_display_setup_colospace;
+	dp_display->set_backlight = dp_display_set_backlight;
 	dp_display->get_available_dp_resources =
 					dp_display_get_available_dp_resources;
 	dp_display->clear_reservation = dp_display_clear_reservation;
@@ -4182,6 +4353,21 @@ int dp_display_get_num_of_displays(void)
 			break;
 
 	return i;
+}
+
+int edp_display_get_num_of_displays(struct drm_device *dev)
+{
+	int i, count = 0;
+
+	for (i = 0; i < MAX_DP_ACTIVE_DISPLAY; i++) {
+		if (!g_dp_display[i])
+			break;
+
+		if (g_dp_display[i]->drm_dev == dev && g_dp_display[i]->is_edp)
+			count++;
+	}
+
+	return count;
 }
 
 int dp_display_get_num_of_streams(void)
