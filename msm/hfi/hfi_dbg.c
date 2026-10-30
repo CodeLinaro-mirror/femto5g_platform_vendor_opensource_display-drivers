@@ -548,9 +548,9 @@ void hfi_dbg_destroy(void)
 
 	hfi_adapter_buffer_dealloc(&hfi_kms->hfi_client, &hfi_dbg->base_buf_addr);
 
-	hfi_dbg->base_props = NULL;
-	hfi_dbg = NULL;
-
 	kfree(hfi_dbg->base_props);
+	hfi_dbg->base_props = NULL;
+
 	kvfree(hfi_dbg);
+	hfi_dbg = NULL;
 }

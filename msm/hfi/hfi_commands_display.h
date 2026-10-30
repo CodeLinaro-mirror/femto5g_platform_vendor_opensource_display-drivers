@@ -690,6 +690,48 @@
  */
 #define HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET                      0x0200001D
 
+/*
+ * HFI_COMMAND_DISPLAY_AUX_READ - From Host to DCP, this command requests DPCD
+ *                                register values via AUX channel using shared buffer.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in display_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_AUX_READ
+ *     hfi_packet.flags         : HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : struct hfi_dp_aux_request
+ */
+#define HFI_COMMAND_DISPLAY_AUX_READ                                  0x0200001E
+
+/*
+ * HFI_COMMAND_DISPLAY_AUX_WRITE - From Host to DCP, this command writes DPCD
+ *                                 register values via AUX channel using an inline buffer.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in display_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_AUX_WRITE
+ *     hfi_packet.flags         : HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : struct hfi_dp_aux_data
+ */
+#define HFI_COMMAND_DISPLAY_AUX_WRITE                                 0x0200001F
+
 #define HFI_COMMAND_DISPLAY_END                                       0x02FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_H__

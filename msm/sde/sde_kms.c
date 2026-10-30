@@ -27,6 +27,8 @@
 #include <linux/of_irq.h>
 #include <linux/dma-buf.h>
 #include <linux/memblock.h>
+#include <linux/mm.h>
+#include <linux/scatterlist.h>
 #include <linux/soc/qcom/panel_event_notifier.h>
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_probe_helper.h>
@@ -1111,6 +1113,54 @@ static void _sde_kms_parse_lpai_region(struct sde_kms *sde_kms)
 			sde_kms->lpai_buf_base, sde_kms->lpai_buf_size);
 }
 
+/* Grant ADSP/LPASS shared RW access to the lpai_display_region */
+static int _sde_kms_hyp_assign_lpai_region(struct sde_kms *sde_kms)
+{
+	struct page     *page;
+	struct sg_table  sgt;
+	int              ret;
+
+	if (!sde_kms->lpai_buf_base || !sde_kms->lpai_buf_size)
+		return 0;
+
+	if (!PAGE_ALIGNED(sde_kms->lpai_buf_base) || !PAGE_ALIGNED(sde_kms->lpai_buf_size))
+		return -EINVAL;
+
+	page = phys_to_page(sde_kms->lpai_buf_base);
+	if (!page)
+		return -EINVAL;
+
+	ret = sg_alloc_table(&sgt, 1, GFP_KERNEL);
+	if (ret)
+		return ret;
+	sg_set_page(sgt.sgl, page, sde_kms->lpai_buf_size, 0);
+
+#if IS_ENABLED(CONFIG_QCOM_SECURE_BUFFER)
+	{
+		u32 src_vmids[]  = { VMID_HLOS };
+		int dst_vmids[]  = { VMID_LPASS, VMID_ADSP_HEAP, VMID_HLOS };
+		int dst_perms[]  = { PERM_READ | PERM_WRITE,
+				     PERM_READ | PERM_WRITE,
+				     PERM_READ | PERM_WRITE };
+
+		ret = hyp_assign_table(&sgt,
+					src_vmids, ARRAY_SIZE(src_vmids),
+					dst_vmids, dst_perms, ARRAY_SIZE(dst_vmids));
+	}
+#else
+	ret = -ENODEV;
+#endif
+
+	sde_kms->lpai_hyp_assigned = (ret == 0);
+	sg_free_table(&sgt);
+
+	SDE_DEBUG("LPAI hyp_assign: base=0x%lx size=0x%x %s ret=%d\n",
+		  sde_kms->lpai_buf_base, sde_kms->lpai_buf_size,
+		  ret ? "FAILED" : "SUCCESS", ret);
+
+	return ret;
+}
+
 static int _sde_kms_get_blank(struct drm_crtc_state *crtc_state,
 		struct drm_connector_state *conn_state)
 {
@@ -1181,6 +1231,7 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 		} else {
 			old_fps = 0;
 			old_mode = DRM_PANEL_EVENT_BLANK;
+			old_lp_mode = SDE_MODE_DPMS_OFF;
 		}
 
 		if ((old_mode != new_mode) || (old_fps != new_fps)
@@ -3010,6 +3061,12 @@ static int sde_kms_hfi_boot_init(struct sde_kms *sde_kms)
 	ret = hfi_kms_get_catalog_data(sde_kms->hfi_kms);
 	if (ret) {
 		SDE_ERROR("HFI get catalog data failed\n");
+		return -EPROBE_DEFER;
+	}
+
+	ret = hfi_kms_send_generic_device_caps(sde_kms->hfi_kms);
+	if (ret) {
+		SDE_ERROR("HFI send generic device caps failed\n");
 		return -EPROBE_DEFER;
 	}
 
@@ -6042,6 +6099,12 @@ static int sde_kms_pm_restore(struct device *dev)
 		return ret;
 	}
 
+	ret = hfi_kms_send_generic_device_caps(hfi_kms);
+	if (ret) {
+		SDE_ERROR("failed to send generic device caps, ret: %d\n", ret);
+		return ret;
+	}
+
 	/* Configure trace settings */
 	ret = hfi_kms_send_trace_cfg(hfi_kms, HFI_TRUE);
 	if (ret) {
@@ -6566,6 +6629,16 @@ static int sde_kms_pd_enable(struct generic_pm_domain *genpd)
 	int rc = -EINVAL;
 
 	SDE_DEBUG("\n");
+	// if disable_depth > 0, we can skip calling pm_runtime_get_sync()
+	if (sde_kms->dev->dev->power.disable_depth > 0) {
+		SDE_DEBUG("disable_depth=%d, defer pd_enable\n",
+			sde_kms->dev->dev->power.disable_depth);
+		SDE_EVT32(rc, genpd->device_count,
+			atomic_read(&sde_kms->dev->dev->power.usage_count),
+			atomic_read(&sde_kms->pd_enable_count),
+			pm_runtime_suspended(sde_kms->dev->dev));
+		return rc;
+	}
 
 	rc = pm_runtime_get_sync(sde_kms->dev->dev);
 	if (rc < 0) {
@@ -6578,8 +6651,9 @@ static int sde_kms_pd_enable(struct generic_pm_domain *genpd)
 	}
 	rc = (rc > 0) ? 0 : rc;
 
+	atomic_inc(&sde_kms->pd_enable_count);
 	SDE_EVT32(rc, genpd->device_count, atomic_read(&sde_kms->dev->dev->power.usage_count),
-		pm_runtime_suspended(sde_kms->dev->dev));
+		pm_runtime_suspended(sde_kms->dev->dev), atomic_read(&sde_kms->pd_enable_count));
 
 	return rc;
 }
@@ -6589,6 +6663,19 @@ static int sde_kms_pd_disable(struct generic_pm_domain *genpd)
 	struct sde_kms *sde_kms = genpd_to_sde_kms(genpd);
 
 	SDE_DEBUG("\n");
+
+	// if pd_enable_count <= 0, then we can skip pm_runtime_put_sync()
+	if (atomic_dec_return(&sde_kms->pd_enable_count) < 0) {
+		SDE_EVT32(genpd->device_count, atomic_read(&sde_kms->dev->dev->power.usage_count),
+			pm_runtime_suspended(sde_kms->dev->dev));
+		atomic_inc(&sde_kms->pd_enable_count);
+		SDE_DEBUG("device_count=%d, usage_count=%d, pd_enable_count=%d,\
+			runtime-suspend=%d\n", genpd->device_count,
+			atomic_read(&sde_kms->dev->dev->power.usage_count),
+			atomic_read(&sde_kms->pd_enable_count),
+			pm_runtime_suspended(sde_kms->dev->dev));
+		return -EINVAL;
+	}
 
 	pm_runtime_put_sync(sde_kms->dev->dev);
 
@@ -6959,6 +7046,7 @@ static int _sde_kms_hw_init_power_helper(struct drm_device *dev,
 		}
 
 		sde_kms->genpd_init = true;
+		atomic_set(&sde_kms->pd_enable_count, 0);
 		SDE_DEBUG("added genpd provider %s\n", sde_kms->genpd.name);
 	}
 
@@ -7226,6 +7314,9 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		SDE_DEBUG("sde splash data fetch failed: %d\n", rc);
 
 	_sde_kms_parse_lpai_region(sde_kms);
+
+	if (sde_kms->lpai_buf_base)
+		_sde_kms_hyp_assign_lpai_region(sde_kms);
 
 	rc = _sde_kms_hw_init_blocks(sde_kms, dev, priv);
 	if (rc)

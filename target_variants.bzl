@@ -1,5 +1,7 @@
 targets = [
     # keep sorted
+    "honu",
+    "honu16k",
     "art",
     "bengal",
     "art16k",
@@ -14,6 +16,7 @@ targets = [
     "sun",
     "vienna",
     "x1p42100",
+    "waipio",
 ]
 
 la_variants = [
@@ -44,6 +47,7 @@ vm_types = [
 ]
 
 vm_target_bases = [
+    "honu",
     "art",
     "shikra",
     "sun",

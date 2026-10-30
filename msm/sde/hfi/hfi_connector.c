@@ -7,6 +7,7 @@
 
 #include "hfi_catalog.h"
 #include "hfi_connector.h"
+#include "hfi_encoder.h"
 #include "hfi_kms.h"
 #include "hfi_wb.h"
 #include "hfi_crtc.h"
@@ -49,6 +50,7 @@ struct base_prop_lookup hfi_connector_base_props_map[] = {
 	{ CONNECTOR_PROP_USECASE_IDX, HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS },
 	{ CONNECTOR_PROP_EPT, HFI_PROPERTY_DISPLAY_EPT },
 	{ CONNECTOR_PROP_VSYNC_OFFSET, HFI_PROPERTY_DISPLAY_VSYNC_OFFSET },
+	{ CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES, HFI_PROPERTY_DISPLAY_SLICE_CFG },
 
 	// wb specific properties
 	{ CONNECTOR_PROP_PP_CWB_DITHER, HFI_PROPERTY_DISPLAY_WB_CWB_DITHER },
@@ -259,6 +261,104 @@ static int _hfi_connector_config_custom_wd_te(struct sde_connector *conn,
 	return 0;
 }
 
+static int _hfi_connector_add_privacy_layer(struct sde_connector *conn,
+		struct sde_connector_state *old_cstate,
+		struct hfi_util_u32_prop_helper *prop_collector)
+{
+	struct sde_connector_state *c_state = (struct sde_connector_state *)old_cstate;
+	struct sde_drm_privacy_layer_v2 *privacy_v2 = &c_state->privacy_v2;
+	struct sde_drm_privacy_layer_v1 *privacy_v1 = &c_state->privacy_v1;
+	/* privacy_v2->mode follows enum PrivacyRegionMode (dsi_panel.h):
+	 * LAYER_MODE=1, AREA_MODE=2. HFI_PRIVACY_AREA_MODE has the same value (2).
+	 */
+	bool area_mode = (privacy_v2->mode == HFI_PRIVACY_AREA_MODE);
+	/* LAYER_MODE: 5 fields/region (left, top, right, bottom, corner_radius)
+	 * AREA_MODE:  6 fields/region (index, left, top, right, bottom, corner_radius)
+	 */
+	u32 fields_per_region = area_mode ? 6 : 5;
+	u32 *payload = NULL;
+	u32 payload_size, no_of_layers = area_mode ?
+		privacy_v2->no_of_layers : privacy_v1->no_of_layers;
+	int i, ret = 0;
+
+	payload_size = (4 + no_of_layers * fields_per_region) * sizeof(u32);
+	payload = kzalloc(payload_size, GFP_KERNEL);
+	if (!payload)
+		return -ENOMEM;
+
+	payload[0] = area_mode ? HFI_PRIVACY_AREA_MODE : HFI_PRIVACY_LAYER_MODE;
+	payload[1] = no_of_layers;
+	payload[2] = 0; /* reserved1 */
+	payload[3] = 0; /* reserved2 */
+
+	for (i = 0; i < no_of_layers; i++) {
+		u32 off = 4 + i * fields_per_region;
+
+		if (area_mode) {
+			struct sde_privacy_v2 *region = &privacy_v2->privacy_list[i];
+
+			payload[off++] = region->index;
+			payload[off + 0] = region->left;
+			payload[off + 1] = region->top;
+			payload[off + 2] = region->right;
+			payload[off + 3] = region->bottom;
+			payload[off + 4] = region->corner_radius;
+		} else {
+			struct sde_privacy *region = &privacy_v1->privacy_list[i];
+
+			payload[off + 0] = region->left;
+			payload[off + 1] = region->top;
+			payload[off + 2] = region->right;
+			payload[off + 3] = region->bottom;
+			payload[off + 4] = region->corner_radius;
+		}
+	}
+
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_PRIVACY_LAYER,
+			HFI_VAL_U32_ARRAY, payload, payload_size);
+
+	SDE_EVT32(payload[0], no_of_layers, ret);
+
+	kfree(payload);
+	return ret;
+}
+
+static int _hfi_connector_add_slice_cfg(struct sde_connector *conn,
+		struct sde_connector_state *old_cstate,
+		struct hfi_util_u32_prop_helper *prop_collector)
+{
+	struct hfi_slice_cfg_payload *payload = NULL;
+	u32 payload_size, num_slices;
+	int ret = 0;
+
+	num_slices = sde_connector_get_property(&old_cstate->base,
+			CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES);
+
+	payload_size = struct_size(payload, slices, num_slices);
+	payload = kzalloc(payload_size, GFP_KERNEL);
+	if (!payload)
+		return -ENOMEM;
+
+	payload->num_slices = num_slices;
+
+	/*
+	 * The slice cfg interface is extended for future use to carry the
+	 * per-slice height, input fence, output fence and fence flags. These
+	 * are not needed for now, so each struct hfi_slice_cfg entry in
+	 * slices[] is left as 0.
+	 */
+
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_SLICE_CFG,
+			HFI_VAL_U32_ARRAY, payload, payload_size);
+
+	SDE_EVT32(num_slices, payload_size, ret);
+
+	kfree(payload);
+	return ret;
+}
+
 static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn,
 		struct sde_connector_state *old_cstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
@@ -305,6 +405,9 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 		val = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_WB_ROT_TYPE);
 		ret = hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector,
 			hfi_prop, conn->base.base.id, HFI_VAL_U32, &val, sizeof(u32));
+		break;
+	case HFI_PROPERTY_DISPLAY_SLICE_CFG:
+		ret = _hfi_connector_add_slice_cfg(conn, old_cstate, prop_collector);
 		break;
 	case HFI_PROPERTY_DISPLAY_BRIGHTNESS:
 		if (conn->bl_dirty_change) {
@@ -358,6 +461,9 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 	case HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE:
 		ret = _hfi_connector_config_custom_wd_te(conn, prop_collector, hfi_prop);
 		break;
+	case HFI_PROPERTY_DISPLAY_PRIVACY_LAYER:
+		ret = _hfi_connector_add_privacy_layer(conn, old_cstate, prop_collector);
+		break;
 	default:
 		HFI_ERROR_CONN(hfi_conn, "failed to send HFI commands\n");
 		return -EINVAL;
@@ -399,6 +505,17 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
 		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
 
+	if (test_bit(SDE_FEATURE_GMU_REPROJ, sde_kms->catalog->features) &&
+			sde_connector_property_is_dirty(old_cstate,
+			CONN_PROP_GMU_DCP_INTF_MEM) && conn->gmu_dcp_iova) {
+		ret = hfi_kms_send_hfi_subsystem_config(to_hfi_kms(sde_kms),
+				old_cstate->base.crtc, disp_id,
+				HFI_SUBSYSTEM_TYPE_GMU, conn->gmu_dcp_iova,
+				conn->gmu_dcp_size);
+		if (ret)
+			return ret;
+	}
+
 	mutex_lock(&hfi_conn->hfi_lock);
 	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
 
@@ -408,6 +525,11 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 
 	if (conn->connector_type != DRM_MODE_CONNECTOR_VIRTUAL)
 		_hfi_connector_add_base_prop_helper(HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE,
+			conn, old_cstate, hfi_conn->base_props);
+
+	if (sde_connector_property_is_dirty(old_cstate, CONNECTOR_PROP_PRIVACY_LAYER_V1) ||
+		sde_connector_property_is_dirty(old_cstate, CONNECTOR_PROP_PRIVACY_LAYER_V2))
+		_hfi_connector_add_base_prop_helper(HFI_PROPERTY_DISPLAY_PRIVACY_LAYER,
 			conn, old_cstate, hfi_conn->base_props);
 
 	/* append msm properties */
@@ -1054,9 +1176,28 @@ void hfi_connector_set_esd_recovery_pending(struct sde_connector *c_conn)
 
 void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff)
 {
+	struct drm_encoder *drm_enc;
+	struct sde_encoder_virt *sde_enc;
+	struct hfi_encoder *hfi_enc;
+
 	if (!c_conn || !c_conn->display)
 		return;
 
+	drm_enc = c_conn->encoder;
+	if (!drm_enc)
+		goto end;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	if (!sde_enc)
+		goto end;
+
+	hfi_enc = to_hfi_encoder(sde_enc);
+	if (!hfi_enc)
+		goto end;
+
+	wake_up_all(&hfi_enc->pending_kickoff_wq);
+
+end:
 	sde_connector_report_panel_dead(c_conn, skip_pre_kickoff);
 }
 

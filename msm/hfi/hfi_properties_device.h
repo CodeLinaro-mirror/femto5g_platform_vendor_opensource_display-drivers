@@ -541,9 +541,26 @@
  */
 #define HFI_PROPERTY_DEVICE_INIT_WB_DNSC_SUPPORT_INDICES             0x0001001D
 
-/* Device Resource Property IDs end here */
-
 /*
+ * HFI_PROPERTY_DEVICE_GENERIC_CAPS_DDR_TYPE - Communicates the DDR type
+ *                                  to DCP so it can resolve the correct
+ *                                  highest_bank_bit from its own DDR-type-
+ *                                  indexed table.
+ *
+ * Host to DCP:
+ *
+ * - This property is sent via HFI_COMMAND_DEVICE_GENERIC_CAPS during init.
+ *
+ * Hfi packet layout           | Value
+ *-----------------------------|------------------------------------------
+ *     (u32_key) payload [0]   | HFI_PROPERTY_DEVICE_GENERIC_CAPS_DDR_TYPE \|
+ * ^                           | (version=0 << 20) \|
+ * ^                           | (dsize=1 << 24)
+ *   (u32_value) payload [1]   | enum hfi_device_ddr_type
+ */
+#define HFI_PROPERTY_DEVICE_GENERIC_CAPS_DDR_TYPE                    0x0001001E
+
+/*!
  * All device property IDs end here
  */
 #define HFI_PROPERTY_DEVICE_END                                      0x0001FFFF

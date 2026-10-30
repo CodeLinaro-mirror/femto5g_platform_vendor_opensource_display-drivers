@@ -1036,6 +1036,10 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 	sde_kms_info_add_keystr(info, "privacy layer support",
 			panel->privacy_feature_enabled ? "true" : "false");
 
+	sde_kms_info_add_keyint(info, "num_privacy_regions",
+			(panel->cur_mode && panel->cur_mode->priv_info) ?
+			panel->cur_mode->priv_info->privacy_area_list.count : 0);
+
 	if (mode_info && mode_info->roi_caps.enabled) {
 		sde_kms_info_add_keyint(info, "partial_update_num_roi",
 				mode_info->roi_caps.num_roi);

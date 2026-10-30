@@ -16,6 +16,7 @@
 #include "msm_drv.h"
 #include "hfi_msm_drv.h"
 #include "sde_connector.h"
+#include "sde_edid_parser.h"
 #include "hfi_connector.h"
 #include "msm_mmu.h"
 #include "dsi_display.h"
@@ -7435,6 +7436,104 @@ static int dsi_display_drm_ext_atomic_check(struct drm_connector *connector,
 			display->ext_conn, state);
 }
 
+static int dsi_display_drm_ext_config_hdr(struct drm_connector *connector,
+		void *disp,
+		struct sde_connector_state *c_state)
+{
+	struct dsi_display *display = disp;
+	struct drm_connector *ext_conn;
+	struct drm_property *hdr_prop = NULL;
+	struct drm_mode_object *obj;
+	int i, rc;
+
+	if (!display || !display->ext_conn) {
+		DSI_ERR("HDR bridge: no ext_conn, skipping\n");
+		return 0;
+	}
+
+	ext_conn = display->ext_conn;
+
+	if (!ext_conn->funcs || !ext_conn->funcs->atomic_set_property) {
+		DSI_ERR("HDR bridge: ext_conn has no atomic_set_property\n");
+		return 0;
+	}
+
+	/* find the "hdr_metadata" drm_property registered on the sde connector */
+	obj = &connector->base;
+
+	for (i = 0; i < obj->properties->count; i++) {
+		if (!strcmp(obj->properties->properties[i]->name, "hdr_metadata")) {
+			hdr_prop = obj->properties->properties[i];
+			break;
+		}
+	}
+
+	if (!hdr_prop) {
+		DSI_ERR("HDR bridge: hdr_metadata property not found on connector\n");
+		return 0;
+	}
+
+	rc = ext_conn->funcs->atomic_set_property(ext_conn,
+			ext_conn->state, hdr_prop,
+			(uint64_t)(uintptr_t)&c_state->hdr_meta);
+
+	if (rc)
+		DSI_ERR("HDR bridge: ext_conn atomic_set_property failed rc=%d\n", rc);
+	return rc;
+}
+
+/*
+ * dsi_display_drm_ext_get_hdr_info - populate SDE connector HDR caps from
+ * the ext-bridge EDID.
+ *
+ * Called as the sde_connector_ops.get_hdr_info hook for DSI displays that
+ * drive an external HDMI bridge (lt9611uxd). The bridge stores its EDID on
+ * its own drm_connector, exposed via edid_blob_ptr (set by
+ * drm_connector_update_edid_property() during get_modes). We reconstruct
+ * the struct edid from that blob and feed it to
+ * sde_edid_update_connector_info(), which parses the HDR Static Metadata
+ * results (hdr_supported, hdr_eotf, hdr_max_luminance, etc.) directly into
+ * the sde_connector fields without re-adding display modes.
+ * sde_connector_update_hdr_props() then packages those fields into the DRM
+ * blob.
+ *
+ * This mirrors what happens for native HDMI/DP: sde_get_edid() →
+ * sde_parse_edid() → sde_edid_update_connector_info() →
+ * sde_edid_parse_hdr_db().
+ */
+static int dsi_display_drm_ext_get_hdr_info(struct drm_connector *connector,
+		void *disp)
+{
+	struct dsi_display *display = disp;
+	struct drm_connector *ext_conn;
+	struct edid *edid;
+	struct sde_edid_ctrl edid_ctrl;
+	struct sde_connector *c_conn;
+
+	if (!display || !display->ext_conn) {
+		DSI_ERR("HDR get_hdr_info: no ext_conn, skipping\n");
+		return 0;
+	}
+
+	ext_conn = display->ext_conn;
+
+	if (!ext_conn->edid_blob_ptr || !ext_conn->edid_blob_ptr->data) {
+		DSI_ERR("HDR get_hdr_info: ext_conn has no EDID blob yet\n");
+		return 0;
+	}
+
+	edid = (struct edid *)ext_conn->edid_blob_ptr->data;
+
+	memset(&edid_ctrl, 0, sizeof(edid_ctrl));
+	edid_ctrl.edid = edid;
+
+	sde_edid_update_connector_info(connector, &edid_ctrl);
+
+	c_conn = to_sde_connector(connector);
+
+	return 0;
+}
+
 static int dsi_display_ext_get_info(struct drm_connector *connector,
 	struct msm_display_info *info, void *disp)
 {
@@ -7856,6 +7955,15 @@ int dsi_display_drm_ext_bridge_init(struct dsi_display *display,
 		if (display->ext_conn->helper_private->atomic_check)
 			sde_conn->ops.atomic_check =
 				dsi_display_drm_ext_atomic_check;
+
+		sde_conn->ops.config_hdr = dsi_display_drm_ext_config_hdr;
+
+		sde_conn->ops.get_hdr_info = dsi_display_drm_ext_get_hdr_info;
+
+		sde_conn->ops.get_info =
+				dsi_display_ext_get_info;
+		sde_conn->ops.get_mode_info =
+				dsi_display_ext_get_mode_info;
 
 		/* add support to attach/detach */
 		display->host.ops = &dsi_host_ext_ops;

@@ -1933,6 +1933,9 @@ static const struct v4l2_file_operations sde_rotator_fops = {
 static int sde_rotator_querycap(struct file *file,
 	void *fh, struct v4l2_capability *cap)
 {
+	if (!cap)
+		return -EINVAL;
+
 	cap->bus_info[0] = 0;
 	strscpy(cap->driver, SDE_ROTATOR_DRV_NAME, sizeof(cap->driver));
 	strscpy(cap->card, SDE_ROTATOR_DRV_NAME, sizeof(cap->card));
@@ -1952,11 +1955,17 @@ static int sde_rotator_querycap(struct file *file,
 static int sde_rotator_enum_fmt_vid_cap(struct file *file,
 	void *fh, struct v4l2_fmtdesc *f)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
-	struct sde_rotator_device *rot_dev = ctx->rot_dev;
+	struct sde_rotator_ctx *ctx;
+	struct sde_rotator_device *rot_dev;
 	struct sde_mdp_format_params *fmt;
 	u32 i, index, pixfmt;
 	bool found = false;
+
+	if (!file || !fh || !f)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
+	rot_dev = ctx->rot_dev;
 
 	for (i = 0, index = 0; index <= f->index; i++) {
 		pixfmt = sde_rotator_get_pixfmt(rot_dev->mgr, i, false,
@@ -1997,11 +2006,17 @@ static int sde_rotator_enum_fmt_vid_cap(struct file *file,
 static int sde_rotator_enum_fmt_vid_out(struct file *file,
 	void *fh, struct v4l2_fmtdesc *f)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
-	struct sde_rotator_device *rot_dev = ctx->rot_dev;
+	struct sde_rotator_ctx *ctx;
+	struct sde_rotator_device *rot_dev;
 	struct sde_mdp_format_params *fmt;
 	u32 i, index, pixfmt;
 	bool found = false;
+
+	if (!file || !fh || !f)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
+	rot_dev = ctx->rot_dev;
 
 	for (i = 0, index = 0; index <= f->index; i++) {
 		pixfmt = sde_rotator_get_pixfmt(rot_dev->mgr, i, true,
@@ -2042,8 +2057,12 @@ static int sde_rotator_enum_fmt_vid_out(struct file *file,
 static int sde_rotator_g_fmt_cap(struct file *file, void *fh,
 	struct v4l2_format *f)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
+	struct sde_rotator_ctx *ctx;
 
+	if (!fh || !f)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
 	*f = ctx->format_cap;
 
 	return 0;
@@ -2058,8 +2077,12 @@ static int sde_rotator_g_fmt_cap(struct file *file, void *fh,
 static int sde_rotator_g_fmt_out(struct file *file, void *fh,
 	struct v4l2_format *f)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
+	struct sde_rotator_ctx *ctx;
 
+	if (!fh || !f)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
 	*f = ctx->format_out;
 
 	return 0;
@@ -2074,10 +2097,16 @@ static int sde_rotator_g_fmt_out(struct file *file, void *fh,
 static int sde_rotator_try_fmt_vid_cap(struct file *file,
 	void *fh, struct v4l2_format *f)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
-	struct sde_rotator_device *rot_dev = ctx->rot_dev;
+	struct sde_rotator_ctx *ctx;
+	struct sde_rotator_device *rot_dev;
 	struct sde_rotation_config config;
 	int ret;
+
+	if (!fh || !f || !file)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
+	rot_dev = ctx->rot_dev;
 
 	if ((f->fmt.pix.width == 0) || (f->fmt.pix.height == 0)) {
 		SDEDEV_WARN(ctx->rot_dev->dev,
@@ -2121,10 +2150,16 @@ static int sde_rotator_try_fmt_vid_cap(struct file *file,
 static int sde_rotator_try_fmt_vid_out(struct file *file,
 	void *fh, struct v4l2_format *f)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
-	struct sde_rotator_device *rot_dev = ctx->rot_dev;
+	struct sde_rotator_ctx *ctx;
+	struct sde_rotator_device *rot_dev;
 	struct sde_rotation_config config;
 	int ret;
+
+	if (!fh || !f || !file)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
+	rot_dev = ctx->rot_dev;
 
 	if ((f->fmt.pix.width == 0) || (f->fmt.pix.height == 0)) {
 		SDEDEV_WARN(ctx->rot_dev->dev,
@@ -2168,9 +2203,15 @@ static int sde_rotator_try_fmt_vid_out(struct file *file,
 static int sde_rotator_s_fmt_vid_cap(struct file *file,
 	void *fh, struct v4l2_format *f)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
-	struct sde_rotator_device *rot_dev = ctx->rot_dev;
+	struct sde_rotator_ctx *ctx;
+	struct sde_rotator_device *rot_dev;
 	int ret;
+
+	if (!file || !fh || !f)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
+	rot_dev = ctx->rot_dev;
 
 	ret = sde_rotator_try_fmt_vid_cap(file, fh, f);
 	if (ret)
@@ -2203,9 +2244,15 @@ static int sde_rotator_s_fmt_vid_cap(struct file *file,
 static int sde_rotator_s_fmt_vid_out(struct file *file,
 	void *fh, struct v4l2_format *f)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
-	struct sde_rotator_device *rot_dev = ctx->rot_dev;
+	struct sde_rotator_ctx *ctx;
+	struct sde_rotator_device *rot_dev;
 	int ret;
+
+	if (!file || !fh || !f)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
+	rot_dev = ctx->rot_dev;
 
 	ret = sde_rotator_try_fmt_vid_out(file, fh, f);
 	if (ret)
@@ -2238,7 +2285,12 @@ static int sde_rotator_s_fmt_vid_out(struct file *file,
 static int sde_rotator_reqbufs(struct file *file,
 	void *fh, struct v4l2_requestbuffers *req)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
+	struct sde_rotator_ctx *ctx;
+
+	if (!file || !fh)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
 
 	return v4l2_m2m_reqbufs(file, ctx->fh.m2m_ctx, req);
 }
@@ -2252,8 +2304,13 @@ static int sde_rotator_reqbufs(struct file *file,
 static int sde_rotator_qbuf(struct file *file, void *fh,
 	struct v4l2_buffer *buf)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
+	struct sde_rotator_ctx *ctx;
 	int ret;
+
+	if (!file || !fh)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
 
 	/* create fence for capture buffer */
 	if ((buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
@@ -2298,9 +2355,13 @@ static int sde_rotator_qbuf(struct file *file, void *fh,
 static int sde_rotator_dqbuf(struct file *file,
 	void *fh, struct v4l2_buffer *buf)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
+	struct sde_rotator_ctx *ctx;
 	int ret;
 
+	if (!file || !fh)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
 	ret = v4l2_m2m_dqbuf(file, ctx->fh.m2m_ctx, buf);
 
 	if (ret) {
@@ -2350,7 +2411,12 @@ static int sde_rotator_dqbuf(struct file *file,
 static int sde_rotator_querybuf(struct file *file,
 	void *fh, struct v4l2_buffer *buf)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
+	struct sde_rotator_ctx *ctx;
+
+	if (!file || !fh)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
 
 	return v4l2_m2m_querybuf(file, ctx->fh.m2m_ctx, buf);
 }
@@ -2364,11 +2430,17 @@ static int sde_rotator_querybuf(struct file *file,
 static int sde_rotator_streamon(struct file *file,
 	void *fh, enum v4l2_buf_type buf_type)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
-	struct sde_rotator_device *rot_dev = ctx->rot_dev;
+	struct sde_rotator_ctx *ctx;
+	struct sde_rotator_device *rot_dev;
 	struct sde_rotation_config config;
 	struct vb2_queue *vq;
 	int ret;
+
+	if (!file || !fh)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
+	rot_dev = ctx->rot_dev;
 
 	SDEDEV_DBG(ctx->rot_dev->dev, "stream on s:%d t:%d\n",
 			ctx->session_id, buf_type);
@@ -2417,9 +2489,13 @@ static int sde_rotator_streamon(struct file *file,
 static int sde_rotator_streamoff(struct file *file,
 	void *fh, enum v4l2_buf_type buf_type)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
+	struct sde_rotator_ctx *ctx;
 	int ret;
 
+	if (!file || !fh)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
 	SDEDEV_DBG(ctx->rot_dev->dev, "stream off s:%d t:%d\n",
 			ctx->session_id, buf_type);
 
@@ -2440,7 +2516,12 @@ static int sde_rotator_streamoff(struct file *file,
 static int sde_rotator_g_selection(struct file *file, void *fh,
 	struct v4l2_selection *selection)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
+	struct sde_rotator_ctx *ctx;
+
+	if (!file || !fh || !selection)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
 
 	switch (selection->type) {
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
@@ -2464,11 +2545,16 @@ static int sde_rotator_g_selection(struct file *file, void *fh,
 static int sde_rotator_s_selection(struct file *file, void *fh,
 	struct v4l2_selection *selection)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
-	struct sde_rotator_device *rot_dev = ctx->rot_dev;
+	struct sde_rotator_ctx *ctx;
+	struct sde_rotator_device *rot_dev;
 	struct sde_rotation_item item;
 	struct v4l2_rect rect;
 
+	if (!file || !fh || !selection)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
+	rot_dev = ctx->rot_dev;
 	sde_rotator_get_item_from_ctx(ctx, &item);
 
 	rect.left = max_t(__u32, selection->r.left, 0);
@@ -2550,7 +2636,12 @@ static int sde_rotator_s_selection(struct file *file, void *fh,
 static int sde_rotator_g_parm(struct file *file, void *fh,
 	struct v4l2_streamparm *a)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
+	struct sde_rotator_ctx *ctx;
+
+	if (!file || !fh || !a)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(fh);
 
 	/* Get param is supported only for input buffers */
 	if (a->type != V4L2_BUF_TYPE_VIDEO_OUTPUT)
@@ -2574,7 +2665,12 @@ static int sde_rotator_g_parm(struct file *file, void *fh,
 static int sde_rotator_s_parm(struct file *file, void *fh,
 	struct v4l2_streamparm *a)
 {
-	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
+	struct sde_rotator_ctx *ctx;
+
+	if (!file || !fh || !a)
+		return -EINVAL;
+
+	 ctx = sde_rotator_ctx_from_fh(fh);
 
 	/* Set param is supported only for input buffers */
 	if (a->type != V4L2_BUF_TYPE_VIDEO_OUTPUT)
@@ -2599,13 +2695,18 @@ static int sde_rotator_s_parm(struct file *file, void *fh,
 static long sde_rotator_private_ioctl(struct file *file, void *fh,
 	bool valid_prio, unsigned int cmd, void *arg)
 {
-	struct sde_rotator_ctx *ctx =
-			sde_rotator_ctx_from_fh(file->private_data);
-	struct sde_rotator_device *rot_dev = ctx->rot_dev;
+	struct sde_rotator_ctx *ctx;
+	struct sde_rotator_device *rot_dev;
 	struct msm_sde_rotator_fence *fence = arg;
 	struct msm_sde_rotator_comp_ratio *comp_ratio = arg;
 	struct sde_rotator_vbinfo *vbinfo;
 	int ret;
+
+	if (!file)
+		return -EINVAL;
+
+	ctx = sde_rotator_ctx_from_fh(file->private_data);
+	rot_dev = ctx->rot_dev;
 
 	switch (cmd) {
 	case VIDIOC_S_SDE_ROTATOR_FENCE:
@@ -2760,10 +2861,15 @@ static long sde_rotator_private_ioctl(struct file *file, void *fh,
 static long sde_rotator_compat_ioctl32(struct file *file,
 	unsigned int cmd, unsigned long arg)
 {
-	struct video_device *vdev = video_devdata(file);
-	struct sde_rotator_ctx *ctx =
-			sde_rotator_ctx_from_fh(file->private_data);
+	struct video_device *vdev;
+	struct sde_rotator_ctx *ctx;
 	long ret;
+
+	if (!file)
+		return -EINVAL;
+
+	vdev = video_devdata(file);
+	ctx = sde_rotator_ctx_from_fh(file->private_data);
 
 	mutex_lock(vdev->lock);
 

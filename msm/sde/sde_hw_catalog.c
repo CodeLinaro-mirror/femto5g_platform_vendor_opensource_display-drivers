@@ -7368,6 +7368,7 @@ static void _sde_get_hw_caps_for_ravelin(struct sde_mdss_cfg *sde_cfg, uint32_t 
 	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
 	set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
 	sde_cfg->mdss_hw_block_size = 0x158;
+	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
 	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);

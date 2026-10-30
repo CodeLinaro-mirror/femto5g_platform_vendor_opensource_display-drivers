@@ -143,6 +143,9 @@ define_art()
 load(":targets/artvm.bzl", "define_artvm")
 define_artvm()
 
+load(":targets/honu.bzl", "define_honu")
+define_honu()
+
 load(":targets/vienna.bzl", "define_vienna")
 define_vienna()
 
@@ -166,3 +169,6 @@ define_shikravm()
 
 load(":targets/malabar.bzl", "define_malabar")
 define_malabar()
+
+load(":targets/waipio.bzl", "define_waipio")
+define_waipio()

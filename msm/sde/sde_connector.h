@@ -26,6 +26,7 @@
 #define DNSC_BLUR_MAX_COUNT	1
 
 #define SDE_CONNECTOR_CUSTOM_WD_TE_FPS_MAX 360
+#define SDE_CONNECTOR_GMU_REPROJ_MAX_SLICES 4
 
 struct sde_connector;
 struct sde_connector_state;
@@ -410,6 +411,19 @@ struct sde_connector_ops {
 	 */
 	int (*config_hdr)(struct drm_connector *connector, void *display,
 		struct sde_connector_state *c_state);
+
+	/**
+	 * get_hdr_info - populate connector HDR capabilities from ext bridge EDID
+	 * @connector: Pointer to the SDE drm connector (cast-able to sde_connector)
+	 * @display: Pointer to private display handle
+	 * Returns: Zero on success, negative error code for failures
+	 *
+	 * Called after ext-bridge get_modes so the bridge driver can parse the
+	 * HDR Static Metadata block from its EDID and write the result into the
+	 * sde_connector hdr_* fields (hdr_supported, hdr_eotf, hdr_max_luminance,
+	 * hdr_avg_luminance, hdr_min_luminance, hdr_metadata_type_one).
+	 */
+	int (*get_hdr_info)(struct drm_connector *connector, void *display);
 
 	/**
 	 * atomic_best_encoder - atomic best encoder selection for connector

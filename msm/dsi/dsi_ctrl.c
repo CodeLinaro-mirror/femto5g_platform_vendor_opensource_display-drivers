@@ -1947,6 +1947,13 @@ static int dsi_message_rx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd_de
 
 	/* parse the data read from panel */
 	cmd = buff[header_offset];
+	if (((cmd >> 6) & 0x03) != msg->channel)
+		DSI_CTRL_WARN(dsi_ctrl,
+			"VC mismatch: response VC=%u, expected VC=%u (DataID=0x%02x)\n",
+			(cmd >> 6) & 0x03, msg->channel, cmd);
+
+	/* strip VC before compare */
+	cmd &= 0x3f;
 	switch (cmd) {
 	case MIPI_DSI_RX_ACKNOWLEDGE_AND_ERROR_REPORT:
 		DSI_CTRL_ERR(dsi_ctrl, "Rx ACK_ERROR 0x%x\n", cmd);

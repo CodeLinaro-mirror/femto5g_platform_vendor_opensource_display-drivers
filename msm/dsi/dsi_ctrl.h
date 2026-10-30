@@ -37,6 +37,11 @@
  * @DSI_CTRL_CMD_SUBLINK0: Send the command in splitlink sublink0 only.
  * @DSI_CTRL_CMD_SUBLINK1: Send the command in splitlink sublink1 only.
  * @DSI_CTRL_CMD_MULTI_DMA_BURST: Send multiple commands in one HS burst.
+ * @DSI_CTRL_CMD_PERIPHERAL_FLUSH: Trigger the command DMA on the MDP frame
+ *				   flush boundary instead of issuing it immediately.
+ *				   On HFI this is carried to the DCP in the per-command
+ *				   ctrl_flags so the firmware programs peripheral-flush
+ *				   triggering when it replays the command.
  */
 #define DSI_CTRL_CMD_READ              BIT(0)
 #define DSI_CTRL_CMD_BROADCAST         BIT(1)
@@ -51,6 +56,7 @@
 #define DSI_CTRL_CMD_SUBLINK0          BIT(10)
 #define DSI_CTRL_CMD_SUBLINK1          BIT(11)
 #define DSI_CTRL_CMD_MULTI_DMA_BURST   BIT(12)
+#define DSI_CTRL_CMD_PERIPHERAL_FLUSH  BIT(13)
 
 /* DSI embedded mode fifo size
  * If the command is greater than the maximum size in bytes it is sent in non-embedded mode.

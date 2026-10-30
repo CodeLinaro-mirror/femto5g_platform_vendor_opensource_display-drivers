@@ -437,6 +437,7 @@ struct sde_kms {
 
 	struct generic_pm_domain genpd;
 	bool genpd_init;
+	atomic_t pd_enable_count;
 
 	struct msm_gem_address_space *aspace[MSM_SMMU_DOMAIN_MAX];
 	struct sde_power_event *power_event;
@@ -535,6 +536,7 @@ struct sde_kms {
 
 	u32 lpai_buf_size;
 	unsigned long lpai_buf_base;
+	bool lpai_hyp_assigned;      /* true once hyp_assign to ADSP/LPASS succeeds */
 };
 
 struct vsync_info {

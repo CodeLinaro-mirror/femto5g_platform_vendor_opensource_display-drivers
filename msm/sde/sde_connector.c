@@ -1384,6 +1384,10 @@ static int _sde_connector_update_dirty_properties(
 	bool is_lp_dirty = false;
 	bool is_qsync_dirty = false;
 	bool is_vsync_offset_dirty = false;
+	bool is_privacy_v1_dirty = false;
+	bool is_privacy_v2_dirty = false;
+	bool is_gmu_dcp_intf_mem_dirty = false;
+	bool is_gmu_reproj_num_slices_dirty = false;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1434,10 +1438,22 @@ static int _sde_connector_update_dirty_properties(
 		case CONNECTOR_PROP_QSYNC_MODE:
 			is_qsync_dirty = true;
 			break;
+		case CONN_PROP_GMU_DCP_INTF_MEM:
+			is_gmu_dcp_intf_mem_dirty = true;
+			break;
 		case CONNECTOR_PROP_VSYNC_OFFSET:
 			if ((sde_connector_get_property(connector->state,
 					CONNECTOR_PROP_VSYNC_OFFSET)) > 0)
 				is_vsync_offset_dirty = true;
+			break;
+		case CONNECTOR_PROP_PRIVACY_LAYER_V1:
+			is_privacy_v1_dirty = true;
+			break;
+		case CONNECTOR_PROP_PRIVACY_LAYER_V2:
+			is_privacy_v2_dirty = true;
+			break;
+		case CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES:
+			is_gmu_reproj_num_slices_dirty = true;
 			break;
 		default:
 			/* nothing to do for most properties */
@@ -1490,6 +1506,22 @@ static int _sde_connector_update_dirty_properties(
 	if ((disp_op == MSM_DISP_OP_HFI) && is_vsync_offset_dirty)
 		msm_property_set_dirty(&c_conn->property_info,
 			&c_state->property_state, CONNECTOR_PROP_VSYNC_OFFSET);
+
+	if ((disp_op == MSM_DISP_OP_HFI) && is_privacy_v1_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_PRIVACY_LAYER_V1);
+
+	if ((disp_op == MSM_DISP_OP_HFI) && is_privacy_v2_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_PRIVACY_LAYER_V2);
+
+	if ((disp_op == MSM_DISP_OP_HFI) && is_gmu_dcp_intf_mem_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONN_PROP_GMU_DCP_INTF_MEM);
+
+	if ((disp_op == MSM_DISP_OP_HFI) && is_gmu_reproj_num_slices_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES);
 
 	return 0;
 }
@@ -2962,6 +2994,7 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 	case CONNECTOR_PROP_EPT_FPS:
 	case CONNECTOR_PROP_EPT:
 	case CONNECTOR_PROP_VSYNC_OFFSET:
+	case CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES:
 		msm_property_set_dirty(&c_conn->property_info,
 				&c_state->property_state, idx);
 		break;
@@ -3010,6 +3043,8 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 		break;
 	case CONN_PROP_GMU_DCP_INTF_MEM:
 		_sde_connector_set_gmu_dcp_intf_mem(connector, val);
+		msm_property_set_dirty(&c_conn->property_info,
+				&c_state->property_state, idx);
 		break;
 	default:
 		break;
@@ -4091,6 +4126,8 @@ static int sde_connector_get_modes(struct drm_connector *connector)
 	struct sde_connector *c_conn;
 	struct msm_resource_caps_info avail_res;
 	int mode_count = 0;
+	bool is_dsi_hdmi_bridge = false;
+	struct dsi_display *dsi_display;
 
 	if (!connector) {
 		SDE_ERROR("invalid connector\n");
@@ -4113,11 +4150,22 @@ static int sde_connector_get_modes(struct drm_connector *connector)
 		return 0;
 	}
 
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		dsi_display = _sde_connector_get_display(c_conn);
+
+		if (dsi_display && dsi_display->panel &&
+				dsi_display->panel->host_config.ext_bridge_mode)
+			is_dsi_hdmi_bridge = true;
+	}
+	if (c_conn->ops.get_hdr_info)
+		c_conn->ops.get_hdr_info(&c_conn->base, c_conn->display);
+
 	if (c_conn->hdr_capable)
 		sde_connector_update_hdr_props(connector);
 
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
-			c_conn->connector_type == DRM_MODE_CONNECTOR_HDMIA)
+			(c_conn->connector_type == DRM_MODE_CONNECTOR_HDMIA) ||
+			is_dsi_hdmi_bridge)
 		sde_connector_update_colorspace(connector);
 
 	return mode_count;
@@ -4330,7 +4378,10 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	if (ret <= 0) {
 		/* cancel if any pending esd work */
 		sde_connector_schedule_status_work(conn, false);
-		sde_connector_report_panel_dead(sde_conn, true);
+		if (sde_connector_get_disp_op(conn) == MSM_DISP_OP_HFI)
+			hfi_connector_report_panel_dead(sde_conn, true);
+		else
+			sde_connector_report_panel_dead(sde_conn, true);
 		ret = -ETIMEDOUT;
 	} else {
 		SDE_DEBUG("Successfully received TE from panel\n");
@@ -4381,7 +4432,10 @@ static void sde_connector_check_status_work(struct work_struct *work)
 		return;
 	}
 
-	sde_connector_report_panel_dead(conn, false);
+	if (sde_connector_get_disp_op(&conn->base) == MSM_DISP_OP_HFI)
+		hfi_connector_report_panel_dead(conn, false);
+	else
+		sde_connector_report_panel_dead(conn, false);
 }
 
 static const struct drm_connector_helper_funcs sde_connector_helper_ops = {
@@ -4668,6 +4722,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	int rc;
 	struct drm_connector *connector;
 	u64 panel_id = ~0x0;
+	bool is_dsi_hdmi_bridge = false;
 
 	msm_property_install_blob(&c_conn->property_info, "capabilities",
 			DRM_MODE_PROP_IMMUTABLE, CONNECTOR_PROP_SDE_INFO);
@@ -4687,6 +4742,10 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 
 	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
 		dsi_display = _sde_connector_get_display(c_conn);
+
+		if (dsi_display && dsi_display->panel &&
+				dsi_display->panel->host_config.ext_bridge_mode)
+			is_dsi_hdmi_bridge = true;
 
 		if (dsi_display && dsi_display->panel) {
 			msm_property_install_blob(&c_conn->property_info,
@@ -4745,7 +4804,8 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	_sde_connector_install_dither_property(dev, sde_kms, c_conn);
 
 	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
-			connector_type == DRM_MODE_CONNECTOR_HDMIA) {
+			connector_type == DRM_MODE_CONNECTOR_HDMIA ||
+			is_dsi_hdmi_bridge) {
 		struct drm_msm_ext_hdr_properties hdr = {0};
 
 		c_conn->hdr_capable = true;
@@ -4854,7 +4914,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	c_conn->bl_scale_sv = MAX_SV_BL_SCALE_LEVEL;
 
 	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
-			connector_type == DRM_MODE_CONNECTOR_HDMIA)
+			connector_type == DRM_MODE_CONNECTOR_HDMIA || is_dsi_hdmi_bridge)
 		msm_property_install_range(&c_conn->property_info,
 			"supported_colorspaces",
 			DRM_MODE_PROP_IMMUTABLE, 0, 0xffff, 0,
@@ -4892,7 +4952,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			"gmu_dcp_intf_mem", 0x0, 0, U32_MAX, 0,
 			CONN_PROP_GMU_DCP_INTF_MEM);
 		msm_property_install_range(&c_conn->property_info,
-			"gmu_reproj_num_slices", 0x0, 0, U32_MAX, 0,
+			"gmu_reproj_num_slices", 0x0, 0, SDE_CONNECTOR_GMU_REPROJ_MAX_SLICES, 0,
 			CONNECTOR_PROP_GMU_REPROJ_NUM_SLICES);
 	}
 

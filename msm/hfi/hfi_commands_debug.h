@@ -607,7 +607,7 @@
  *                                          HFI_TX_FLAGS_NON_DISCARDABLE
  *     hfi_packet.id            : DP instance id
  *     hfi_packet.packet_id     : unique id
- *     hfi_packet.payload       : struct hfi_dp_dpcd_data
+ *     hfi_packet.payload       : struct hfi_dp_aux_data
  */
 #define HFI_COMMAND_DEBUG_DP_SET_DPCD                                0xFF000503
 
@@ -628,7 +628,7 @@
  *                                          HFI_TX_FLAGS_NON_DISCARDABLE
  * hfi_packet.id                 : DP instance id
  * hfi_packet.packet_id          : unique id
- * hfi_packet.payload            : struct hfi_dp_dpcd_request
+ * hfi_packet.payload            : struct hfi_dp_aux_request
  *
  * DCP to Host:
  *

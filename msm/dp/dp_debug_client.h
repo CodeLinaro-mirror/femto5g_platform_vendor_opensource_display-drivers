@@ -62,6 +62,7 @@ struct dp_debug_client {
 	void *priv;
 
 	int (*read_dpcd)(struct dp_debug_client *client, u8 *dpcd, u32 size, u32 offset);
+	int (*read_dpcd_drm)(struct dp_debug_client *client, u8 *dpcd, u32 count, u32 offset);
 	int (*read_crc)(struct dp_debug_client *client, char *buf, u32 size);
 	int (*read_connected)(struct dp_debug_client *client, char *buf, u32 size);
 	int (*read_info)(struct dp_debug_client *client, char *buf, u32 size);
@@ -79,6 +80,7 @@ struct dp_debug_client {
 
 	int (*write_edid)(struct dp_debug_client *client, const char *buf, size_t count);
 	int (*write_dpcd)(struct dp_debug_client *client, const char *buf, size_t count);
+	int (*write_dpcd_drm)(struct dp_debug_client *client, const char *buf, size_t count);
 	int (*write_hpd)(struct dp_debug_client *client, const char *buf, size_t count);
 	int (*write_edid_modes)(struct dp_debug_client *client, const char *buf, size_t count);
 	int (*write_edid_modes_mst)(struct dp_debug_client *client, const char *buf);

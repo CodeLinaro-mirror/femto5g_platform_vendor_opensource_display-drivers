@@ -1214,6 +1214,19 @@ static int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 		panel_cmd_info->delay = cmd_set->cmds[i].post_wait_ms;
 		panel_cmd_info->ctrl_flags = cmd_set->cmds[i].ctrl_flags;
 		panel_cmd_info->reserved1 = cmd_set->cmds[i].msg.flags;
+		/*
+		 * The DMS timing switch command is replayed by the DCP, not sent
+		 * from the host. For panels that opt in via
+		 * qcom,mdss-dsi-dms-timing-switch-peripheral-flush, tag it so the DCP
+		 * triggers the command DMA on the MDP frame-flush boundary
+		 * (DSI_CTRL_CMD_PERIPHERAL_FLUSH) and defers the DMA-done wait
+		 * (MIPI_DSI_MSG_ASYNC_OVERRIDE) instead of blocking on it.
+		 */
+		if (cmd_set->type == DSI_CMD_SET_TIMING_SWITCH &&
+				display->panel->dms_peripheral_flush_en) {
+			panel_cmd_info->ctrl_flags |= DSI_CTRL_CMD_PERIPHERAL_FLUSH;
+			panel_cmd_info->reserved1 |= MIPI_DSI_MSG_ASYNC_OVERRIDE;
+		}
 		panel_cmd_info->mode = cmd_set->state;
 
 		rc = dsi_hfi_packetize_panel_cmd(&cmd_set->cmds[i], &size_of_indv_cmd, *sde_vaddr);
@@ -2275,6 +2288,87 @@ static u32 *dsi_hfi_pack_freq_patterns(struct dsi_display *display, u32 *total_s
 	return buffer;
 }
 
+/**
+ * dsi_hfi_pack_privacy_regions() - build a single wire payload carrying every
+ * privacy area-mode region's programmable-region tuples.
+ * @priv_info:  the mode's parsed privacy_area_list
+ * @total_size: set to the packed buffer size in bytes, 0 if nothing to send
+ *
+ * Payload layout: [version, region_count,
+ *   (dcs_cmd_type, tuple_count, (cmd_index, offset, len) x tuple_count) x region_count]
+ * Return: heap-allocated buffer (caller must kfree), or NULL if the list is empty.
+ */
+static u32 *dsi_hfi_pack_privacy_regions(struct dsi_display_mode_priv_info *priv_info,
+		u32 *total_size)
+{
+	u32 *buffer, *buffer_ptr;
+	u32 buffer_size;
+	u32 region_count;
+	u32 e;
+
+	*total_size = 0;
+
+	if (!priv_info || !priv_info->privacy_area_list.count ||
+			!priv_info->privacy_area_list.entries)
+		return NULL;
+
+	region_count = priv_info->privacy_area_list.count;
+
+	/* First pass: total buffer size */
+	buffer_size = 2 * sizeof(u32); /* version + region_count */
+	for (e = 0; e < region_count; e++) {
+		struct dsi_privacy_region_info *tuples =
+						&priv_info->privacy_area_list.entries[e].tuples;
+
+		buffer_size += (2 + tuples->count * 3) * sizeof(u32);
+	}
+
+	buffer = kzalloc(buffer_size, GFP_KERNEL);
+	if (!buffer) {
+		DSI_ERR("Failed to allocate %u bytes for privacy regions\n", buffer_size);
+		return NULL;
+	}
+
+	/* Second pass: fill */
+	buffer_ptr = buffer;
+	*buffer_ptr++ = 0; /* version */
+	*buffer_ptr++ = region_count;
+
+	for (e = 0; e < region_count; e++) {
+		struct dsi_privacy_area_entry *entry = &priv_info->privacy_area_list.entries[e];
+		u32 dcs_cmd_type;
+		u32 i;
+
+		/* Guard: region_idx drives enum arithmetic; validate the result
+		 * stays within the valid command type range before use.
+		 * Checking only against DSI_CMD_SET_MAX (not the current last
+		 * REG entry) keeps this future-proof as new REG entries are added.
+		 */
+		dcs_cmd_type = DSI_CMD_SET_PRIVACY_AREA_REG1_ON + entry->region_idx * 2;
+		if (dcs_cmd_type >= DSI_CMD_SET_MAX) {
+			DSI_ERR("privacy region_idx %u produces out-of-range cmd type %u\n",
+					entry->region_idx, dcs_cmd_type);
+			kfree(buffer);
+			*total_size = 0;
+			return NULL;
+		}
+
+		*buffer_ptr++ = dcs_cmd_type;
+		*buffer_ptr++ = entry->tuples.count;
+
+		for (i = 0; i < entry->tuples.count; i++) {
+			*buffer_ptr++ = entry->tuples.region[i].cmd_index;
+			*buffer_ptr++ = entry->tuples.region[i].offset;
+			*buffer_ptr++ = entry->tuples.region[i].len;
+		}
+	}
+
+	*total_size = buffer_size;
+	DSI_DEBUG("Packed %u privacy regions into %u bytes\n", region_count, buffer_size);
+
+	return buffer;
+}
+
 static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 					struct dsi_panel *panel,
 					struct dsi_panel_generic_caps *panel_generic_caps)
@@ -2289,6 +2383,7 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	panel_generic_caps->te_mode = panel->host_config.te_mode;
 	panel_generic_caps->dma_sched_line = panel->host_config.dma_sched_line;
 	panel_generic_caps->dma_sched_window = panel->host_config.dma_sched_window;
+	panel_generic_caps->dma_sched_en = (u32)(panel->host_config.dma_sched_en);
 	panel_generic_caps->traffic_mode = dsi_get_panel_traffic_mode_helper(panel);
 	panel_generic_caps->virtual_channel_id = panel->video_config.vc_id;
 	panel_generic_caps->wr_mem_start = panel->cmd_config.wr_mem_start;
@@ -2305,11 +2400,16 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	panel_generic_caps->panels_lanes_state = dsi_get_panel_lane_state_helper(panel);
 	panel_generic_caps->panel_lane_map = dsi_get_panel_lane_map_helper(panel);
 	panel_generic_caps->tx_eot_append = (u32)(panel->host_config.append_tx_eot);
+	if (panel->host_config.split_link.enabled)
+		panel_generic_caps->split_link_info = BIT(0) |
+			((panel->host_config.split_link.lanes_per_sublink & 0xff) << 8);
 	panel_generic_caps->eof_power_mode = panel->video_config.eof_bllp_lp11_en;
 	panel_generic_caps->bllp_power_mode = panel->video_config.bllp_lp11_en;
 	panel_generic_caps->backlight_ctrl_prim = dsi_get_panel_backlight_type(panel, "primary");
 	panel_generic_caps->backlight_ctrl_sec = dsi_get_panel_backlight_type(panel, "secondary");
 	panel_generic_caps->is_bl_inverted = panel->bl_config.bl_inverted_dbv;
+	panel_generic_caps->intra_frame_dcvs_level = panel->disable_cesta_hw_sleep ?
+						HFI_INTRA_FRAME_DCVS_OFF : HFI_INTRA_FRAME_DCVS_ON;
 	dsi_get_panel_ctrl_nums_helper(display, panel_generic_caps->ctrl_nums);
 	dsi_get_panel_phy_nums_helper(display, panel_generic_caps->phy_nums);
 
@@ -2339,7 +2439,9 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	panel_generic_caps->custom_cmd_set_info[0] = DSI_CUSTOM_CMD_SET_START_IDX;
 	panel_generic_caps->custom_cmd_set_info[1] = DSI_CUSTOM_CMD_SET_COUNT;
 
-	panel_generic_caps->ulps_supported = panel->ulps_feature_enabled;
+	panel_generic_caps->ulps_supported =
+		(panel->ulps_feature_enabled & 0xFFFF) |
+		((panel->ulps_suspend_enabled & 0xFFFF) << 16);
 	if (dsi_get_panel_phy_tuning_config_helper(display,
 			&panel_generic_caps->phy_tuning_config))
 		panel_generic_caps->phy_tuning_config_valid = true;
@@ -2528,6 +2630,8 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	struct dsi_display_hfi *display_hfi;
 	u32 *freq_patterns = NULL;
 	u32 freq_pattern_size = 0;
+	u32 *privacy_regions = NULL;
+	u32 privacy_regions_size = 0;
 
 	if (!display)
 		return -EINVAL;
@@ -2574,6 +2678,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		{panel_generic_caps.panels_lanes_state, HFI_PROPERTY_PANEL_LANES_STATE, false},
 		{panel_generic_caps.panel_lane_map, HFI_PROPERTY_PANEL_LANE_MAP, false},
 		{panel_generic_caps.tx_eot_append, HFI_PROPERTY_PANEL_TX_EOT_APPEND, false},
+		{panel_generic_caps.dma_sched_en, HFI_PROPERTY_PANEL_DMA_SCHEDULE_EN, false},
 		{panel_generic_caps.eof_power_mode, HFI_PROPERTY_PANEL_BLLP_EOF_POWER_MODE, false},
 		{panel_generic_caps.bllp_power_mode, HFI_PROPERTY_PANEL_BLLP_POWER_MODE, false},
 		{panel_generic_caps.backlight_ctrl_prim, HFI_PROPERTY_PANEL_BL_PMIC_CONTROL_TYPE,
@@ -2582,6 +2687,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 						HFI_PROPERTY_PANEL_SEC_BL_PMIC_CONTROL_TYPE, false},
 		{panel_generic_caps.is_bl_inverted, HFI_PROPERTY_PANEL_BL_INVERTED_DBV, false},
 		{panel_generic_caps.lp11_init, HFI_PROPERTY_PANEL_LP11_INIT, false},
+		{panel_generic_caps.split_link_info, HFI_PROPERTY_PANEL_SPLIT_LINK, false},
 	};
 
 	/* populate properties based on use_default_val flag */
@@ -2687,6 +2793,20 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		}
 	}
 
+	if (display->modes && display->modes[0].priv_info &&
+			display->modes[0].priv_info->privacy_area_list.count > 0) {
+		privacy_regions = dsi_hfi_pack_privacy_regions(display->modes[0].priv_info,
+				&privacy_regions_size);
+		if (privacy_regions && privacy_regions_size > 0) {
+			hfi_util_kv_helper_add(display_hfi->kv_props,
+					HFI_PACKKEY(HFI_PROPERTY_PANEL_PRIVACY_PROGRAMMABLE_REGION,
+							0,
+							(privacy_regions_size / sizeof(u32))),
+							(void *)privacy_regions);
+			kv_size += privacy_regions_size;
+		}
+	}
+
 	/* Add DSI custom command set info if custom commands are present */
 	if (panel_generic_caps.custom_cmd_set_info[1]) {
 		hfi_util_kv_helper_add(display_hfi->kv_props,
@@ -2703,6 +2823,12 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 				(void *)&panel_generic_caps.ulps_supported);
 	kv_size += sizeof(panel_generic_caps.ulps_supported);
 
+	hfi_util_kv_helper_add(display_hfi->kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_INTRA_FRAME_DCVS_LEVEL, 0,
+				(sizeof(panel_generic_caps.intra_frame_dcvs_level) / sizeof(u32))),
+				(void *)&panel_generic_caps.intra_frame_dcvs_level);
+	kv_size += sizeof(panel_generic_caps.intra_frame_dcvs_level);
+
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
 
 	payload_size = (kv_count * sizeof(u32)) + kv_size;
@@ -2717,6 +2843,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 				payload_size);
 
 	kfree(freq_patterns);
+	kfree(privacy_regions);
 
 	if (rc)
 		DSI_ERR("Failed to add caps to buffer, rc = %d", rc);

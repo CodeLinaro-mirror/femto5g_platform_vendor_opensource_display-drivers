@@ -240,9 +240,15 @@ ktime_t sde_encoder_event_timestamp_adjust(u32 drm_enc_id, u32 event_fps, u64 ev
 {
 	u64 cur_timestamp_hw, hw_diff, hw_diff_ns, event_period_ns;
 	ktime_t event_timestamp_sw, cur_time_sw;
+	spinlock_t local_lock;
+	unsigned long lock_flags;
 
+	/* using spinlock to avoid being preempted while getting the HW and kernel timestamp */
+	spin_lock_init(&local_lock);
+	spin_lock_irqsave(&local_lock, lock_flags);
 	cur_timestamp_hw = arch_timer_read_counter();
 	cur_time_sw = ktime_get_ns();
+	spin_unlock_irqrestore(&local_lock, lock_flags);
 
 	/* check for counter rollover between the two timestamps [56 bits] */
 	if (cur_timestamp_hw < event_timestamp_hw) {
@@ -6530,6 +6536,9 @@ static void sde_encoder_input_event_work_handler(struct kthread_work *work)
 {
 	struct sde_encoder_virt *sde_enc = container_of(work,
 				struct sde_encoder_virt, input_event_work);
+	struct sde_kms *sde_kms;
+	enum msm_disp_op disp_op;
+	int rc = 0;
 
 	if (!sde_enc || !sde_enc->input_handler) {
 		SDE_ERROR("invalid args sde encoder\n");
@@ -6540,6 +6549,28 @@ static void sde_encoder_input_event_work_handler(struct kthread_work *work)
 		SDE_DEBUG_ENC(sde_enc, "input handler is unregistered\n");
 		return;
 	}
+
+	sde_kms = to_sde_kms(ddev_to_msm_kms(sde_enc->base.dev));
+	if (!sde_kms) {
+		SDE_ERROR_ENC(sde_enc, "invalid sde_kms\n");
+		return;
+	}
+
+	sde_vm_lock(sde_kms);
+	if (!sde_vm_owns_hw(sde_kms)) {
+		sde_vm_unlock(sde_kms);
+		SDE_DEBUG("skip input early wakeup for ENC-%d, HW is owned by other VM\n",
+				DRMID(&sde_enc->base));
+		return;
+	}
+
+	disp_op = sde_encoder_get_disp_op(&sde_enc->base);
+	if (sde_enc->hal_ops.early_wakeup_call[disp_op]) {
+		rc = sde_enc->hal_ops.early_wakeup_call[disp_op](sde_enc);
+		if (rc)
+			SDE_ERROR_ENC(sde_enc, "failed to send input early wakeup hint\n");
+	}
+	sde_vm_unlock(sde_kms);
 
 	sde_encoder_resource_control(&sde_enc->base,
 			SDE_ENC_RC_EVENT_EARLY_WAKEUP);

@@ -407,6 +407,19 @@ enum hfi_panel_pll_ssc_center {
 	HFI_PLL_SSC_CENTER_SPREAD = 0x1,
 };
 
+/*
+ * hfi_intra_frame_dcvs_level - Intra-frame Dynamic Clock and Voltage Scaling level
+ * HFI_INTRA_FRAME_DCVS_OFF : Intra-frame DCVS is disabled. The core clock is
+ *                            held constant for the duration of the frame.
+ * HFI_INTRA_FRAME_DCVS_ON  : Intra-frame DCVS is enabled. The core clock may
+ *                            be scaled dynamically within a single frame to
+ *                            optimize power consumption.
+ */
+enum hfi_intra_frame_dcvs_level {
+	HFI_INTRA_FRAME_DCVS_OFF = 0x0,
+	HFI_INTRA_FRAME_DCVS_ON = 0x1,
+};
+
 /**
  * struct hfi_panel_res_data - Panel resolution data
  * @active_width: Panel active width

@@ -275,6 +275,17 @@ struct hfi_cmdbuf_t *hfi_kms_get_cmd_buf(struct hfi_kms *hfi_kms,
 int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms);
 
 /**
+ * hfi_kms_send_generic_device_caps - send runtime-selected catalog properties to DCP
+ * @hfi_kms: Pointer to hfi_kms structure
+ *
+ * Sends properties that HLOS selects at runtime (e.g. highest_bank_bit based on DDR type)
+ * and that DCP cannot determine from its own device tree.
+ *
+ * Returns: 0 on success, or error code on failure
+ */
+int hfi_kms_send_generic_device_caps(struct hfi_kms *hfi_kms);
+
+/**
  * hfi_kms_set_vm_state - set vm state for display
  * @crtc: Pointer to DRM CRTC
  * @crtc_state: Pointer to DRM CRTC state
@@ -360,5 +371,19 @@ void hfi_kms_get_batch_info(struct hfi_kms *hfi_kms, struct drm_crtc_state *crtc
  * Returns: true if batch usecase is GMU LSR (reprojection), false otherwise
  */
 bool hfi_kms_is_gmu_lsr_batch(const struct hfi_kms_batch_info *batch);
+
+/**
+ * hfi_kms_send_hfi_subsystem_config - configure the HFI queue for a subsystem
+ * @hfi_kms: Pointer to hfi_kms structure
+ * @crtc: Pointer to DRM CRTC the config is sent on
+ * @disp_id: HFI display id
+ * @subsystem_type: Subsystem the buffer is being configured for
+ * @iova: Device address of the subsystem HFI queue buffer
+ * @size: Size of the subsystem HFI queue buffer in bytes
+ * Returns: 0 on success, negative error code otherwise
+ */
+int hfi_kms_send_hfi_subsystem_config(struct hfi_kms *hfi_kms,
+		struct drm_crtc *crtc, u32 disp_id,
+		enum hfi_subsystem_type subsystem_type, u32 iova, u32 size);
 
 #endif // _HFI_KMS_H_

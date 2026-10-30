@@ -328,6 +328,12 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_CUSTOM_ON:		   Custom DCS ON command
  * @DSI_CMD_SET_ROI_PRE:                   Panel ROI pre command
  * @DSI_CMD_SET_ROI_POST:                  Panel ROI post command
+ * @DSI_CMD_SET_PRIVACY_AREA_REG1_ON:     V2 AREA_MODE region 0 ON command, with programmable ROI
+ * @DSI_CMD_SET_PRIVACY_AREA_REG1_OFF:    V2 AREA_MODE region 0 OFF command, static
+ * @DSI_CMD_SET_PRIVACY_AREA_REG2_ON:     V2 AREA_MODE region 1 ON command, with programmable ROI
+ * @DSI_CMD_SET_PRIVACY_AREA_REG2_OFF:    V2 AREA_MODE region 1 OFF command, static
+ * @DSI_CMD_SET_PRIVACY_AREA_REG3_ON:     V2 AREA_MODE region 2 ON command, with programmable ROI
+ * @DSI_CMD_SET_PRIVACY_AREA_REG3_OFF:    V2 AREA_MODE region 2 OFF command, static
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -378,6 +384,12 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_CUSTOM_ON,
 	DSI_CMD_SET_ROI_PRE,
 	DSI_CMD_SET_ROI_POST,
+	DSI_CMD_SET_PRIVACY_AREA_REG1_ON,
+	DSI_CMD_SET_PRIVACY_AREA_REG1_OFF,
+	DSI_CMD_SET_PRIVACY_AREA_REG2_ON,
+	DSI_CMD_SET_PRIVACY_AREA_REG2_OFF,
+	DSI_CMD_SET_PRIVACY_AREA_REG3_ON,
+	DSI_CMD_SET_PRIVACY_AREA_REG3_OFF,
 	DSI_CMD_SET_MAX
 };
 
@@ -528,6 +540,69 @@ struct dsi_panel_cmd_set {
 };
 
 /**
+ * struct dsi_privacy_programmable_region - a single patchable byte range within
+ * a privacy area-mode ON command set, as parsed from a
+ * "qcom,mdss-dsi-privacy-area-reg<N>-on-programmable-region" DT tuple.
+ * @cmd_index: index into the ON command set's cmds[] array
+ * @offset:    byte offset within that command's payload where the ROI starts
+ * @len:       number of bytes to patch (always 9 as per current ROI layout:
+ *             left(2) + top(2) + right(2) + bottom(2) + corner_radius(1))
+ */
+struct dsi_privacy_programmable_region {
+	u32 cmd_index;
+	u32 offset;
+	u32 len;
+};
+
+/**
+ * struct dsi_privacy_region_info - programmable-region tuple list for one
+ * privacy area-mode ON command set, sized to the DT property's actual
+ * tuple count (no fixed cap).
+ * @region: heap-allocated array of @count tuples
+ * @count:  number of valid tuples in @region
+ */
+struct dsi_privacy_region_info {
+	struct dsi_privacy_programmable_region *region;
+	u32 count;
+};
+
+/**
+ * struct dsi_privacy_area_entry - one privacy area-mode region's tuple list,
+ * tagged with which physical hardware region it targets. Mirrors struct
+ * msm_freq_step_pattern's role: frame_pattern_seq_idx there is the same idea
+ * as @region_idx here -- "which fixed DCS slot does this entry map to."
+ * @region_idx: 0-based region number (region_idx=0 -> DSI_CMD_SET_PRIVACY_AREA_REG1_ON,
+ *              region_idx=1 -> REG2_ON, etc.)
+ * @tuples:     the region's programmable-region tuple list
+ */
+struct dsi_privacy_area_entry {
+	u32 region_idx;
+	struct dsi_privacy_region_info tuples;
+};
+
+/**
+ * struct dsi_privacy_area_list - list of privacy area-mode regions actually
+ * defined in this panel's DT, sized to the real count (no fixed cap).
+ * Mirrors struct msm_freq_step_list.
+ * @entries: heap-allocated array of @count entries
+ * @count:   number of regions actually present for this panel
+ */
+struct dsi_privacy_area_list {
+	struct dsi_privacy_area_entry *entries;
+	u32 count;
+};
+
+/**
+ * DSI_PRIVACY_AREA_REGION_PROBE_MAX - runaway-probe sanity limit on how many
+ * "qcom,mdss-dsi-privacy-area-reg<N>-on-programmable-region" DT properties
+ * the parser will try (N = 1, 2, 3, ... contiguously, stopping at the first
+ * N not defined in DT). NOT a region-count cap -- struct dsi_privacy_area_list
+ * is heap-allocated to however many regions are actually found, nothing more.
+ * Bump this only if a real panel needs more than this many regions probed.
+ */
+#define DSI_PRIVACY_AREA_REGION_PROBE_MAX 8
+
+/**
  * struct dsi_mode_info - video mode information dsi frame
  * @h_active:         Active width of one frame in pixels.
  * @h_back_porch:     Horizontal back porch in pixels.
@@ -647,6 +722,8 @@ struct dsi_split_link_config {
  *			 cmd it points to the line after TE.
  * @dma_sched_window:	 Determines the width of the window during the
  *			 DSI command will be sent by the HW.
+ * @dma_sched_en:        Indicates whether dma_sched_line/dma_sched_window values
+ *			 should be honored as-is, including a value of zero.
  * @skip_pps_update:	 Skip sending pps command.
  */
 struct dsi_host_common_cfg {
@@ -679,6 +756,7 @@ struct dsi_host_common_cfg {
 	u32 byte_intf_clk_div;
 	u32 dma_sched_line;
 	u32 dma_sched_window;
+	bool dma_sched_en;
 	bool skip_pps_update;
 };
 
@@ -792,6 +870,9 @@ struct dsi_host_config {
  * @allowed_mode_switch: BIT mask to mark allowed mode switches
  * @disable_rsc_solver: Dynamically disable RSC solver for the timing mode.
  * @mode_idx:	Mode index as defined by devicetree
+ * @privacy_area_list:  V2 AREA_MODE programmable-region tuples, parsed from
+ *                      DT; one entry per region actually present for this
+ *                      panel, dynamically sized.
  */
 struct dsi_display_mode_priv_info {
 	struct dsi_panel_cmd_set cmd_sets[DSI_CMD_SET_TOTAL_SIZE];
@@ -826,6 +907,8 @@ struct dsi_display_mode_priv_info {
 	u32 allowed_mode_switch[MODE_SWITCH_BITMAP_SIZE];
 	bool disable_rsc_solver;
 	u32 mode_idx;
+
+	struct dsi_privacy_area_list privacy_area_list;
 };
 
 /**

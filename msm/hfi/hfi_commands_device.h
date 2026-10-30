@@ -561,6 +561,29 @@
  */
 #define HFI_COMMAND_DEVICE_SUBSYSTEM_RESTART_NOTIFY                  0x01000015
 
+/*!
+ * HFI_COMMAND_DEVICE_GENERIC_CAPS - This command is sent from host to DCP to
+ *                                   communicate generic platform specific information,
+ *                                   such as runtime-selected values. This command is
+ *                                   sent during device initialization.
+ *
+ * Host to DCP:
+ *
+ * hfi_header.num_packets             : 1
+ *
+ * Hfi packet layout                  | Value
+ *------------------------------------|------------------------------------------------
+ * hfi_packet.payload_info (type)     | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                     | HFI_COMMAND_DEVICE_GENERIC_CAPS
+ * hfi_packet.flags                   | HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.payload                 | <key, value> pairs of generic device properties
+ * ^                                  | (refer HFI_PROPERTY_DEVICE_GENERIC_CAPS_XXX)
+ *
+ * Data Contents:
+ *  - HFI_PROPERTY_DEVICE_GENERIC_CAPS_DDR_TYPE
+ */
+#define HFI_COMMAND_DEVICE_GENERIC_CAPS                              0x01000016
+
 #define HFI_COMMAND_DEVICE_END                                       0x01FFFFFF
 
 #endif // __H_HFI_COMMANDS_DEVICE_H__

@@ -9,6 +9,7 @@
 #include <linux/atomic.h>
 #include <linux/delay.h>
 #include <linux/ktime.h>
+#include <linux/jiffies.h>
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 #include "hfi_interface.h"
 #include "hfi_commands_display.h"
@@ -25,10 +26,10 @@
 #define HFI_AD_DEBUG(fmt, ...)  \
 	pr_debug("[hfi_ad_debug] %s:%d " fmt, __func__, __LINE__, ##__VA_ARGS__)
 
-#define HFI_APADTER_STEP_US 50
 #define MAX_TRY_COUNT 40000
 #define MAX_BUFFERS 64
 #define MAX_U32 0xFFFFFFFF
+#define HFI_ADAPTER_RSP_TIMEOUT_MS 2000
 #define MAX_POOL_SIZE 64
 #define GET_BUF_RETRY (3 + (3 * MAX_POOL_SIZE))
 #define MIN_USLEEP_RANGE 30000
@@ -492,6 +493,7 @@ static int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 	case HFI_CORE_EVENT_SSR_START:
 		HFI_AD_DEBUG("SSR has been initiated\n");
 		atomic_set(&adapter->ssr_in_progress, 1);
+		wake_up_all(&adapter->cmd_buf_wq);
 		/* finish processing all buffers sent by dcp */
 		kthread_flush_worker(&adapter->cb_event_worker);
 		adapter->event_type = HFI_ADAPTER_EVENT_SSR_START;
@@ -653,6 +655,7 @@ struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance)
 	idr_init(&hfi_host->client_ids);
 	spin_lock_init(&hfi_host->packet_id_lock);
 	mutex_init(&hfi_host->hfi_adapter_cmd_buf_list_lock);
+	init_waitqueue_head(&hfi_host->cmd_buf_wq);
 
 	atomic_set(&hfi_host->ssr_in_progress, 0);
 	atomic_set(&hfi_host->shutdown_in_progress, 0);
@@ -1385,7 +1388,7 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_client_t *ctx, struct hfi_cmdbuf
 	struct hfi_adapter_t *host;
 	int rc = 0;
 	bool response_ack = false;
-	u32 wait_count = 0;
+	unsigned long wait_ret;
 	struct list_head *pos;
 	struct hfi_cmdbuf_t *buf_entry;
 	struct hfi_core_cmds_buf_desc *buff_arr[MAX_BUFFERS];
@@ -1463,25 +1466,23 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_client_t *ctx, struct hfi_cmdbuf
 	HFI_AD_DEBUG("[info] tx buffer sent\n");
 
 	atomic_set(&cmd_buf->waiting_for_rsp, 1);
-	do {
-		if (atomic_read(&host->ssr_in_progress))
-			break;
-		usleep_range(HFI_APADTER_STEP_US, HFI_APADTER_STEP_US + 10);
-		if (wait_count++ > MAX_TRY_COUNT) {
-			HFI_AD_ERROR("set_cmd_buf_blocking wait timed-out\n");
-			rc = hfi_core_notify_rsp_timeout(host->session);
-			atomic_set(&cmd_buf->waiting_for_rsp, 0);
-			rc = -ETIMEDOUT;
-			break;
-		}
-		response_ack = atomic_read(&cmd_buf->buffer_send_done);
-	} while (!response_ack);
+	wait_ret = wait_event_timeout(host->cmd_buf_wq,
+			atomic_read(&cmd_buf->buffer_send_done) ||
+			atomic_read(&host->ssr_in_progress),
+			msecs_to_jiffies(HFI_ADAPTER_RSP_TIMEOUT_MS));
+	response_ack = atomic_read(&cmd_buf->buffer_send_done);
+
+	if (!wait_ret && !response_ack) {
+		HFI_AD_ERROR("set_cmd_buf_blocking wait timed-out\n");
+		rc = hfi_core_notify_rsp_timeout(host->session);
+		rc = -ETIMEDOUT;
+	}
 	atomic_set(&cmd_buf->waiting_for_rsp, 0);
 
 	if (!response_ack)
 		HFI_AD_ERROR("timed out waiting for response_ack for tx!\n");
 	else
-		HFI_AD_DEBUG("[info] buffer response received after %d ms\n", wait_count);
+		HFI_AD_DEBUG("[info] buffer response received\n");
 
 exit:
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
@@ -1678,6 +1679,7 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 		}
 	}
 	mutex_unlock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
+	wake_up_all(&ctx->host->cmd_buf_wq);
 
 	/* delete all the listeners marked for deletion based on remove_on_cb flag */
 	mutex_lock(&ctx->listener_lock);
