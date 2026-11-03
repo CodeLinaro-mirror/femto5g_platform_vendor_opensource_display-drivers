@@ -30,6 +30,7 @@ def define_pineapple(t, v, lt=None):
             "CONFIG_QTI_HW_FENCE",
             "CONFIG_QCOM_SPEC_SYNC",
             "CONFIG_MSM_EXT_DISPLAY",
+            "CONFIG_SMMU_PROXY",
         ],
         lunch_target = lt,
 )
@@ -106,6 +107,7 @@ def define_volcano(t, v, lt=None):
             "CONFIG_QCOM_SPEC_SYNC",
             "CONFIG_MSM_EXT_DISPLAY",
             "CONFIG_DEBUG_FS",
+            "CONFIG_SMMU_PROXY",
         ],
         lunch_target = lt,
 )

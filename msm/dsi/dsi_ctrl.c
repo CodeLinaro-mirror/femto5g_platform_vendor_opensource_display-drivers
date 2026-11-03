@@ -3084,6 +3084,16 @@ void dsi_ctrl_disable_status_interrupt(struct dsi_ctrl *dsi_ctrl,
 	if (!dsi_ctrl || intr_idx >= DSI_STATUS_INTERRUPT_COUNT)
 		return;
 
+	/*
+	 * When keep_dma_done_irq is set the DMA_DONE interrupt must remain
+	 * enabled until the host is de-initialized. Suppress any attempt to
+	 * disable it through the normal per-transfer path; the IRQ will be
+	 * released explicitly by dsi_ctrl_release_dma_done_irq().
+	 */
+	if (dsi_ctrl->keep_dma_done_irq &&
+			intr_idx == DSI_SINT_CMD_MODE_DMA_DONE)
+		return;
+
 	SDE_EVT32_IRQ(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY, intr_idx,
 		dsi_ctrl->irq_info.irq_num, dsi_ctrl->irq_info.irq_stat_mask,
 		dsi_ctrl->irq_info.irq_stat_refcount[intr_idx]);
@@ -3103,6 +3113,34 @@ void dsi_ctrl_disable_status_interrupt(struct dsi_ctrl *dsi_ctrl,
 		}
 
 	spin_unlock_irqrestore(&dsi_ctrl->irq_info.irq_lock, flags);
+}
+
+void dsi_ctrl_release_dma_done_irq(struct dsi_ctrl *dsi_ctrl)
+{
+	unsigned long flags;
+
+	if (!dsi_ctrl || !dsi_ctrl->keep_dma_done_irq)
+		return;
+
+	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY,
+		dsi_ctrl->irq_info.irq_stat_refcount[DSI_SINT_CMD_MODE_DMA_DONE]);
+
+	spin_lock_irqsave(&dsi_ctrl->irq_info.irq_lock, flags);
+
+	if (dsi_ctrl->irq_info.irq_stat_refcount[DSI_SINT_CMD_MODE_DMA_DONE]) {
+		dsi_ctrl->irq_info.irq_stat_refcount[DSI_SINT_CMD_MODE_DMA_DONE] = 0;
+		dsi_ctrl->irq_info.irq_stat_mask &= ~BIT(DSI_SINT_CMD_MODE_DMA_DONE);
+		dsi_ctrl->hw.ops.enable_status_interrupts(&dsi_ctrl->hw,
+				dsi_ctrl->irq_info.irq_stat_mask);
+
+		if (dsi_ctrl->irq_info.irq_stat_mask == 0 &&
+				dsi_ctrl->irq_info.irq_num != -1)
+			disable_irq_nosync(dsi_ctrl->irq_info.irq_num);
+	}
+
+	spin_unlock_irqrestore(&dsi_ctrl->irq_info.irq_lock, flags);
+
+	dsi_ctrl->keep_dma_done_irq = false;
 }
 
 int dsi_ctrl_host_timing_update(struct dsi_ctrl *dsi_ctrl)
@@ -3369,6 +3407,8 @@ int dsi_ctrl_host_deinit(struct dsi_ctrl *dsi_ctrl)
 	}
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
+
+	dsi_ctrl_release_dma_done_irq(dsi_ctrl);
 
 	rc = dsi_ctrl_check_state(dsi_ctrl, DSI_CTRL_OP_HOST_INIT, 0x0);
 	if (rc) {

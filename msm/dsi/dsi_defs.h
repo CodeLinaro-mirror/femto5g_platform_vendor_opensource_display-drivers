@@ -277,6 +277,7 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_QSYNC_ON                   Enable qsync mode
  * @DSI_CMD_SET_QSYNC_OFF                  Disable qsync mode
  * @DSI_CMD_SET_CALIBRATION_DATA           Panel calibration data
+ * @DSI_CMD_SET_PANEL_SYNC:                Panel sync command
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -306,6 +307,7 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_QSYNC_ON,
 	DSI_CMD_SET_QSYNC_OFF,
 	DSI_CMD_SET_CALIBRATION_DATA,
+	DSI_CMD_SET_PANEL_SYNC,
 	DSI_CMD_SET_MAX
 };
 

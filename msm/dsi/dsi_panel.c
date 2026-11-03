@@ -19,6 +19,7 @@
 #include "dsi_panel.h"
 #include "dsi_ctrl_hw.h"
 #include "dsi_defs.h"
+#include "dsi_display.h"
 #include "dsi_parser.h"
 #include "sde_dbg.h"
 #include "sde_dsc_helper.h"
@@ -459,6 +460,9 @@ static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 			 panel->name, type);
 		goto error;
 	}
+
+	if (type == DSI_CMD_SET_PANEL_SYNC)
+		dsi_display_set_keep_dma_done_irq(panel->host);
 
 	for (i = 0; i < count; i++) {
 		cmds->ctrl_flags = 0;
@@ -1924,6 +1928,7 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-qsync-on-commands",
 	"qcom,mdss-dsi-qsync-off-commands",
 	"qcom,mdss-dsi-calibration-commands",
+	"qcom,mdss-dsi-sync-command",
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -1953,6 +1958,7 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-qsync-on-commands-state",
 	"qcom,mdss-dsi-qsync-off-commands-state",
 	"qcom,mdss-dsi-calibration-commands-state",
+	"qcom,mdss-dsi-sync-command-state",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -5133,6 +5139,26 @@ int dsi_panel_send_qsync_off_dcs(struct dsi_panel *panel,
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_QSYNC_OFF);
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_QSYNC_OFF cmds rc=%d\n",
+		       panel->name, rc);
+
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
+int dsi_panel_send_panel_sync_dcs(struct dsi_panel *panel)
+{
+	int rc = 0;
+
+	if (!panel) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+
+	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_PANEL_SYNC);
+	if (rc)
+		DSI_ERR("[%s] failed to send DSI_CMD_SET_PANEL_SYNC cmds rc=%d\n",
 		       panel->name, rc);
 
 	mutex_unlock(&panel->panel_lock);

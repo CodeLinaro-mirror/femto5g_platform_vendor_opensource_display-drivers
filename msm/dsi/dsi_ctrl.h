@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -255,6 +255,10 @@ struct dsi_ctrl_interrupts {
  *				which command transfer is successful.
  * @cmd_engine_refcount: Reference count enforcing single instance of cmd engine
  * @pending_cmd_flags: Flags associated with command that is currently being txed or pending.
+ * @keep_dma_done_irq: If set, DSI_SINT_CMD_MODE_DMA_DONE IRQ is kept enabled
+ *                     persistently and never disabled by the normal
+ *                     enable/disable interrupt paths. Released only on host
+ *                     de-init via dsi_ctrl_release_dma_done_irq().
  * @cmd_success_ts:             Time stamp of when command transfer is successful in nano-seconds.
  */
 struct dsi_ctrl {
@@ -325,6 +329,7 @@ struct dsi_ctrl {
 	u32 cmd_success_frame;
 	u32 cmd_engine_refcount;
 	u32 pending_cmd_flags;
+	bool keep_dma_done_irq;
 	ktime_t cmd_success_ts;
 };
 
@@ -783,6 +788,14 @@ void dsi_ctrl_enable_status_interrupt(struct dsi_ctrl *dsi_ctrl,
  */
 void dsi_ctrl_disable_status_interrupt(
 		struct dsi_ctrl *dsi_ctrl, uint32_t intr_idx);
+
+/**
+ * dsi_ctrl_release_dma_done_irq() - Unconditionally release the persistent
+ *                                   DMA_DONE IRQ vote held when keep_dma_done_irq
+ *                                   is set. Called at host de-init time.
+ * @dsi_ctrl:        DSI controller handle.
+ */
+void dsi_ctrl_release_dma_done_irq(struct dsi_ctrl *dsi_ctrl);
 
 /**
  * dsi_ctrl_setup_misr() - Setup frame MISR
