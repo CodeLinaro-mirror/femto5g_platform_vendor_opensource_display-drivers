@@ -852,11 +852,19 @@ void msm_gem_vunmap(struct drm_gem_object *obj, enum msm_gem_lock subclass)
 
 int msm_gem_cpu_prep(struct drm_gem_object *obj, uint32_t op, ktime_t *timeout)
 {
-	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+	struct msm_gem_object *msm_obj;
 	bool write = !!(op & MSM_PREP_WRITE);
 	unsigned long remain =
 		op & MSM_PREP_NOSYNC ? 0 : timeout_to_jiffies(timeout);
 	long ret;
+
+	if (!obj)
+		return -EINVAL;
+
+	msm_obj = to_msm_bo(obj);
+
+	if (!msm_obj)
+		return -EINVAL;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 	ret = dma_resv_wait_timeout(msm_obj->resv, write, true, remain);
