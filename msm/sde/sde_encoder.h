@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -426,6 +426,8 @@ bool sde_encoder_is_dsc_merge(struct drm_encoder *drm_enc);
  * @Return: true if it is cmd mode
  */
 bool sde_encoder_check_curr_mode(struct drm_encoder *drm_enc, u32 mode);
+
+uint32_t sde_encoder_get_clones(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_init - initialize virtual encoder object
