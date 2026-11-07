@@ -60,6 +60,8 @@ struct dp_hdcp2p2_ctrl {
 	u32 downstream_version;
 	u8 min_enc_level;
 	bool polling;
+	struct delayed_work reauth_work;
+	unsigned long last_auth_time;
 };
 
 struct dp_hdcp2p2_int_set {
@@ -229,13 +231,23 @@ static int dp_hdcp2p2_wakeup(struct hdcp_transport_wakeup_data *data)
 	switch (data->cmd) {
 	case HDCP_TRANSPORT_CMD_STATUS_SUCCESS:
 		atomic_set(&ctrl->auth_state, HDCP_STATE_AUTHENTICATED);
+		ctrl->last_auth_time = jiffies;
 		kfifo_put(&ctrl->cmd_q, data->cmd);
 		wake_up(&ctrl->wait_q);
 		break;
 	case HDCP_TRANSPORT_CMD_STATUS_FAILED:
-		atomic_set(&ctrl->auth_state, HDCP_STATE_AUTH_FAIL);
-		kfifo_put(&ctrl->cmd_q, data->cmd);
-		kthread_park(ctrl->thread);
+		if (atomic_read(&ctrl->auth_state) == HDCP_STATE_AUTHENTICATED) {
+			DP_ERR("HDCP auth lost during active session, scheduling re-auth\n");
+			SDE_EVT32_EXTERNAL(SDE_EVTLOG_ERROR,
+					HDCP_TRANSPORT_CMD_STATUS_FAILED,
+					atomic_read(&ctrl->auth_state));
+			atomic_set(&ctrl->auth_state, HDCP_STATE_AUTH_FAIL);
+			schedule_delayed_work(&ctrl->reauth_work, HZ);
+		} else {
+			atomic_set(&ctrl->auth_state, HDCP_STATE_AUTH_FAIL);
+			kfifo_put(&ctrl->cmd_q, data->cmd);
+			kthread_park(ctrl->thread);
+		}
 		break;
 	case HDCP_TRANSPORT_CMD_RX_INFO:
 		ctrl->response.data = data->buf;
@@ -280,6 +292,7 @@ static void dp_hdcp2p2_reset(struct dp_hdcp2p2_ctrl *ctrl)
 	ctrl->sink_status = SINK_DISCONNECTED;
 	ctrl->downstream_version = 0;
 	atomic_set(&ctrl->auth_state, HDCP_STATE_INACTIVE);
+	ctrl->last_auth_time = 0;
 }
 
 static int dp_hdcp2p2_register(void *input, bool mst_enabled)
@@ -353,6 +366,8 @@ static void dp_hdcp2p2_off(void *input)
 
 	dp_hdcp2p2_set_interrupts(ctrl, false);
 
+	cancel_delayed_work_sync(&ctrl->reauth_work);
+
 	dp_hdcp2p2_reset(ctrl);
 
 	kthread_park(ctrl->thread);
@@ -399,6 +414,33 @@ static int dp_hdcp2p2_reauthenticate(void *input)
 	dp_hdcp2p2_reset((struct dp_hdcp2p2_ctrl *)input);
 
 	return  dp_hdcp2p2_authenticate(input);
+}
+
+static void dp_hdcp2p2_reauth_worker(struct work_struct *work)
+{
+	int rc;
+	struct dp_hdcp2p2_ctrl *ctrl = container_of(to_delayed_work(work),
+			struct dp_hdcp2p2_ctrl, reauth_work);
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, atomic_read(&ctrl->auth_state));
+
+	if (atomic_read(&ctrl->auth_state) == HDCP_STATE_AUTH_FAIL) {
+		rc = dp_hdcp2p2_on(ctrl);
+		if (rc) {
+			DP_ERR("HDCP re-auth: dp_hdcp2p2_on failed (%d), aborting worker\n", rc);
+			SDE_EVT32_EXTERNAL(SDE_EVTLOG_ERROR, rc);
+			return;
+		}
+
+		rc = dp_hdcp2p2_reauthenticate(ctrl);
+		if (rc)
+			DP_ERR("HDCP re-auth: reauthenticate failed (%d)\n", rc);
+	} else {
+		SDE_EVT32_EXTERNAL(HDCP_STATE_AUTH_FAIL,
+				atomic_read(&ctrl->auth_state));
+	}
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, atomic_read(&ctrl->auth_state));
 }
 
 static void dp_hdcp2p2_force_encryption(void *data, bool enable)
@@ -660,11 +702,13 @@ static void dp_hdcp2p2_link_check(struct dp_hdcp2p2_ctrl *ctrl)
 	cdata.context = ctrl->lib_ctx;
 
 	if (ctrl->sink_rx_status & ctrl->abort_mask) {
-		if (ctrl->sink_rx_status & BIT(3))
-			DP_ERR("reauth_req set by sink\n");
-
-		if (ctrl->sink_rx_status & BIT(4))
-			DP_ERR("link failure reported by sink\n");
+		DP_ERR("HDCP link check abort: rx_status=0x%x "
+				"(reauth_req=%d link_integrity_fail=%d) "
+				"auth_held_ms=%u\n",
+				ctrl->sink_rx_status,
+				!!(ctrl->sink_rx_status & BIT(3)),
+				!!(ctrl->sink_rx_status & BIT(4)),
+				jiffies_to_msecs(jiffies - ctrl->last_auth_time));
 
 		ctrl->sink_rx_status = 0;
 		ctrl->rx_status = 0;
@@ -672,7 +716,6 @@ static void dp_hdcp2p2_link_check(struct dp_hdcp2p2_ctrl *ctrl)
 		rc = -ENOLINK;
 
 		cdata.cmd = HDCP_2X_CMD_LINK_FAILED;
-		atomic_set(&ctrl->auth_state, HDCP_STATE_AUTH_FAIL);
 		goto exit;
 	}
 
@@ -928,6 +971,7 @@ void sde_dp_hdcp2p2_deinit(void *input)
 		dp_hdcp2p2_wakeup_lib(ctrl, &cdata);
 	}
 
+	cancel_delayed_work_sync(&ctrl->reauth_work);
 	sde_hdcp_2x_deregister(ctrl->lib_ctx);
 
 	kthread_stop(ctrl->thread);
@@ -1074,6 +1118,7 @@ void *sde_dp_hdcp2p2_init(struct sde_hdcp_init_data *init_data)
 
 	init_waitqueue_head(&ctrl->wait_q);
 	atomic_set(&ctrl->auth_state, HDCP_STATE_INACTIVE);
+	INIT_DELAYED_WORK(&ctrl->reauth_work, dp_hdcp2p2_reauth_worker);
 
 	ctrl->ops = &ops;
 	mutex_init(&ctrl->mutex);

@@ -3204,9 +3204,20 @@ static int dp_display_pre_disable(struct dp_display *dp_display, void *panel)
 		}
 
 		if (off) {
-			if (dp->hdcp.ops->off)
-				dp->hdcp.ops->off(dp->hdcp.data);
-			dp_display_update_hdcp_status(dp, true);
+			if (dp_display_state_is(DP_STATE_CONNECTED)) {
+				/*
+				 * DP is still physically connected — stream switch,
+				 * not a disconnect. Keep the HDCP session alive so
+				 * the next stream does not need to re-authenticate.
+				 * dp_display_clean() tears down HDCP on disconnect.
+				 */
+				SDE_EVT32_EXTERNAL(dp->state,
+						dp->link->hdcp_status.hdcp_state);
+			} else {
+				if (dp->hdcp.ops->off)
+					dp->hdcp.ops->off(dp->hdcp.data);
+				dp_display_update_hdcp_status(dp, true);
+			}
 		}
 	}
 
