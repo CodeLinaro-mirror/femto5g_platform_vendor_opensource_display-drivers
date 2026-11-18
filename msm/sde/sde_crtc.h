@@ -725,6 +725,7 @@ struct sde_line_insertion_param {
 				of loopback mode
  * @cac_mixer_roi: stores the mixer width and height for loopback mixers in crtc
  * @num_prim_mixers: number of mixers driving the primary display in loopback usecase
+ * @dnsc_res_changed: set when there is a request for cwb capture with dnsc enable
  */
 struct sde_crtc_state {
 	struct drm_crtc_state base;
@@ -768,6 +769,7 @@ struct sde_crtc_state {
 	struct sde_line_insertion_param line_insertion;
 	bool is_loopback_mode;
 	bool in_loopback_transition;
+	bool dnsc_res_changed;
 	struct sde_io_res cac_mixer_roi[MAX_MIXERS_PER_CRTC];
 	uint32_t num_prim_mixers;
 };

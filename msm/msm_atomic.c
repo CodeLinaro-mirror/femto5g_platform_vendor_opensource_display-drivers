@@ -85,6 +85,7 @@ static inline bool _msm_seamless_for_crtc(struct drm_atomic_state *state,
 	if (msm_is_mode_seamless(msm_mode) ||
 		msm_is_mode_seamless_vrr(msm_mode) ||
 		msm_is_mode_seamless_emsync_fps_switch(msm_mode) ||
+		msm_is_mode_seamless_dnsc_blur(msm_mode) ||
 		msm_is_mode_seamless_poms(msm_mode) ||
 		msm_is_mode_seamless_dms_vid(msm_mode) ||
 		msm_is_mode_seamless_dyn_clk(msm_mode))
@@ -119,12 +120,22 @@ static inline bool _msm_seamless_for_conn(struct drm_connector *connector,
 	if (!old_conn_state || !old_conn_state->crtc)
 		return false;
 
+	if (!priv || !priv->kms || !priv->kms->funcs->get_msm_mode)
+		return false;
+
+	msm_mode = priv->kms->funcs->get_msm_mode(
+			_msm_get_conn_state(old_conn_state->crtc->state));
+	if (!msm_mode)
+		return false;
 	if (!old_conn_state->crtc->state->mode_changed &&
 			!old_conn_state->crtc->state->active_changed &&
 			old_conn_state->crtc->state->connectors_changed) {
 		if (old_conn_state->crtc == connector->state->crtc)
 			return true;
 	}
+
+	if (enable && msm_is_mode_seamless_dnsc_blur(msm_mode))
+		return true;
 
 	if (enable)
 		return false;
@@ -133,19 +144,12 @@ static inline bool _msm_seamless_for_conn(struct drm_connector *connector,
 		old_conn_state->crtc->state->connectors_changed)
 		return false;
 
-	if (!priv || !priv->kms || !priv->kms->funcs->get_msm_mode)
-		return false;
-
-	msm_mode = priv->kms->funcs->get_msm_mode(
-			_msm_get_conn_state(old_conn_state->crtc->state));
-	if (!msm_mode)
-		return false;
-
 	if (msm_is_mode_seamless(msm_mode) ||
 		msm_is_mode_seamless_vrr(msm_mode) ||
 		msm_is_mode_seamless_dyn_clk(msm_mode) ||
 		msm_is_mode_seamless_emsync_fps_switch(msm_mode) ||
 		msm_is_mode_seamless_dms_vid(msm_mode) ||
+		msm_is_mode_seamless_dnsc_blur(msm_mode) ||
 		msm_is_mode_seamless_dms(msm_mode))
 		return true;
 
@@ -328,6 +332,7 @@ msm_crtc_set_mode(struct drm_device *dev, struct drm_atomic_state *old_state)
 		struct drm_display_mode *mode, *adjusted_mode;
 		struct drm_bridge *bridge;
 		bool crtc_in_loopback = false;
+		struct msm_display_mode *msm_mode = NULL;
 
 		if (!connector->state->best_encoder)
 			continue;
@@ -341,6 +346,15 @@ msm_crtc_set_mode(struct drm_device *dev, struct drm_atomic_state *old_state)
 
 		if (priv && priv->kms && priv->kms->funcs->in_loopback_mode(new_crtc_state))
 			crtc_in_loopback = true;
+
+		if (priv && priv->kms && priv->kms->funcs->get_msm_mode
+				&& old_conn_state->crtc) {
+			msm_mode = priv->kms->funcs->get_msm_mode(
+				_msm_get_conn_state(old_conn_state->crtc->state));
+			if (msm_mode)
+				crtc_in_loopback = crtc_in_loopback ||
+						(msm_is_mode_seamless_dnsc_blur(msm_mode));
+		}
 
 		if (!new_crtc_state->active)
 			continue;

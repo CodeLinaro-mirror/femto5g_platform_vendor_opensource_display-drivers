@@ -2379,6 +2379,7 @@ void sde_encoder_vhm_wakelock(struct sde_encoder_virt *sde_enc, bool enable)
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
 	u32 wakelock_state;
+	unsigned int lp = SDE_MODE_DPMS_ON;
 
 	if (!sde_enc->disp_info.vrr_caps.video_psr_support)
 		return;
@@ -2386,11 +2387,18 @@ void sde_encoder_vhm_wakelock(struct sde_encoder_virt *sde_enc, bool enable)
 	priv = sde_enc->base.dev->dev_private;
 	sde_kms = to_sde_kms(priv->kms);
 
+	if (sde_enc->cur_master && sde_enc->cur_master->connector)
+		lp = sde_connector_get_lp(sde_enc->cur_master->connector);
+
 	wakelock_state = atomic_read(&sde_enc->vrr_info.vhm_pm_wake_lock);
 
-	if (sde_kms->suspend_state) {
-		SDE_EVT32(wakelock_state, enable);
-		return;
+	if (sde_kms->suspend_state || lp == SDE_MODE_DPMS_LP1 ||
+			lp == SDE_MODE_DPMS_LP2) {
+		SDE_EVT32(wakelock_state, enable, lp, sde_kms->suspend_state);
+		if (wakelock_state == 1)
+			enable = false;
+		else
+			return;
 	}
 
 	if (enable && wakelock_state == 0) {
